@@ -2,19 +2,17 @@ package backend
 
 import (
 	"fmt"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/pre_job"
 	"net/http"
 
 	"github.com/arl/statsviz"
-
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/tmdb_api"
-
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/backend/controllers/base"
 	v1 "github.com/ChineseSubFinder/ChineseSubFinder/internal/backend/controllers/v1"
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/backend/middle"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/cron_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/pre_job"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/tmdb_api"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,32 +34,28 @@ func InitRouter(
 		if err != nil {
 			cronHelper.Logger.Panicln("NewTmdbHelper", err)
 		}
-		if tmdbApi.Alive() == false {
-			// 如果 tmdbApi 不可用，那么就不使用
-			cronHelper.Logger.Errorln("tmdbApi.Alive() == false")
-			tmdbApi = nil
-		}
 	}
 	cronHelper.FileDownloader.MediaInfoDealers.SetTmdbHelperInstance(tmdbApi)
 	// ----------------------------------------------
+
 	cbBase := base.NewControllerBase(cronHelper.FileDownloader, restartSignal, preJob)
 	cbV1 := v1.NewControllerBase(cronHelper, restartSignal)
+
 	// --------------------------------------------------
 	// 静态文件服务器
 	// 添加电影的
 	for i, path := range settings.Get().CommonSettings.MoviePaths {
-
 		nowUrl := "/movie_dir_" + fmt.Sprintf("%d", i)
 		cbV1.SetPathUrlMapItem(path, nowUrl)
 		router.StaticFS(nowUrl, http.Dir(path))
 	}
 	// 添加连续剧的
 	for i, path := range settings.Get().CommonSettings.SeriesPaths {
-
 		nowUrl := "/series_dir_" + fmt.Sprintf("%d", i)
 		cbV1.SetPathUrlMapItem(path, nowUrl)
 		router.StaticFS(nowUrl, http.Dir(path))
 	}
+
 	// --------------------------------------------------
 	// 性能监视
 	if settings.Get().AdvancedSettings.DebugMode == true {
@@ -74,6 +68,7 @@ func InitRouter(
 			statsviz.IndexAtRoot("/debug/statsviz").ServeHTTP(context.Writer, context.Request)
 		})
 	}
+
 	// --------------------------------------------------
 	// 基础的路由
 	router.GET("/system-status", cbBase.SystemStatusHandler)

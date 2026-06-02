@@ -1,8 +1,22 @@
 package url_connectedness_helper
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestUrlConnectednessTest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	notFoundServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer notFoundServer.Close()
+
 	type args struct {
 		testUrl   string
 		proxyAddr string
@@ -13,26 +27,22 @@ func TestUrlConnectednessTest(t *testing.T) {
 		want    bool
 		wantErr bool
 	}{
-		{name: "0", args: args{
-			testUrl:   "https://google.com",
+		{name: "no proxy success", args: args{
+			testUrl:   server.URL,
 			proxyAddr: "",
-		}, want: false, wantErr: true},
-		{name: "1", args: args{
-			testUrl:   "https://google.com",
-			proxyAddr: "",
-		}, want: false, wantErr: true},
-		{name: "2", args: args{
-			testUrl:   "https://google.com",
-			proxyAddr: "",
-		}, want: false, wantErr: true},
-		{name: "3", args: args{
-			testUrl:   "https://google.com",
-			proxyAddr: "",
-		}, want: false, wantErr: true},
-		{name: "4", args: args{
-			testUrl:   "https://google.com",
-			proxyAddr: "http://192.168.50.252:20172",
 		}, want: true, wantErr: false},
+		{name: "no proxy bad status", args: args{
+			testUrl:   notFoundServer.URL,
+			proxyAddr: "",
+		}, want: false, wantErr: false},
+		{name: "unsupported proxy scheme", args: args{
+			testUrl:   server.URL,
+			proxyAddr: "socks5://127.0.0.1:1080",
+		}, want: false, wantErr: true},
+		{name: "invalid proxy format", args: args{
+			testUrl:   server.URL,
+			proxyAddr: "://bad-proxy",
+		}, want: false, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

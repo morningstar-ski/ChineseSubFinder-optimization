@@ -48,34 +48,31 @@ func (f *FileDownloader) GetName() string {
 	return f.CacheCenter.GetName()
 }
 
-func (f *FileDownloader) validateDownloadedPayload(fileName string, fileData []byte) error {
-	if err := pkg.ValidateDownloadedPayload(fileName, fileData); err != nil {
-		return err
-	}
-
-	ext := strings.ToLower(filepath.Ext(fileName))
-	switch ext {
-	case ".zip", ".tar", ".rar", ".7z":
-		return nil
-	}
-
+func (f *FileDownloader) inspectSubtitlePayload(body []byte, ext string) (bool, error) {
 	if f.SubParserHub == nil {
-		return nil
+		return false, fmt.Errorf("subtitle parser hub is nil")
 	}
-
-	ok, _, err := f.SubParserHub.DetermineFileTypeFromBytes(fileData, ext)
-	if err != nil {
-		return err
-	}
-	if ok == false {
-		return fmt.Errorf("download payload is not a supported subtitle: %s", fileName)
-	}
-
-	return nil
+	found, _, err := f.SubParserHub.DetermineFileTypeFromBytes(body, ext)
+	return found, err
 }
 
-// Get supplierName 杩欎釜鍙傛暟涓€瀹氬緱鏄瓧骞曟簮鐨勫悕绉帮紝閫氳繃 s.GetSupplierName() 鑾峰彇锛屽惁鍒欏悗缁殑瀛楀箷婧愪粖鏃ヤ笅杞介噺灏嗕笉鑳芥纭粺璁″拰鍒ゆ柇
-// xunlei銆乻hooter 浣跨敤杩欎釜
+func (f *FileDownloader) ValidateCachedSubInfo(subInfo *supplier.SubInfo) error {
+	if subInfo == nil {
+		return fmt.Errorf("subInfo is nil")
+	}
+
+	fileName := subInfo.Name
+	if fileName == "" {
+		fileName = "subtitle" + subInfo.Ext
+	} else if subInfo.Ext != "" && filepath.Ext(fileName) == "" && strings.HasSuffix(fileName, subInfo.Ext) == false {
+		fileName += subInfo.Ext
+	}
+
+	return pkg.ValidateSubtitleDownloadPayload(f.Log, f.inspectSubtitlePayload, subInfo.FileUrl, fileName, "", 0, subInfo.Data)
+}
+
+// Get supplierName 这个参数一定得是字幕源的名称，通过 s.GetSupplierName() 获取，否则后续的字幕源今日下载量将不能正确统计和判断
+// xunlei、shooter 使用这个
 func (f *FileDownloader) Get(supplierName string, topN int64, videoFileName string,
 	fileDownloadUrl string, score int64, offset int64, cacheString ...string) (*supplier.SubInfo, error) {
 
@@ -87,41 +84,34 @@ func (f *FileDownloader) Get(supplierName string, topN int64, videoFileName stri
 		fileUID = cacheString[0]
 	}
 
-	found, subInfo, err := f.CacheCenter.DownloadFileGet(fileUID)
+	found, subInfo, err := f.CacheCenter.DownloadFileGet(fileUID, f.ValidateCachedSubInfo)
 	if err != nil {
 		return nil, err
 	}
-	// 濡傛灉涓嶅瓨鍦ㄩ偅涔堝氨鍏堜笅杞斤紝鐒跺悗鍐嶅瓨鍏ョ紦瀛樹腑
+	// 如果不存在那么就先下载，然后再存入缓存中
 	if found == false {
-		fileData, downloadFileName, err := pkg.DownFile(f.Log, fileDownloadUrl)
+		fileData, downloadFileName, err := pkg.DownSubtitleFile(f.Log, f.inspectSubtitlePayload, fileDownloadUrl)
 		if err != nil {
 			return nil, err
 		}
-		validationName := downloadFileName
-		if validationName == "" {
-			validationName = fileDownloadUrl
-		}
-		if err := f.validateDownloadedPayload(validationName, fileData); err != nil {
-			return nil, err
-		}
-		// 涓嬭浇鎴愬姛闇€瑕佺粺璁″埌浠婂ぉ鐨勬鏁颁腑
+		// 下载成功需要统计到今天的次数中
 		_, err = f.CacheCenter.DailyDownloadCountAdd(supplierName,
 			pkg.GetPublicIP(f.Log, settings.Get().AdvancedSettings.TaskQueue))
 		if err != nil {
 			f.Log.Warningln(supplierName, "FileDownloader.Get.DailyDownloadCountAdd", err)
 		}
-		// 闇€瑕佽幏鍙栦笅杞芥枃浠剁殑鍚庣紑鍚嶏紝鍚庣画鎵嶆寚瀵兼槸瑕佽В鍘嬭繕鏄洿鎺ヨВ鏋愬瓧骞?
+		// 需要获取下载文件的后缀名，后续才指导是要解压还是直接解析字幕
 		ext := ""
 		if downloadFileName == "" {
 			ext = filepath.Ext(fileDownloadUrl)
 		} else {
 			ext = filepath.Ext(downloadFileName)
 		}
-		// 榛樿瀛樺叆閮芥槸绠€浣撲腑鏂囩殑璇█绫诲瀷锛屽悗缁彇鍑烘潵鐨勬椂鍊欓渶瑕佸啀娆¤皟鐢?SubParser 杩涜瑙ｆ瀽
+		// 默认存入都是简体中文的语言类型，后续取出来的时候需要再次调用 SubParser 进行解析
 		inSubInfo := supplier.NewSubInfo(supplierName, topN, videoFileName, language.ChineseSimple, fileDownloadUrl, score, offset, ext, fileData)
 
 		if len(cacheString) > 0 {
-			// 涓撻棬涓?ASSRT 杩欑涓嬭浇杩炴帴鏄复鏃舵儏鍐佃€屽畾鍒剁殑
+			// 专门为 ASSRT 这种下载连接是临时情况而定制的
 			inSubInfo.SetFileUrlSha256(fileUID)
 		}
 
@@ -132,49 +122,42 @@ func (f *FileDownloader) Get(supplierName string, topN int64, videoFileName stri
 
 		return inSubInfo, nil
 	} else {
-		// 濡傛灉宸茬粡瀛樺湪缂撳瓨涓紝閭ｄ箞灏辩洿鎺ヨ繑鍥?
+		// 如果已经存在缓存中，那么就直接返回
 		return subInfo, nil
 	}
 }
 
-// GetA4k supplierName 杩欎釜鍙傛暟涓€瀹氬緱鏄瓧骞曟簮鐨勫悕绉帮紝閫氳繃 s.GetSupplierName() 鑾峰彇锛屽惁鍒欏悗缁殑瀛楀箷婧愪粖鏃ヤ笅杞介噺灏嗕笉鑳芥纭粺璁″拰鍒ゆ柇
+// GetA4k supplierName 这个参数一定得是字幕源的名称，通过 s.GetSupplierName() 获取，否则后续的字幕源今日下载量将不能正确统计和判断
 func (f *FileDownloader) GetA4k(supplierName string, topN int64, season, eps int,
 	videoFileName string, fileDownloadUrl string) (*supplier.SubInfo, error) {
 
 	var fileUID string
 	fileUID = fmt.Sprintf("%x", sha256.Sum256([]byte(fileDownloadUrl)))
 
-	found, subInfo, err := f.CacheCenter.DownloadFileGet(fileUID)
+	found, subInfo, err := f.CacheCenter.DownloadFileGet(fileUID, f.ValidateCachedSubInfo)
 	if err != nil {
 		return nil, err
 	}
-	// 濡傛灉涓嶅瓨鍦ㄩ偅涔堝氨鍏堜笅杞斤紝鐒跺悗鍐嶅瓨鍏ョ紦瀛樹腑
+	// 如果不存在那么就先下载，然后再存入缓存中
 	if found == false {
-		fileData, downloadFileName, err := pkg.DownFile(f.Log, fileDownloadUrl)
+		fileData, downloadFileName, err := pkg.DownSubtitleFile(f.Log, f.inspectSubtitlePayload, fileDownloadUrl)
 		if err != nil {
 			return nil, err
 		}
-		validationName := downloadFileName
-		if validationName == "" {
-			validationName = fileDownloadUrl
-		}
-		if err := f.validateDownloadedPayload(validationName, fileData); err != nil {
-			return nil, err
-		}
-		// 涓嬭浇鎴愬姛闇€瑕佺粺璁″埌浠婂ぉ鐨勬鏁颁腑
+		// 下载成功需要统计到今天的次数中
 		_, err = f.CacheCenter.DailyDownloadCountAdd(supplierName,
 			pkg.GetPublicIP(f.Log, settings.Get().AdvancedSettings.TaskQueue))
 		if err != nil {
 			f.Log.Warningln(supplierName, "FileDownloader.Get.DailyDownloadCountAdd", err)
 		}
-		// 闇€瑕佽幏鍙栦笅杞芥枃浠剁殑鍚庣紑鍚嶏紝鍚庣画鎵嶆寚瀵兼槸瑕佽В鍘嬭繕鏄洿鎺ヨВ鏋愬瓧骞?
+		// 需要获取下载文件的后缀名，后续才指导是要解压还是直接解析字幕
 		ext := ""
 		if downloadFileName == "" {
 			ext = filepath.Ext(fileDownloadUrl)
 		} else {
 			ext = filepath.Ext(downloadFileName)
 		}
-		// 榛樿瀛樺叆閮芥槸绠€浣撲腑鏂囩殑璇█绫诲瀷锛屽悗缁彇鍑烘潵鐨勬椂鍊欓渶瑕佸啀娆¤皟鐢?SubParser 杩涜瑙ｆ瀽
+		// 默认存入都是简体中文的语言类型，后续取出来的时候需要再次调用 SubParser 进行解析
 		inSubInfo := supplier.NewSubInfo(supplierName, topN, videoFileName, language.ChineseSimple, fileDownloadUrl, 0, 0, ext, fileData)
 		inSubInfo.Season = season
 		inSubInfo.Episode = eps
@@ -187,44 +170,41 @@ func (f *FileDownloader) GetA4k(supplierName string, topN int64, season, eps int
 
 		return inSubInfo, nil
 	} else {
-		// 濡傛灉宸茬粡瀛樺湪缂撳瓨涓紝閭ｄ箞灏辩洿鎺ヨ繑鍥?
+		// 如果已经存在缓存中，那么就直接返回
 		return subInfo, nil
 	}
 }
 
-// GetEx supplierName 杩欎釜鍙傛暟涓€瀹氬緱鏄瓧骞曟簮鐨勫悕绉帮紝閫氳繃 s.GetSupplierName() 鑾峰彇锛屽惁鍒欏悗缁殑瀛楀箷婧愪粖鏃ヤ笅杞介噺灏嗕笉鑳芥纭粺璁″拰鍒ゆ柇
-// zimuku銆乻ubhd 浣跨敤杩欎釜
+// GetEx supplierName 这个参数一定得是字幕源的名称，通过 s.GetSupplierName() 获取，否则后续的字幕源今日下载量将不能正确统计和判断
+// zimuku、subhd 使用这个
 func (f *FileDownloader) GetEx(supplierName string, browser *rod.Browser, subDownloadPageUrl string, TopN int64, Season, Episode int, downFileFunc func(browser *rod.Browser, subDownloadPageUrl string, TopN int64, Season, Episode int) (*supplier.SubInfo, error)) (*supplier.SubInfo, error) {
 
 	fileUID := fmt.Sprintf("%x", sha256.Sum256([]byte(subDownloadPageUrl)))
-	found, subInfo, err := f.CacheCenter.DownloadFileGet(fileUID)
+	found, subInfo, err := f.CacheCenter.DownloadFileGet(fileUID, f.ValidateCachedSubInfo)
 	if err != nil {
 		return nil, err
 	}
-	// 濡傛灉涓嶅瓨鍦ㄩ偅涔堝氨鍏堜笅杞斤紝鐒跺悗鍐嶅瓨鍏ョ紦瀛樹腑
+	// 如果不存在那么就先下载，然后再存入缓存中
 	if found == false {
 
 		subInfo, err = downFileFunc(browser, subDownloadPageUrl, TopN, Season, Episode)
 		if err != nil {
 			return nil, err
 		}
-		validationName := subInfo.Name
-		if validationName == "" {
-			validationName = subDownloadPageUrl
+		if subInfo == nil {
+			return nil, fmt.Errorf("downFileFunc returned nil subInfo")
 		}
-		if subInfo.Ext != "" && filepath.Ext(validationName) == "" {
-			validationName += subInfo.Ext
-		}
-		if err := f.validateDownloadedPayload(validationName, subInfo.Data); err != nil {
+		err = pkg.ValidateSubtitleDownloadPayload(f.Log, f.inspectSubtitlePayload, subDownloadPageUrl, subInfo.Name, "", 0, subInfo.Data)
+		if err != nil {
 			return nil, err
 		}
-		// 涓嬭浇鎴愬姛闇€瑕佺粺璁″埌浠婂ぉ鐨勬鏁颁腑
+		// 下载成功需要统计到今天的次数中
 		_, err = f.CacheCenter.DailyDownloadCountAdd(supplierName,
 			pkg.GetPublicIP(f.Log, settings.Get().AdvancedSettings.TaskQueue))
 		if err != nil {
 			f.Log.Warningln(supplierName, "FileDownloader.GetEx.DailyDownloadCountAdd", err)
 		}
-		// 榛樿瀛樺叆閮芥槸绠€浣撲腑鏂囩殑璇█绫诲瀷锛屽悗缁彇鍑烘潵鐨勬椂鍊欓渶瑕佸啀娆¤皟鐢?SubParser 杩涜瑙ｆ瀽
+		// 默认存入都是简体中文的语言类型，后续取出来的时候需要再次调用 SubParser 进行解析
 		err = f.CacheCenter.DownloadFileAdd(subInfo)
 		if err != nil {
 			return nil, err
@@ -232,43 +212,33 @@ func (f *FileDownloader) GetEx(supplierName string, browser *rod.Browser, subDow
 
 		return subInfo, nil
 	} else {
-		// 濡傛灉宸茬粡瀛樺湪缂撳瓨涓紝閭ｄ箞灏辩洿鎺ヨ繑鍥?
+		// 如果已经存在缓存中，那么就直接返回
 		return subInfo, nil
 	}
 }
 
-// GetSubtitleBest supplierName 杩欎釜鍙傛暟涓€瀹氬緱鏄瓧骞曟簮鐨勫悕绉帮紝閫氳繃 s.GetSupplierName() 鑾峰彇锛屽惁鍒欏悗缁殑瀛楀箷婧愪粖鏃ヤ笅杞介噺灏嗕笉鑳芥纭粺璁″拰鍒ゆ柇
+// GetSubtitleBest supplierName 这个参数一定得是字幕源的名称，通过 s.GetSupplierName() 获取，否则后续的字幕源今日下载量将不能正确统计和判断
 func (f *FileDownloader) GetSubtitleBest(supplierName string, topN int64, season, eps int,
 	title, ext, subSha256, fileDownloadUrl string) (*supplier.SubInfo, error) {
 
-	found, subInfo, err := f.CacheCenter.DownloadFileGet(subSha256)
+	found, subInfo, err := f.CacheCenter.DownloadFileGet(subSha256, f.ValidateCachedSubInfo)
 	if err != nil {
 		return nil, err
 	}
-	// 濡傛灉涓嶅瓨鍦ㄩ偅涔堝氨鍏堜笅杞斤紝鐒跺悗鍐嶅瓨鍏ョ紦瀛樹腑
+	// 如果不存在那么就先下载，然后再存入缓存中
 	if found == false {
 
-		fileData, _, err := pkg.DownFile(f.Log, fileDownloadUrl)
+		fileData, _, err := pkg.DownSubtitleFile(f.Log, f.inspectSubtitlePayload, fileDownloadUrl)
 		if err != nil {
 			return nil, err
 		}
-		validationName := title
-		if validationName == "" {
-			validationName = fileDownloadUrl
-		}
-		if ext != "" && filepath.Ext(validationName) == "" {
-			validationName += ext
-		}
-		if err := f.validateDownloadedPayload(validationName, fileData); err != nil {
-			return nil, err
-		}
-		// 涓嬭浇鎴愬姛闇€瑕佺粺璁″埌浠婂ぉ鐨勬鏁颁腑
+		// 下载成功需要统计到今天的次数中
 		_, err = f.CacheCenter.DailyDownloadCountAdd(supplierName,
 			pkg.GetPublicIP(f.Log, settings.Get().AdvancedSettings.TaskQueue))
 		if err != nil {
 			f.Log.Warningln(supplierName, "FileDownloader.Get.DailyDownloadCountAdd", err)
 		}
-		// 榛樿瀛樺叆閮芥槸绠€浣撲腑鏂囩殑璇█绫诲瀷锛屽悗缁彇鍑烘潵鐨勬椂鍊欓渶瑕佸啀娆¤皟鐢?SubParser 杩涜瑙ｆ瀽
+		// 默认存入都是简体中文的语言类型，后续取出来的时候需要再次调用 SubParser 进行解析
 		inSubInfo := supplier.NewSubInfo(supplierName, topN, title, language.ChineseSimple, fileDownloadUrl, 0, 0, ext, fileData)
 		inSubInfo.Season = season
 		inSubInfo.Episode = eps
@@ -282,7 +252,7 @@ func (f *FileDownloader) GetSubtitleBest(supplierName string, topN int64, season
 
 		return inSubInfo, nil
 	} else {
-		// 濡傛灉宸茬粡瀛樺湪缂撳瓨涓紝閭ｄ箞灏辩洿鎺ヨ繑鍥?
+		// 如果已经存在缓存中，那么就直接返回
 		return subInfo, nil
 	}
 }

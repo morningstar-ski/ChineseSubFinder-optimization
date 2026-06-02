@@ -12,7 +12,7 @@ import (
 
 func TestSubParserHubIsSubHasChinese(t *testing.T) {
 
-	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_parser", "org"}, 3, false)
+	testRootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_parser", "org"}, 3, false)
 
 	type args struct {
 		filePath string

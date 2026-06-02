@@ -81,6 +81,8 @@ func SetFullNewSettings(inSettings *Settings) error {
 	nowConfigFPath := _settings.configFPath
 	_settings = inSettings
 	_settings.configFPath = nowConfigFPath
+	_settings.Check()
+	_settings.AdvancedSettings.SuppliersSettings.ReSetSearchUrl()
 
 	return _settings.Save()
 }

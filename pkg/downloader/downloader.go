@@ -24,11 +24,10 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/pre_download_process"
 	subSupplier "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_timeline_fixer"
-	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
-
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	subCommon "github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_formatter/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/task_queue"
+	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 )
@@ -91,8 +90,8 @@ func NewDownloader(inSubFormatter ifaces.ISubFormatter, fileDownloader *file_dow
 	downloader.downloadQueue = downloadQueue
 	// 单个任务的超时设置
 	downloader.ctx, downloader.cancel = context.WithCancel(context.Background())
-	// 用于字幕下载后的刷新
 	if settings.Get().EmbySettings.Enable == true {
+		// 用于字幕下载后的刷新
 		downloader.embyHelper = embyHelper.NewEmbyHelper(downloader.fileDownloader.MediaInfoDealers)
 	}
 
@@ -132,61 +131,37 @@ func (d *Downloader) SupplierCheck() {
 
 	d.downloaderLock.Lock()
 	d.log.Infoln("Download.SupplierCheck() Start ...")
-
-	//// 创建一个 chan 用于任务的中断和超时
-	//done := make(chan interface{}, 1)
-	//// 接收内部任务的 panic
-	//panicChan := make(chan interface{}, 1)
-	//
-	//go func() {
-	//	defer func() {
-	//		if p := recover(); p != nil {
-	//			panicChan <- p
-	//		}
-	//
-	//		close(done)
-	//		close(panicChan)
-	//	}()
 	// 下载前的初始化
 	d.log.Infoln("PreDownloadProcess.Init().Check().Wait()...")
 
+	err := d.reloadSubSupplierHubLocked(true)
+	if err != nil {
+		d.log.Errorln(err)
+	}
+}
+
+func (d *Downloader) reloadSubSupplierHubLocked(checkStatus bool) error {
 	if settings.Get().SpeedDevMode == true {
 		// 这里是调试使用的，指定了只用一个字幕源
-		//subSupplierHub := subSupplier.NewSubSupplierHub(csf.NewSupplier(d.fileDownloader))
-		subSupplierHub := subSupplier.NewSubSupplierHub(assrt.NewSupplier(d.fileDownloader))
-		d.subSupplierHub = subSupplierHub
-	} else {
-
-		preDownloadProcess := pre_download_process.NewPreDownloadProcess(d.fileDownloader)
-		err := preDownloadProcess.Init().Check().Wait()
-		if err != nil {
-			//done <- errors.New(fmt.Sprintf("NewPreDownloadProcess Error: %v", err))
-			d.log.Errorln(errors.New(fmt.Sprintf("NewPreDownloadProcess Error: %v", err)))
-		} else {
-			// 更新 SubSupplierHub 实例
-			d.subSupplierHub = preDownloadProcess.SubSupplierHub
-			//done <- nil
-		}
+		d.subSupplierHub = subSupplier.NewSubSupplierHub(assrt.NewSupplier(d.fileDownloader))
+		return nil
 	}
 
-	//	done <- nil
-	//}()
-	//
-	//select {
-	//case err := <-done:
-	//	if err != nil {
-	//		d.log.Errorln(err)
-	//	}
-	//	break
-	//case p := <-panicChan:
-	//	// 遇到内部的 panic，向外抛出
-	//	panic(p)
-	//case <-d.ctx.Done():
-	//	{
-	//		d.log.Errorln("cancel SupplierCheck")
-	//		return
-	//	}
-	//}
+	preDownloadProcess := pre_download_process.NewPreDownloadProcess(d.fileDownloader)
+	preDownloadProcess = preDownloadProcess.Init()
+	if checkStatus == true {
+		preDownloadProcess = preDownloadProcess.Check()
+	}
+
+	err := preDownloadProcess.Wait()
+	if err != nil {
+		return errors.New(fmt.Sprintf("NewPreDownloadProcess Error: %v", err))
+	}
+
+	// 更新 SubSupplierHub 实例。保存设置时不做同步外部探活，但要立刻切换到新的运行时配置。
+	d.subSupplierHub = preDownloadProcess.SubSupplierHub
+
+	return nil
 }
 
 // QueueDownloader 从字幕队列中取一个视频的字幕下载任务出来，并且开始下载
@@ -204,4 +179,32 @@ func (d *Downloader) Cancel() {
 	}
 	d.cancel()
 	d.log.Infoln("Downloader.Cancel()")
+}
+
+func (d *Downloader) ReloadSettings(inSubFormatter ifaces.ISubFormatter) error {
+	d.downloaderLock.Lock()
+	defer d.downloaderLock.Unlock()
+
+	d.subFormatter = inSubFormatter
+	d.subNameFormatter = subCommon.FormatterName(d.subFormatter.GetFormatterFormatterName())
+	d.subTimelineFixerHelperEx = sub_timeline_fixer.NewSubTimelineFixerHelperEx(d.log, *settings.Get().TimelineFixerSettings)
+	if settings.Get().AdvancedSettings.FixTimeLine == true {
+		d.subTimelineFixerHelperEx.Check()
+	}
+
+	if settings.Get().EmbySettings.Enable == true {
+		d.embyHelper = embyHelper.NewEmbyHelper(d.fileDownloader.MediaInfoDealers)
+	} else {
+		d.embyHelper = nil
+	}
+
+	d.ScanLogic = scan_logic.NewScanLogic(d.log)
+	d.SaveSubHelper = save_sub_helper.NewSaveSubHelper(
+		d.log,
+		d.subFormatter,
+		d.subTimelineFixerHelperEx)
+	d.ManualUploadSub2Local = manual_upload_sub_2_local.NewManualUploadSub2Local(d.log, d.SaveSubHelper, d.ScanLogic)
+	d.PreviewQueue = preview_queue.NewPreviewQueue(d.log)
+
+	return d.reloadSubSupplierHubLocked(false)
 }

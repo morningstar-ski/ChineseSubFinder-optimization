@@ -18,7 +18,7 @@ func TestHotFix001_GetKey(t *testing.T) {
 }
 
 func TestHotFix001_Process(t *testing.T) {
-	testDataPath := unit_test_helper.GetTestDataResourceRootPath([]string{"hotfix", "001"}, 4, true)
+	testDataPath := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"hotfix", "001"}, 4, true)
 
 	movieDir := "movies"
 	seriesDir := "series"

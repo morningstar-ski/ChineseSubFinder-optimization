@@ -19,7 +19,7 @@ func TestGetFFMPEGInfo(t *testing.T) {
 	// TODO: make a video with ffmpeg on each test
 	// https://gist.github.com/SeunghoonBaek/f35e0fd3db80bf55c2707cae5d0f7184
 	// http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
-	videoFile := unit_test_helper.GetTestDataResourceRootPath([]string{"ffmpeg", "org"}, 4, false)
+	videoFile := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"ffmpeg", "org"}, 4, false)
 	videoFile = filepath.Join(videoFile, "sampleVideo.mp4")
 	f := NewFFMPEGHelper(log_helper.GetLogger4Tester())
 	bok, ffmpegInfo, err := f.ExportFFMPEGInfo(videoFile, Audio)
@@ -45,7 +45,7 @@ func readString(filePath string) string {
 
 func TestParseJsonString2GetFFMPEGInfo(t *testing.T) {
 
-	testDataPath := unit_test_helper.GetTestDataResourceRootPath([]string{"ffmpeg", "org"}, 4, false)
+	testDataPath := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"ffmpeg", "org"}, 4, false)
 	type args struct {
 		videoFileFullPath string
 		input             string
@@ -92,7 +92,7 @@ func TestExportAudioArgsByTimeRange(t *testing.T) {
 	// https://www.lynxstudio.com/downloads/e44/sample-wav-file-zip-encoded-44-1khz-pcm-24-stereo/
 	// TODO: make a sample audio file with ffmpeg
 	// TODO: remove generated audio files
-	testDataPath := unit_test_helper.GetTestDataResourceRootPath([]string{"ffmpeg"}, 4, true)
+	testDataPath := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"ffmpeg"}, 4, true)
 	audioFullPath := filepath.Join(testDataPath, "sampleAudio.wav")
 	subFullPath := filepath.Join(testDataPath, "sampleSrt.srt")
 	startTimeString := "0:0:27"
@@ -109,7 +109,7 @@ func TestExportAudioArgsByTimeRange(t *testing.T) {
 
 func TestGetAudioInfo(t *testing.T) {
 
-	testDataPath := unit_test_helper.GetTestDataResourceRootPath([]string{"ffmpeg", "org"}, 4, false)
+	testDataPath := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"ffmpeg", "org"}, 4, false)
 	audioFullPath := filepath.Join(testDataPath, "sampleAudio.wav")
 
 	f := NewFFMPEGHelper(log_helper.GetLogger4Tester())
@@ -132,6 +132,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestExportVideoHLSAndSubByTimeRange(t *testing.T) {
+	t.Skip("manual integration test depends on local media files")
 
 	outDirPath := "C:\\Tmp\\media\\test\\hls"
 	videoFPath := "C:\\Tmp\\media\\test\\Chainsaw Man - S01E02 - ARRIVAL IN TOKYO HDTV-1080p.mp4"

@@ -22,6 +22,7 @@ import (
 )
 
 func TestSupplier_searchKeyword(t *testing.T) {
+	t.Skip("integration test depends on external provider responses")
 
 	keyword := "Spider-Man: No Way Home 2021"
 	defInstance()
@@ -36,6 +37,7 @@ func TestSupplier_searchKeyword(t *testing.T) {
 }
 
 func TestSupplier_GetSubListFromFile4Movie(t *testing.T) {
+	t.Skip("integration test depends on local media files and external provider responses")
 
 	videoFPath := "X:\\电影\\失控玩家 (2021)\\失控玩家 (2021).mp4"
 	defInstance()
@@ -50,6 +52,7 @@ func TestSupplier_GetSubListFromFile4Movie(t *testing.T) {
 }
 
 func TestSupplier_GetSubListFromFile4Series(t *testing.T) {
+	t.Skip("integration test depends on external test data and provider responses")
 
 	epsMap := make(map[int][]int, 0)
 	epsMap[4] = []int{1}

@@ -1,13 +1,14 @@
 package subtitle_best
 
 import (
+	"testing"
+
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/cache_center"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/random_auth_key"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
-	"testing"
 )
 
 var sbInstance *Supplier
@@ -29,6 +30,7 @@ func defInstance() {
 }
 
 func TestSupplier_CheckAlive(t *testing.T) {
+	t.Skip("integration test depends on subtitle.best availability")
 
 	defInstance()
 
@@ -37,6 +39,7 @@ func TestSupplier_CheckAlive(t *testing.T) {
 }
 
 func TestSupplier_GetSubListFromFile4Movie(t *testing.T) {
+	t.Skip("integration test depends on local media files and subtitle.best availability")
 
 	defInstance()
 
@@ -51,6 +54,7 @@ func TestSupplier_GetSubListFromFile4Movie(t *testing.T) {
 }
 
 func TestSupplier_GetSubListFromFile4Series(t *testing.T) {
+	t.Skip("integration test depends on local media files and subtitle.best availability")
 
 	defInstance()
 
@@ -63,5 +67,27 @@ func TestSupplier_GetSubListFromFile4Series(t *testing.T) {
 
 	for i, subInfo := range subInfos {
 		println(i, subInfo.Name, subInfo.GetUID())
+	}
+}
+
+func TestSupplier_OverDailyDownloadLimitBeforeFirstCheck(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+
+	oldKey := settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey
+	settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey = "test-key"
+	defer func() {
+		settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey = oldKey
+	}()
+
+	supplier := &Supplier{}
+	if supplier.OverDailyDownloadLimit() {
+		t.Fatal("expected unknown limit state to stay usable before first health check")
+	}
+
+	supplier.limitInfoReady = true
+	supplier.dailyDownloadCount = 95
+	supplier.dailyDownloadLimit = 100
+	if supplier.OverDailyDownloadLimit() == false {
+		t.Fatal("expected known near-limit state to block downloads")
 	}
 }

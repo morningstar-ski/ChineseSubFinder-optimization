@@ -12,6 +12,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_formatter"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/task_queue"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/tmdb_api"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/video_scan_and_refresh_helper"
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
@@ -69,6 +70,68 @@ func NewCronHelper(fileDownloader *file_downloader.FileDownloader) *CronHelper {
 	ch.Downloader.SupplierCheck()
 
 	return &ch
+}
+
+func (ch *CronHelper) ReloadSettings() error {
+	settings.Get().Check()
+
+	subFormatter := sub_formatter.GetSubFormatter(ch.Logger, settings.Get().AdvancedSettings.SubNameFormatter)
+	tmdbHelper, err := ch.buildTmdbHelperFromSettings()
+	if err != nil {
+		return err
+	}
+
+	if ch.videoScanAndRefreshHelper != nil {
+		ch.videoScanAndRefreshHelper.Cancel()
+	}
+
+	newVideoScanHelper := video_scan_and_refresh_helper.NewVideoScanAndRefreshHelper(
+		subFormatter,
+		ch.FileDownloader,
+		ch.DownloadQueue)
+
+	ch.FileDownloader.MediaInfoDealers.SetTmdbHelperInstance(tmdbHelper)
+	ch.videoScanAndRefreshHelper = newVideoScanHelper
+
+	if ch.Downloader != nil {
+		err = ch.Downloader.ReloadSettings(subFormatter)
+		if err != nil {
+			return err
+		}
+	}
+
+	ch.cronLock.Lock()
+	defer ch.cronLock.Unlock()
+	if ch.c != nil && ch.cronHelperRunning == true {
+		_, err = cron.ParseStandard(settings.Get().CommonSettings.ScanInterval)
+		if err != nil {
+			return err
+		}
+		ch.c.Remove(ch.entryIDScanVideoProcess)
+		ch.entryIDScanVideoProcess, err = ch.c.AddFunc(settings.Get().CommonSettings.ScanInterval, ch.scanVideoProcessAdd2DownloadQueue)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (ch *CronHelper) buildTmdbHelperFromSettings() (*tmdb_api.TmdbApi, error) {
+	if settings.Get().AdvancedSettings.TmdbApiSettings.Enable == false ||
+		settings.Get().AdvancedSettings.TmdbApiSettings.ApiKey == "" {
+		return nil, nil
+	}
+
+	tmdbHelper, err := tmdb_api.NewTmdbHelper(
+		ch.Logger,
+		settings.Get().AdvancedSettings.TmdbApiSettings.ApiKey,
+		settings.Get().AdvancedSettings.TmdbApiSettings.UseAlternateBaseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return tmdbHelper, nil
 }
 
 // Start 开启定时器任务，这个任务是非阻塞的，scanVideoProcessAdd2DownloadQueue 仅仅可能是这个函数执行耗时而已

@@ -1,9 +1,9 @@
 package pkg
 
 import (
-	"bytes"
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"errors"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/local_http_proxy_server"
 
@@ -137,110 +136,62 @@ func GetPublicIP(log *logrus.Logger, queue *settings.TaskQueue) string {
 }
 
 // DownFile 从指定的 url 下载文件
-func DownFile(l *logrus.Logger, urlStr string) ([]byte, string, error) {
+type downloadResult struct {
+	body        []byte
+	filename    string
+	statusCode  int
+	contentType string
+}
 
-	var err error
-	var httpClient *resty.Client
-	httpClient, err = NewHttpClient()
+type SubtitleContentInspector func(body []byte, ext string) (bool, error)
+
+func downloadFileRaw(l *logrus.Logger, urlStr string) (*downloadResult, error) {
+	httpClient, err := NewHttpClient()
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
+
 	resp, err := httpClient.R().Get(urlStr)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	if err := validateDownloadResponse(resp); err != nil {
-		return nil, "", err
-	}
-	filename := GetFileName(l, resp.RawResponse)
 
+	filename := GetFileName(l, resp.RawResponse)
 	if filename == "" {
 		l.Warningln("DownFile.GetFileName is string.empty", urlStr)
 	}
 
-	return resp.Body(), filename, nil
+	result := &downloadResult{
+		body:     resp.Body(),
+		filename: filename,
+	}
+	if resp.RawResponse != nil {
+		result.statusCode = resp.RawResponse.StatusCode
+		result.contentType = resp.RawResponse.Header.Get("Content-Type")
+	}
+
+	return result, nil
 }
 
-func validateDownloadResponse(resp *resty.Response) error {
-	if resp == nil || resp.RawResponse == nil {
-		return errors.New("download response is empty")
+func DownFile(l *logrus.Logger, urlStr string) ([]byte, string, error) {
+	result, err := downloadFileRaw(l, urlStr)
+	if err != nil {
+		return nil, "", err
 	}
-	if code := resp.StatusCode(); code < http.StatusOK || code >= http.StatusMultipleChoices {
-		return fmt.Errorf("unexpected download status code: %d", code)
-	}
-	body := bytes.TrimSpace(resp.Body())
-	if len(body) == 0 {
-		return errors.New("download body is empty")
-	}
-	contentType := strings.ToLower(resp.RawResponse.Header.Get("Content-Type"))
-	if looksLikeErrorPayload(contentType, body) {
-		return fmt.Errorf("download payload looks invalid: %s", contentType)
-	}
-	return nil
+	return result.body, result.filename, nil
 }
 
-func ValidateDownloadedPayload(fileName string, fileData []byte) error {
-	if len(bytes.TrimSpace(fileData)) == 0 {
-		return errors.New("download payload is empty")
+func DownSubtitleFile(l *logrus.Logger, inspector SubtitleContentInspector, urlStr string) ([]byte, string, error) {
+	result, err := downloadFileRaw(l, urlStr)
+	if err != nil {
+		return nil, "", err
 	}
-	if looksLikeErrorPayload("", fileData) {
-		return errors.New("download payload looks invalid")
-	}
-	switch strings.ToLower(filepath.Ext(fileName)) {
-	case ".zip", ".tar", ".rar", ".7z":
-		return validateArchivePayload(fileName, fileData)
-	default:
-		return nil
-	}
-}
 
-func validateArchivePayload(fileName string, fileData []byte) error {
-	switch strings.ToLower(filepath.Ext(fileName)) {
-	case ".zip":
-		_, err := zip.NewReader(bytes.NewReader(fileData), int64(len(fileData)))
-		if err != nil {
-			return err
-		}
-	case ".tar":
-		tr := tar.NewReader(bytes.NewReader(fileData))
-		if _, err := tr.Next(); err != nil && err != io.EOF {
-			return err
-		}
-	case ".rar":
-		if !bytes.HasPrefix(fileData, []byte("Rar!\x1A\x07")) && !bytes.HasPrefix(fileData, []byte("Rar!\x1A\x07\x00")) {
-			return errors.New("rar signature mismatch")
-		}
-	case ".7z":
-		if !bytes.HasPrefix(fileData, []byte{0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C}) {
-			return errors.New("7z signature mismatch")
-		}
+	if err := ValidateSubtitleDownloadPayload(l, inspector, urlStr, result.filename, result.contentType, result.statusCode, result.body); err != nil {
+		return nil, "", err
 	}
-	return nil
-}
 
-func looksLikeErrorPayload(contentType string, fileData []byte) bool {
-	if strings.Contains(contentType, "text/html") ||
-		strings.Contains(contentType, "application/json") ||
-		strings.Contains(contentType, "application/xml") ||
-		strings.Contains(contentType, "text/xml") {
-		return true
-	}
-	detected := strings.ToLower(http.DetectContentType(fileData))
-	if strings.Contains(detected, "text/html") ||
-		strings.Contains(detected, "application/json") ||
-		strings.Contains(detected, "application/xml") ||
-		strings.Contains(detected, "text/xml") {
-		return true
-	}
-	preview := strings.ToLower(strings.TrimSpace(string(fileData)))
-	if len(preview) > 256 {
-		preview = preview[:256]
-	}
-	return strings.HasPrefix(preview, "<!doctype html") ||
-		strings.HasPrefix(preview, "<html") ||
-		strings.HasPrefix(preview, "<?xml") ||
-		strings.HasPrefix(preview, "{\"") ||
-		strings.HasPrefix(preview, "[{")
+	return result.body, result.filename, nil
 }
 
 // GetFileName 获取下载文件的文件名
@@ -265,7 +216,99 @@ func GetFileName(l *logrus.Logger, resp *http.Response) string {
 	return matched[1]
 }
 
-// AddBaseUrl 判断传入的 url 是否需要拼接 baseUrl
+// ValidateSubtitleDownloadPayload 校验下载内容是否像一个可用的字幕文件或压缩包
+func ValidateSubtitleDownloadPayload(l *logrus.Logger, inspector SubtitleContentInspector, urlStr, fileName, contentType string, statusCode int, body []byte) error {
+	if statusCode != 0 && (statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices) {
+		return fmt.Errorf("unexpected http status %d for %s", statusCode, urlStr)
+	}
+
+	if len(bytes.TrimSpace(body)) == 0 {
+		return fmt.Errorf("empty download body for %s", urlStr)
+	}
+
+	normalizedContentType := strings.ToLower(contentType)
+	if strings.Contains(normalizedContentType, "html") ||
+		strings.Contains(normalizedContentType, "xml") ||
+		strings.Contains(normalizedContentType, "json") {
+		return fmt.Errorf("unexpected content-type %q for %s", contentType, urlStr)
+	}
+
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext == "" {
+		ext = strings.ToLower(filepath.Ext(urlStr))
+	}
+
+	if archiveExt := detectArchiveExt(ext, body); archiveExt != "" {
+		if err := validateArchivePayload(archiveExt, body); err != nil {
+			return fmt.Errorf("invalid archive payload for %s: %w", urlStr, err)
+		}
+		return nil
+	}
+
+	if inspector == nil {
+		return fmt.Errorf("subtitle content inspector is nil for %s", urlStr)
+	}
+
+	found, err := inspector(body, ext)
+	if err != nil {
+		return fmt.Errorf("parse subtitle payload for %s: %w", urlStr, err)
+	}
+	if found == false {
+		return fmt.Errorf("download payload is not a subtitle file for %s", urlStr)
+	}
+
+	return nil
+}
+
+func detectArchiveExt(ext string, body []byte) string {
+	switch strings.ToLower(ext) {
+	case ".zip", ".tar", ".rar", ".7z":
+		return strings.ToLower(ext)
+	}
+
+	if len(body) >= 4 && bytes.HasPrefix(body, []byte("PK\x03\x04")) {
+		return ".zip"
+	}
+	if len(body) >= 6 && bytes.HasPrefix(body, []byte{0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C}) {
+		return ".7z"
+	}
+	if len(body) >= 7 && (bytes.HasPrefix(body, []byte("Rar!\x1A\x07\x00")) || bytes.HasPrefix(body, []byte("Rar!\x1A\x07\x01\x00"))) {
+		return ".rar"
+	}
+	if len(body) >= 512 {
+		tr := tar.NewReader(bytes.NewReader(body))
+		if _, err := tr.Next(); err == nil {
+			return ".tar"
+		}
+	}
+
+	return ""
+}
+
+func validateArchivePayload(ext string, body []byte) error {
+	switch strings.ToLower(ext) {
+	case ".zip":
+		_, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+		return err
+	case ".tar":
+		tr := tar.NewReader(bytes.NewReader(body))
+		_, err := tr.Next()
+		return err
+	case ".rar":
+		if bytes.HasPrefix(body, []byte("Rar!\x1A\x07\x00")) || bytes.HasPrefix(body, []byte("Rar!\x1A\x07\x01\x00")) {
+			return nil
+		}
+		return fmt.Errorf("invalid rar signature")
+	case ".7z":
+		if bytes.HasPrefix(body, []byte{0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C}) {
+			return nil
+		}
+		return fmt.Errorf("invalid 7z signature")
+	default:
+		return fmt.Errorf("unsupported archive ext %s", ext)
+	}
+}
+
 func AddBaseUrl(baseUrl, url string) string {
 	if strings.Contains(url, "://") {
 		return url

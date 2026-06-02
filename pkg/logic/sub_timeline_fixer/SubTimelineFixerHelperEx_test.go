@@ -18,6 +18,7 @@ func TestSubTimelineFixerHelperEx_Check(t *testing.T) {
 
 // TODO 暂不方便在其他环境进行单元测试
 func TestSubTimelineFixerHelperEx_Process(t *testing.T) {
+	t.Skip("manual integration test depends on local media files")
 
 	//rootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_timeline_fixer"}, 4, true)
 	type args struct {
@@ -55,6 +56,7 @@ func TestSubTimelineFixerHelperEx_Process(t *testing.T) {
 }
 
 func TestSubTimelineFixerHelperEx_IsMatchBySubFile(t *testing.T) {
+	t.Skip("manual integration test depends on local media files")
 
 	videoFPath := "C:\\temp\\video\\Rick and Morty - S05E01 - Mort Dinner Rick Andre WEBDL-1080p.mkv"
 	NowTargetSubFPath := "X:\\连续剧\\瑞克和莫蒂 (2013)\\Season 5\\Rick and Morty - S05E01 - Mort Dinner Rick Andre WEBDL-1080p.chinese(简,subhd).ass"

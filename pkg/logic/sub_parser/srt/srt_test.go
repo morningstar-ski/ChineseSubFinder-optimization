@@ -13,6 +13,7 @@ import (
 )
 
 func TestParser_DetermineFileType(t *testing.T) {
+	unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_parser"}, 5, true)
 	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_parser"}, 5, true)
 	type args struct {
 		filePath string

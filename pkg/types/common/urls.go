@@ -15,6 +15,10 @@ const (
 	SubA4kRootUrlDef = "https://www.a4k.net"
 	SubA4kSearchUrl  = "/search?keyword="
 
+	SubSubDLRootUrlDef   = "https://api.subdl.com/api/v1"
+	SubSubDLSearchUrl    = "/subtitles"
+	SubSubDLDownloadRoot = "https://dl.subdl.com"
+
 	SubSubtitleBestRootUrlDef                   = "https://api.subtitle.best/share-sub/v1"
 	SubSubtitleBestSearchMovieUrl               = "/search-movie"
 	SubSubtitleBestSearchTVEpsUrl               = "/search-tv-eps"

@@ -34,12 +34,15 @@ type Supplier struct {
 	theSearchInterval time.Duration
 }
 
+var assrtSearchKeywordOrder = []string{"cn", "en", "org", "file"}
+
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 
 	sup := Supplier{}
 	sup.log = fileDownloader.Log
 	sup.fileDownloader = fileDownloader
-	sup.isAlive = true // 姒涙顓婚弰顖氬讲娴犮儰濞囬悽銊ф畱閿涘苯顩ч弸?check 閸氬函绱濋崘宥堢殶閺佸濮搁幀?
+	sup.isAlive = true // 默认是可以使用的，如果 check 后，再调整状态
+
 	if settings.Get().AdvancedSettings.Topic != common2.DownloadSubsPerSite {
 		settings.Get().AdvancedSettings.Topic = common2.DownloadSubsPerSite
 	}
@@ -50,11 +53,14 @@ func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 }
 
 func (s *Supplier) CheckAlive() (bool, int64) {
+
+	// 如果没有设置这个 API 接口，那么就任务是不可用的
 	if settings.Get().SubtitleSources.AssrtSettings.Token == "" {
 		s.isAlive = false
 		return false, 0
 	}
 
+	// 计算当前时间
 	startT := time.Now()
 	userInfo, err := s.getUserInfo()
 	if err != nil {
@@ -63,6 +69,7 @@ func (s *Supplier) CheckAlive() (bool, int64) {
 		return false, 0
 	}
 	s.log.Infoln(s.GetSupplierName(), "CheckAlive", "UserInfo.Status:", userInfo.Status, "UserInfo.Quota:", userInfo.User.Quota)
+	// 计算耗时
 	s.isAlive = true
 	return true, time.Since(startT).Milliseconds()
 }
@@ -72,11 +79,13 @@ func (s *Supplier) IsAlive() bool {
 }
 
 func (s *Supplier) OverDailyDownloadLimit() bool {
+
 	if settings.Get().AdvancedSettings.SuppliersSettings.Assrt.DailyDownloadLimit == 0 {
 		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit is 0, will Skip Download")
 		return true
 	}
 
+	// 对于这个接口暂时没有限制
 	return false
 }
 
@@ -144,29 +153,19 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 		s.log.Errorln(s.GetSupplierName(), videoFPath, "GetMixMediaInfo", err)
 		return nil, err
 	}
-	// 闂団偓鐟曚焦澹橀崚棰佽厬閺傚洤鎮曠粔鏉垮箵閹兼粎鍌ㄩ敍灞惧娑撳秴鍩岀亸杈ㄦЦ閻劏瀚抽弬鍥ф倳缁夊府绱濇潻妯诲娑撳秴鍩岀亸杈ㄦЦ OriginalTitle
-	searchOrder := []string{"cn", "en", "org", "file"}
-	var found bool
-	var searchSubResult *SearchSubResult
-	for _, keyWordType := range searchOrder {
-		s.log.Infoln(s.GetSupplierName(), videoFPath, "Try Search KeyWord Type", keyWordType)
-		found, searchSubResult, err = s.getSubInfoEx(mediaInfo, videoFPath, isMovie, keyWordType)
-		if err != nil {
-			s.log.Errorln(s.GetSupplierName(), videoFPath, "GetSubInfoEx", keyWordType, err)
-			return nil, err
-		}
-		if found {
-			break
-		}
+	searchSubResult, err := s.getSubInfoWithFallback(mediaInfo, videoFPath, isMovie)
+	if err != nil {
+		s.log.Errorln(s.GetSupplierName(), videoFPath, "getSubInfoWithFallback", err)
+		return nil, err
 	}
-	if found == false {
+	if searchSubResult == nil || searchSubResult.Sub.Subs == nil || len(searchSubResult.Sub.Subs) == 0 {
 		return nil, nil
 	}
 
 	videoFileName := filepath.Base(videoFPath)
 	for index, subInfo := range searchSubResult.Sub.Subs {
 
-		// 閼惧嘲褰囬崗铚傜秼閻ㄥ嫪绗呮潪钘夋勾閸р偓
+		// 获取具体的下载地址
 		oneSubDetail, err := s.getSubDetail(subInfo.Id)
 		if err != nil {
 			s.log.Errorln("getSubDetail", err)
@@ -176,11 +175,13 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 		if len(oneSubDetail.Sub.Subs) < 1 {
 			continue
 		}
-		// 鏉╂瑩鍣烽棁鈧憰浣规暈閹板繒娈戦弰?ASSRT 鐠囧瓨妲戞禍鍡礉娑撳娴囬惃鍕勾閸р偓閺勵垱婀侀弮鑸垫櫏閹呮畱閿涘矂鍋呮稊鍫濐洤閺嬫粎绱︾€涙ɑ鏆ｆ稉顏勬勾閸р偓閸掓瑤绗夐弰顖涱劀绾喚娈?		// 闂団偓鐟曚胶绱︾€涙娈戞惔鏃囶嚉閺勵垵绻栨稉顏勭摟楠炴洜娈?ID
+		// 这里需要注意的是 ASSRT 说明了，下载的地址是有时效性的，那么如果缓存整个地址则不是正确的
+		// 需要缓存的应该是这个字幕的 ID
 		nowSubDownloadUrl := oneSubDetail.Sub.Subs[0].Url
 		subInfo, err := s.fileDownloader.Get(s.GetSupplierName(), int64(index), videoFileName, nowSubDownloadUrl,
 			0, 0,
-			// 瀵版鍩屾稉鈧稉顏嗗濞堝﹦娈戦弴澶稿敩 FileDownloadUrl 閻ㄥ嫮澹掑浣哥摟缁楋缚瑕?			fmt.Sprintf("%s-%s-%d", s.GetSupplierName(), subInfo.NativeName, subInfo.Id),
+			// 得到一个特殊的替代 FileDownloadUrl 的特征字符串
+			fmt.Sprintf("%s-%s-%d", s.GetSupplierName(), subInfo.NativeName, subInfo.Id),
 		)
 		if err != nil {
 			s.log.Error("FileDownloader.Get", err)
@@ -188,12 +189,39 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 		}
 
 		outSubInfoList = append(outSubInfoList, *subInfo)
-		// 婵″倹鐏夋径鐔剁啊闁絼绠炴径姘嚋鐎涙绠风亸杈箲閸?		if len(outSubInfoList) >= settings.Get().AdvancedSettings.Topic {
+		// 如果够了那么多个字幕就返回
+		if len(outSubInfoList) >= settings.Get().AdvancedSettings.Topic {
 			return outSubInfoList, nil
 		}
 	}
 
 	return outSubInfoList, nil
+}
+
+func (s *Supplier) getSubInfoWithFallback(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool) (*SearchSubResult, error) {
+	videoFileName := filepath.Base(videoFPath)
+	for _, keyWordType := range assrtSearchKeywordOrder {
+		keyWord, err := mix_media_info.KeyWordSelect(mediaInfo, videoFPath, isMovie, keyWordType)
+		if err != nil {
+			s.log.Infoln(s.GetSupplierName(), videoFileName, "Skip Search KeyWordType", keyWordType, err)
+			continue
+		}
+
+		s.log.Infoln(s.GetSupplierName(), videoFileName, "Try Search KeyWordType", keyWordType, "KeyWord:", keyWord)
+		searchSubResult, err := s.getSubByKeyWord(keyWord)
+		if err != nil {
+			s.log.Errorln(s.GetSupplierName(), videoFileName, "Search KeyWordType", keyWordType, err)
+			return nil, err
+		}
+		if searchSubResult.Sub.Subs == nil || len(searchSubResult.Sub.Subs) == 0 {
+			s.log.Infoln(s.GetSupplierName(), videoFileName, "No subtitle found", "KeyWordType:", keyWordType, "KeyWord:", keyWord)
+			continue
+		}
+
+		return searchSubResult, nil
+	}
+
+	return nil, nil
 }
 
 func (s *Supplier) getSubInfoEx(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, keyWordType string) (bool, *SearchSubResult, error) {
@@ -224,7 +252,8 @@ func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier
 	var allSupplierSubInfo = make([]supplier.SubInfo, 0)
 
 	index := 0
-	// 鏉╂瑩鍣烽幏鍨煂閻?seriesInfo 閿涘矂鍣烽棃銏犲瘶閸氼偂绨￠敍宀勬付鐟曚椒绗呮潪钘夌摟楠炴洜娈?Eps 娣団剝浼?	for _, episodeInfo := range seriesInfo.NeedDlEpsKeyList {
+	// 这里拿到的 seriesInfo ，里面包含了，需要下载字幕的 Eps 信息
+	for _, episodeInfo := range seriesInfo.NeedDlEpsKeyList {
 
 		index++
 		one, err := s.getSubListFromFile(episodeInfo.FileFullPath, false)
@@ -233,17 +262,20 @@ func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier
 			continue
 		}
 		if one == nil {
-			// 濞屸剝婀侀幖婊呭偍閸掓澘鐡ч獮?			s.log.Infoln(s.GetSupplierName(), "Not Find Sub can be download",
+			// 没有搜索到字幕
+			s.log.Infoln(s.GetSupplierName(), "Not Find Sub can be download",
 				episodeInfo.Title, episodeInfo.Season, episodeInfo.Episode)
 			continue
 		}
-		// 闂団偓鐟曚浇绁撮崐鑲╃舶鐎涙绠风紒鎾寸€?		for i := range one {
+		// 需要赋值给字幕结构
+		for i := range one {
 			one[i].Season = episodeInfo.Season
 			one[i].Episode = episodeInfo.Episode
 		}
 		allSupplierSubInfo = append(allSupplierSubInfo, one...)
 	}
-	// 鏉╂柨娲栭崜宥忕礉闂団偓鐟曚焦濡稿В蹇庣娑?Eps 閻?Season Episode 娣団剝浼呮繅顐㈠帠閸掔増鐦℃稉?SubInfo 娑?	return allSupplierSubInfo, nil
+	// 返回前，需要把每一个 Eps 的 Season Episode 信息填充到每个 SubInfo 中
+	return allSupplierSubInfo, nil
 }
 
 func (s *Supplier) getSubByKeyWord(keyword string) (*SearchSubResult, error) {
@@ -270,21 +302,27 @@ func (s *Supplier) getSubByKeyWord(keyword string) (*SearchSubResult, error) {
 		return nil, err
 	}
 	/*
-		鏉╂瑩鍣烽張澶夐嚋濮婃绱?Sub 閺堝鈧偐娈戦弮璺衡偓娆愭Ц娑撯偓娑擃亜鍨悰顭掔礉娴ｅ棙妲告俊鍌涚亯娑撹櫣鈹栭惃鍕閸婃瑱绱濋崣鍫熸Ц娑撯偓娑擃亞鈹栭惃鍕波閺嬪嫪缍?		閹碘偓娴犮儱鍤悳棰佽⒈娑擃亞绮ㄩ弸鍕秼闂団偓鐟曚礁骞撶亸婵婄槸鐟欙絾鐎?		SearchSubResultEmpty
+		这里有个梗， Sub 有值的时候是一个列表，但是如果为空的时候，又是一个空的结构体
+		所以出现两个结构体需要去尝试解析
+		SearchSubResultEmpty
 		SearchSubResult
-		濮ｆ柨顩ф潻娆庨嚋閹懎鍠岄敍?		jsonString := "{\"sub\":{\"action\":\"search\",\"subs\":{},\"result\":\"succeed\",\"keyword\":\"鏉╄姤娼冩径蹇撯枊 S04E07\"},\"status\":0}"
+		比如这个情况：
+		jsonString := "{\"sub\":{\"action\":\"search\",\"subs\":{},\"result\":\"succeed\",\"keyword\":\"追杀夏娃 S04E07\"},\"status\":0}"
 	*/
 	err = json.Unmarshal([]byte(resp.String()), &searchSubResult)
 	if err != nil {
-		// 閸愬秵顒濈亸婵婄槸鐟欙絾鐎界粚鍝勫灙鐞?		var searchSubResultEmpty SearchSubResultEmpty
+		// 再此尝试解析空列表
+		var searchSubResultEmpty SearchSubResultEmpty
 		err = json.Unmarshal([]byte(resp.String()), &searchSubResultEmpty)
 		if err != nil {
-			// 婵″倹鐏夋潻妯绘Ц鐟欙絾鐎介柨娆掝嚖閿涘矂鍋呮稊鍫濇皑鐟曚焦濡搁悳鏉挎躬閻ㄥ嫰鏁婄拠顖氭嫲娑撳﹪娼伴惃鍕晩鐠囶垯鍗庨崳銊ㄧ箲閸ョ偛鍤崢?			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", keyword, errKnow.Error())
+			// 如果还是解析错误，那么就要把现在的错误和上面的错误仪器返回出去
+			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", keyword, errKnow.Error())
 			s.log.Errorln(s.GetSupplierName(), "json.Unmarshal", err)
 			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("keyword: %s, resp: %s, error: %s", keyword, resp.String(), errKnow.Error()))
 			return nil, err
 		}
-		// 鐠у鈧壈绻冮崢?		searchSubResult.Sub.Action = searchSubResultEmpty.Sub.Action
+		// 赋值过去
+		searchSubResult.Sub.Action = searchSubResultEmpty.Sub.Action
 		searchSubResult.Sub.Result = searchSubResultEmpty.Sub.Result
 		searchSubResult.Sub.Keyword = searchSubResultEmpty.Sub.Keyword
 		searchSubResult.Status = searchSubResultEmpty.Status
@@ -319,12 +357,13 @@ func (s *Supplier) getSubDetail(subID int) (OneSubDetail, error) {
 			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", subID, err.Error())
 			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("subID: %d, resp: %s, error: %s", subID, resp.String(), err.Error()))
 
-			// 鏉堟挸鍤拫鍐槸閺傚洣娆?			cacheCenterFolder, err := pkg.GetRootCacheCenterFolder()
+			// 输出调试文件
+			cacheCenterFolder, err := pkg.GetRootCacheCenterFolder()
 			if err != nil {
 				s.log.Errorln(s.GetSupplierName(), "GetRootCacheCenterFolder", err)
 			}
 			desJsonInfo := filepath.Join(cacheCenterFolder, strconv.Itoa(subID)+"--assrt_search_error_getSubDetail.json")
-			// 閸愭瑥鐡х粭锔胯閸掔増鏋冩禒鍓侇潚
+			// 写字符串到文件种
 			file, _ := os.Create(desJsonInfo)
 			defer func() {
 				_ = file.Close()

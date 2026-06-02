@@ -4,11 +4,17 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"net/http"
 
+	"github.com/ChineseSubFinder/ChineseSubFinder/internal/backend/reload_policy"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/backend"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/common"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/local_http_proxy_server"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_formatter"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/video_scan_and_refresh_helper"
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 func (cb *ControllerBase) SettingsHandler(c *gin.Context) {
@@ -33,6 +39,8 @@ func (cb *ControllerBase) SettingsHandler(c *gin.Context) {
 				return
 			}
 			// 需要去除 user 的 password 信息再保存，也就是继承之前的 password 即可
+			oldSettings := settings.Get()
+			needRestart := reload_policy.NeedRestartHTTPServer(oldSettings, &reqSetupInfo)
 			nowPassword := settings.Get().UserInfo.Password
 			reqSetupInfo.UserInfo.Password = nowPassword
 			err = settings.SetFullNewSettings(&reqSetupInfo)
@@ -48,11 +56,48 @@ func (cb *ControllerBase) SettingsHandler(c *gin.Context) {
 				common.SetApiToken("")
 			}
 			// ----------------------------------------
+			err = syncDebugMode(cb.cronHelper.Logger)
+			if err != nil {
+				return
+			}
+			// ----------------------------------------
+			err = local_http_proxy_server.SetProxyInfo(settings.Get().AdvancedSettings.ProxySettings.GetInfos())
+			if err != nil {
+				return
+			}
+			err = cb.cronHelper.ReloadSettings()
+			if err != nil {
+				return
+			}
+			if cb.videoScanAndRefreshHelper != nil {
+				cb.videoScanAndRefreshHelper.Cancel()
+			}
+			cb.videoScanAndRefreshHelper = video_scan_and_refresh_helper.NewVideoScanAndRefreshHelper(
+				sub_formatter.GetSubFormatter(cb.cronHelper.Logger, settings.Get().AdvancedSettings.SubNameFormatter),
+				cb.cronHelper.FileDownloader, nil)
 			c.JSON(http.StatusOK, backend.ReplyCommon{Message: "Settings Save Success"})
-			// 回复完毕后，发送重启 http server 的信号
-			cb.restartSignal <- 1
+			if needRestart {
+				// 仅当路由层依赖的设置变更时才重启 HTTP server
+				cb.restartSignal <- 1
+			}
 		}
 	default:
 		c.JSON(http.StatusNoContent, backend.ReplyCommon{Message: "Settings Request.Method Error"})
 	}
+}
+
+func syncDebugMode(logger *logrus.Logger) error {
+	if settings.Get().AdvancedSettings.DebugMode == true {
+		if err := log_helper.WriteDebugFile(); err != nil {
+			return err
+		}
+		logger.SetLevel(logrus.DebugLevel)
+		return nil
+	}
+
+	if err := log_helper.DeleteDebugFile(); err != nil {
+		return err
+	}
+	logger.SetLevel(logrus.InfoLevel)
+	return nil
 }

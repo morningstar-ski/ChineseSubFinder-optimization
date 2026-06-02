@@ -12,7 +12,7 @@ import (
 
 func TestGetImdbAndYearMovieXml(t *testing.T) {
 
-	rootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"movies", "Army of the Dead (2021)"}, 4, false)
+	rootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"movies", "Army of the Dead (2021)"}, 4, false)
 
 	wantid := "tt0993840"
 	wantyear := "2021"
@@ -30,6 +30,9 @@ func TestGetImdbAndYearMovieXml(t *testing.T) {
 }
 
 func Test_getImdbAndYearNfo(t *testing.T) {
+	movieRoot := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"movies", "Army of the Dead (2021)"}, 4, false)
+	tvShowRoot := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"nfo_files", "tvshow"}, 4, false)
+	tvShowRootAlt := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"nfo_files", "tvshow"}, 3, false)
 	type args struct {
 		nfoFilePath string
 		rootKey     string
@@ -42,7 +45,7 @@ func Test_getImdbAndYearNfo(t *testing.T) {
 	}{
 		{
 			name: "Army of the Dead (2021) WEBDL-1080p.nfo", args: args{
-				nfoFilePath: filepath.Join(unit_test_helper.GetTestDataResourceRootPath([]string{"movies", "Army of the Dead (2021)"}, 4, false), "Army of the Dead (2021) WEBDL-1080p.nfo"),
+				nfoFilePath: filepath.Join(movieRoot, "Army of the Dead (2021) WEBDL-1080p.nfo"),
 				rootKey:     "movie",
 			},
 			want: types.VideoNfoInfo{
@@ -55,7 +58,7 @@ func Test_getImdbAndYearNfo(t *testing.T) {
 		},
 		{
 			name: "tvshow_00 (2).nfo", args: args{
-				nfoFilePath: filepath.Join(unit_test_helper.GetTestDataResourceRootPath([]string{"nfo_files", "tvshow"}, 4, false), "tvshow_00 (2).nfo"),
+				nfoFilePath: filepath.Join(tvShowRoot, "tvshow_00 (2).nfo"),
 				rootKey:     "tvshow",
 			},
 			want: types.VideoNfoInfo{
@@ -67,7 +70,7 @@ func Test_getImdbAndYearNfo(t *testing.T) {
 		},
 		{
 			name: "tvshow_00 (3).nfo", args: args{
-				nfoFilePath: filepath.Join(unit_test_helper.GetTestDataResourceRootPath([]string{"nfo_files", "tvshow"}, 4, false), "tvshow_00 (3).nfo"),
+				nfoFilePath: filepath.Join(tvShowRoot, "tvshow_00 (3).nfo"),
 				rootKey:     "tvshow",
 			},
 			want: types.VideoNfoInfo{
@@ -79,7 +82,7 @@ func Test_getImdbAndYearNfo(t *testing.T) {
 		},
 		{
 			name: "tvshow_00 (63).nfo", args: args{
-				nfoFilePath: filepath.Join(unit_test_helper.GetTestDataResourceRootPath([]string{"nfo_files", "tvshow"}, 3, false), "tvshow_00 (63).nfo"),
+				nfoFilePath: filepath.Join(tvShowRootAlt, "tvshow_00 (63).nfo"),
 				rootKey:     "tvshow",
 			},
 			want: types.VideoNfoInfo{
@@ -138,6 +141,7 @@ func TestGetNumber2int(t *testing.T) {
 }
 
 func TestGetImdbInfo4SeriesDir(t *testing.T) {
+	unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"series"}, 4, false)
 
 	type args struct {
 		seriesDir string
@@ -184,6 +188,7 @@ func TestGetImdbInfo4SeriesDir(t *testing.T) {
 }
 
 func TestIsFakeBDMVWorked(t *testing.T) {
+	unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"movies", "澶辨帶鐜╁ (2021)"}, 4, false)
 
 	rootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"movies", "失控玩家 (2021)"}, 4, false)
 

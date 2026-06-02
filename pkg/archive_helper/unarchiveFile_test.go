@@ -6,13 +6,12 @@ import (
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
-
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/unit_test_helper"
 )
 
 func TestUnArchiveFile(t *testing.T) {
 
-	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"zips"}, 4, true)
+	testRootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"zips"}, 4, true)
 
 	testUnArchive(t, testRootDir, "zip.zip")
 	testUnArchive(t, testRootDir, "tar.tar")
@@ -35,12 +34,12 @@ func testUnArchive(t *testing.T, testRootDir string, missionName string) {
 	}
 }
 
-const subASS = "oslo.2021.1080p.web.h264-naisu.繁体&英文.ass"
-const subSRT = "oslo.2021.1080p.web.h264-naisu.繁体&英文.srt"
+const subASS = "oslo.2021.1080p.web.h264-naisu.绻佷綋&鑻辨枃.ass"
+const subSRT = "oslo.2021.1080p.web.h264-naisu.绻佷綋&鑻辨枃.srt"
 
 func TestUnArchiveFileEx(t *testing.T) {
 
-	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"zips"}, 4, true)
+	testRootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"zips"}, 4, true)
 
 	type args struct {
 		fileFullPath string

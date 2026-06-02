@@ -17,7 +17,7 @@ func TestSubFormatChanger_AutoDetectThenChangeTo(t *testing.T) {
 
 	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
 
-	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_format_changer"}, 4, true)
+	testRootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_format_changer"}, 4, true)
 	movie_name := "AAA"
 	series_name := "Loki"
 
@@ -127,7 +127,7 @@ func TestSubFormatChangerProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_format_changer"}, 3, true)
+	testRootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_format_changer"}, 3, true)
 	movie_name := "AAA"
 	series_name := "Loki"
 

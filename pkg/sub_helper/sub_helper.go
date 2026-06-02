@@ -19,36 +19,44 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/filter"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/ass"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/srt"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/regex_things"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/vad"
 	"github.com/sirupsen/logrus"
 )
 
-// OrganizeDlSubFiles 闇€瑕佷粠姹囨€绘潵鏄綉绔欏瓧骞曚腑锛岃В鍘嬪搴旂殑鍘嬬缉鍖呬腑鐨勫瓧骞曞嚭鏉?
+// OrganizeDlSubFiles 需要从汇总来是网站字幕中，解压对应的压缩包中的字幕出来
 func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []supplier.SubInfo, isMovie bool) (map[string][]string, error) {
 
-	// 缂撳瓨鍒楄〃锛屾暣鐞嗗悗鐨勫瓧骞曞垪琛?
-	// SxEx - []string 瀛楀箷鐨勮矾寰?
+	// 缓存列表，整理后的字幕列表
+	// SxEx - []string 字幕的路径
 	var siteSubInfoDict = make(map[string][]string)
 	tmpFolderFullPath, err := pkg.GetTmpFolderByName(tmpFolderName)
 	if err != nil {
 		return nil, err
 	}
 
-	// 鎶婂悗缂€鍚嶇粰鏀瑰ソ
+	// 把后缀名给改好
 	ChangeVideoExt2SubExt(subInfos)
+	subParserHub := sub_parser_hub.NewSubParserHub(log, ass.NewParser(log), srt.NewParser(log))
+	inspectSubtitlePayload := func(body []byte, ext string) (bool, error) {
+		found, _, err := subParserHub.DetermineFileTypeFromBytes(body, ext)
+		return found, err
+	}
 
-	// 绗笁鏂圭殑瑙ｅ帇搴擄紝棣栧厛涓嶆敮鎸?io.Reader 鐨勬搷浣滐紝涔熷氨鏄緱缂撳瓨鍒版湰鍦扮‖鐩樺啀璇诲彇瑙ｅ帇
-	// 涓斾娇鐢?walk 浼氭棤娉曡В鍘?rar锛屽緱鎸囧畾鍏蜂綋鐨勫疄渚嬶紝澶夯鐑︿簡锛岀洿鎺ョ敤閫氱敤鐨勬帴鍙ｅ緱浜嗭紝灏辨槸寰楅兘缂撳瓨涓嬫潵鍐嶅垽鏂?
-	// 鍩轰簬浠ヤ笂涓ょ偣锛屽啓浜嗕竴鍫嗗暟鍡︾殑閫昏緫路路路
+	// 第三方的解压库，首先不支持 io.Reader 的操作，也就是得缓存到本地硬盘再读取解压
+	// 且使用 walk 会无法解压 rar，得指定具体的实例，太麻烦了，直接用通用的接口得了，就是得都缓存下来再判断
+	// 基于以上两点，写了一堆啰嗦的逻辑···
 	for i := range subInfos {
-		if err := pkg.ValidateDownloadedPayload(subInfos[i].Name, subInfos[i].Data); err != nil {
-			log.Errorln("ValidateDownloadedPayload", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
+		// 先存下来，保存是时候需要前缀，前缀就是从那个网站下载来的
+		nowFileSaveFullPath := filepath.Join(tmpFolderFullPath, GetFrontNameAndOrgName(log, &subInfos[i]))
+		err = pkg.ValidateSubtitleDownloadPayload(log, inspectSubtitlePayload, subInfos[i].FileUrl, subInfos[i].Name, "", 0, subInfos[i].Data)
+		if err != nil {
+			log.Errorln("ValidateSubtitleDownloadPayload", nowFileSaveFullPath, "FromWhere Name TopN", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
 			continue
 		}
-		// 鍏堝瓨涓嬫潵锛屼繚瀛樻槸鏃跺€欓渶瑕佸墠缂€锛屽墠缂€灏辨槸浠庨偅涓綉绔欎笅杞芥潵鐨?
-		nowFileSaveFullPath := filepath.Join(tmpFolderFullPath, GetFrontNameAndOrgName(log, &subInfos[i]))
 		err = pkg.WriteFile(nowFileSaveFullPath, subInfos[i].Data)
 		if err != nil {
 			log.Errorln("getFrontNameAndOrgName - WriteFile", nowFileSaveFullPath, "FromWhere Name TopN", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
@@ -58,56 +66,66 @@ func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []sup
 		epsKey := pkg.GetEpisodeKeyName(subInfos[i].Season, subInfos[i].Episode)
 		_, ok := siteSubInfoDict[epsKey]
 		if ok == false {
-			// 涓嶅瓨鍦ㄥ垯瀹炰緥鍖?
+			// 不存在则实例化
 			siteSubInfoDict[epsKey] = make([]string, 0)
 		}
 		if nowExt != ".zip" && nowExt != ".tar" && nowExt != ".rar" && nowExt != ".7z" {
-			// 鏄惁鏄彈鏀寔鐨勫瓧骞曠被鍨?
+			// 是否是受支持的字幕类型
 			if sub_parser_hub.IsSubExtWanted(nowExt) == false {
 				log.Debugln("OrganizeDlSubFiles -> IsSubExtWanted == false", "Name:", subInfos[i].Name, "FileUrl:", subInfos[i].FileUrl)
 				continue
 			}
-			// 鍔犲叆缂撳瓨鍒楄〃
+			// 加入缓存列表
 			siteSubInfoDict[epsKey] = append(siteSubInfoDict[epsKey], nowFileSaveFullPath)
 		} else {
-			// 閭ｄ箞灏辨槸闇€瑕佽В鍘嬬殑鏂囦欢浜?
-			// 瑙ｅ帇锛岀粰涓€涓崟鐙殑鏂囦欢澶?
+			// 那么就是需要解压的文件了
+			// 解压，给一个单独的文件夹
 			unzipTmpFolder := filepath.Join(tmpFolderFullPath, subInfos[i].FromWhere)
 			err = os.MkdirAll(unzipTmpFolder, os.ModePerm)
 			if err != nil {
 				return nil, err
 			}
 			err = archive_helper.UnArchiveFileEx(nowFileSaveFullPath, unzipTmpFolder)
-			// 瑙ｅ帇瀹屾垚鍚庯紝閬嶅巻鍙楁敮鎸佺殑瀛楀箷鍒楄〃锛屽姞鍏ョ紦瀛樺垪琛?
+			// 解压完成后，遍历受支持的字幕列表，加入缓存列表
 			if err != nil {
 				log.Errorln("archiver.UnArchive", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
 				continue
 			}
-			// 鎼滅储杩欎釜鐩綍涓嬬殑鎵€鏈夌鍚堝瓧骞曟牸寮忕殑鏂囦欢
+			// 搜索这个目录下的所有符合字幕格式的文件
 			subFileFullPaths, err := SearchMatchedSubFileByDir(log, unzipTmpFolder)
 			if err != nil {
 				log.Errorln("searchMatchedSubFile", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
 				continue
 			}
-			// 杩欓噷闇€瑕佺粰杩欎簺涓嬭浇鍒扮殑鏂囦欢杩涜鏀瑰悕锛屽姞鏄粠閭ｄ釜缃戠珯鏉ョ殑鍓嶇紑锛屽悗缁ソ鏌ユ壘
+			// 这里需要给这些下载到的文件进行改名，加是从那个网站来的前缀，后续好查找
 			for _, fileFullPath := range subFileFullPaths {
+				fileBytes, err := os.ReadFile(fileFullPath)
+				if err != nil {
+					log.Errorln("os.ReadFile", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
+					continue
+				}
+				err = pkg.ValidateSubtitleDownloadPayload(log, inspectSubtitlePayload, subInfos[i].FileUrl, filepath.Base(fileFullPath), "", 0, fileBytes)
+				if err != nil {
+					log.Errorln("ValidateSubtitleDownloadPayload", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
+					continue
+				}
 				if isMovie == false {
-					// 杩炵画鍓х殑鎯呭喌
-					// 浠庤В鍘嬬殑鏂囦欢鍚嶇О鎺ㄦ柇 Season 鍜?Episode 淇℃伅
+					// 连续剧的情况
+					// 从解压的文件名称推断 Season 和 Episode 信息
 					_, nowSeason, nowEps, err := decode.GetSeasonAndEpisodeFromSubFileName(filepath.Base(fileFullPath))
 					if err != nil {
 						continue
 					}
 					newSubName := AddFrontName(subInfos[i], filepath.Base(fileFullPath))
 					newSubNameFullPath := filepath.Join(tmpFolderFullPath, newSubName)
-					// 鏀瑰悕
+					// 改名
 					err = os.Rename(fileFullPath, newSubNameFullPath)
 					if err != nil {
 						log.Errorln("os.Rename", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
 						continue
 					}
-					// 鍔犲叆缂撳瓨鍒楄〃
-					// 鏍规嵁褰撳墠瀛楀箷鐨勪俊鎭潵鏋勫缓 key
+					// 加入缓存列表
+					// 根据当前字幕的信息来构建 key
 					SEPKey := pkg.GetEpisodeKeyName(nowSeason, nowEps)
 					_, ok = siteSubInfoDict[SEPKey]
 					if ok == false {
@@ -115,16 +133,16 @@ func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []sup
 					}
 					siteSubInfoDict[SEPKey] = append(siteSubInfoDict[SEPKey], newSubNameFullPath)
 				} else {
-					// 鐢靛奖鐨勬儏鍐?
+					// 电影的情况
 					newSubName := AddFrontName(subInfos[i], filepath.Base(fileFullPath))
 					newSubNameFullPath := filepath.Join(tmpFolderFullPath, newSubName)
-					// 鏀瑰悕
+					// 改名
 					err = os.Rename(fileFullPath, newSubNameFullPath)
 					if err != nil {
 						log.Errorln("os.Rename", subInfos[i].FromWhere, subInfos[i].Name, subInfos[i].TopN, err)
 						continue
 					}
-					// 鍔犲叆缂撳瓨鍒楄〃
+					// 加入缓存列表
 					siteSubInfoDict[epsKey] = append(siteSubInfoDict[epsKey], newSubNameFullPath)
 				}
 
@@ -135,11 +153,11 @@ func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []sup
 	return siteSubInfoDict, nil
 }
 
-// ChangeVideoExt2SubExt 妫€娴?Name锛屽鏋滄槸瑙嗛鐨勫悗缂€鍚嶅氨鏀逛负瀛楀箷鐨勫悗缂€鍚?
+// ChangeVideoExt2SubExt 检测 Name，如果是视频的后缀名就改为字幕的后缀名
 func ChangeVideoExt2SubExt(subInfos []supplier.SubInfo) {
 	for x, info := range subInfos {
 		tmpSubFileName := info.Name
-		// 濡傛灉鍚庣紑鍚嶆槸涓嬭浇瀛楀箷鐩爣鐨勫悗缂€鍚? 鎴栬€?鏄帇缂╁寘鏍煎紡鐨勶紝鍒欒烦杩?
+		// 如果后缀名是下载字幕目标的后缀名  或者 是压缩包格式的，则跳过
 		if strings.Contains(tmpSubFileName, info.Ext) == true || archive_helper.IsWantedArchiveExtName(tmpSubFileName) == true {
 
 		} else {
@@ -148,18 +166,18 @@ func ChangeVideoExt2SubExt(subInfos []supplier.SubInfo) {
 	}
 }
 
-// SelectChineseBestBilingualSubtitle 鎵惧埌鍚堥€傜殑鍙岃涓枃瀛楀箷锛岀畝浣?>绻佷綋锛屼互鍙?瀛楀箷绫诲瀷鐨勪紭鍏堢骇閫夋嫨
+// SelectChineseBestBilingualSubtitle 找到合适的双语中文字幕，简体->繁体，以及 字幕类型的优先级选择
 func SelectChineseBestBilingualSubtitle(subs []subparser.FileInfo, subTypePriority int) *subparser.FileInfo {
 
-	// 鍏堝偦涓€鐐瑰疄鐜颁紭鍏堝弻璇殑锛屼箣鍓嶇殑鍐欐硶鏈?bug
+	// 先傻一点实现优先双语的，之前的写法有 bug
 	for _, info := range subs {
-		// 鎵惧埌浜嗕腑鏂囧瓧骞?
+		// 找到了中文字幕
 		if language.HasChineseLang(info.Lang) == true {
-			// 瀛楀箷鐨勪紭鍏堢骇 0 - 鍘熸牱, 1 - srt , 2 - ass/ssa
+			// 字幕的优先级 0 - 原样, 1 - srt , 2 - ass/ssa
 			if subTypePriority == 1 {
 				// 1 - srt
 				if strings.ToLower(info.Ext) == common.SubExtSRT {
-					// 浼樺厛鍙岃
+					// 优先双语
 					if language.IsBilingualSubtitle(info.Lang) == true {
 						return &info
 					}
@@ -167,13 +185,13 @@ func SelectChineseBestBilingualSubtitle(subs []subparser.FileInfo, subTypePriori
 			} else if subTypePriority == 2 {
 				//  2 - ass/ssa
 				if strings.ToLower(info.Ext) == common.SubExtASS || strings.ToLower(info.Ext) == common.SubExtSSA {
-					// 浼樺厛鍙岃
+					// 优先双语
 					if language.IsBilingualSubtitle(info.Lang) == true {
 						return &info
 					}
 				}
 			} else {
-				// 浼樺厛鍙岃
+				// 优先双语
 				if language.IsBilingualSubtitle(info.Lang) == true {
 					return &info
 				}
@@ -184,14 +202,14 @@ func SelectChineseBestBilingualSubtitle(subs []subparser.FileInfo, subTypePriori
 	return nil
 }
 
-// SelectChineseBestSubtitle 鎵惧埌鍚堥€傜殑涓枃瀛楀箷锛岀畝浣?>绻佷綋锛屼互鍙?瀛楀箷绫诲瀷鐨勪紭鍏堢骇閫夋嫨
+// SelectChineseBestSubtitle 找到合适的中文字幕，简体->繁体，以及 字幕类型的优先级选择
 func SelectChineseBestSubtitle(subs []subparser.FileInfo, subTypePriority int) *subparser.FileInfo {
 
-	// 鍏堝偦涓€鐐瑰疄鐜颁紭鍏堝弻璇殑锛屼箣鍓嶇殑鍐欐硶鏈?bug
+	// 先傻一点实现优先双语的，之前的写法有 bug
 	for _, info := range subs {
-		// 鎵惧埌浜嗕腑鏂囧瓧骞?
+		// 找到了中文字幕
 		if language.HasChineseLang(info.Lang) == true {
-			// 瀛楀箷鐨勪紭鍏堢骇 0 - 鍘熸牱, 1 - srt , 2 - ass/ssa
+			// 字幕的优先级 0 - 原样, 1 - srt , 2 - ass/ssa
 			if subTypePriority == 1 {
 				// 1 - srt
 				if strings.ToLower(info.Ext) == common.SubExtSRT {
@@ -211,14 +229,14 @@ func SelectChineseBestSubtitle(subs []subparser.FileInfo, subTypePriority int) *
 	return nil
 }
 
-// GetFrontNameAndOrgName 杩斿洖鐨勫悕绉板寘鍚紝閭ｄ釜缃戠珯涓嬭浇鐨勶紝杩欎釜缃戠珯涓帓鍚嶇鍑狅紝鏂囦欢鍚?
+// GetFrontNameAndOrgName 返回的名称包含，那个网站下载的，这个网站中排名第几，文件名
 func GetFrontNameAndOrgName(log *logrus.Logger, info *supplier.SubInfo) string {
 
 	infoName := ""
 	fileName, err := decode.GetVideoInfoFromFileName(info.Name)
 	if err != nil {
 		log.Warnln("", err)
-		// 鏇挎崲鐗规畩瀛楃
+		// 替换特殊字符
 		infoName = pkg.ReplaceSpecString(info.Name, "x")
 	} else {
 		infoName = fileName.Title + "_S" + strconv.Itoa(fileName.Season) + "E" + strconv.Itoa(fileName.Episode) + filepath.Ext(info.Name)
@@ -231,14 +249,14 @@ func GetFrontNameAndOrgName(log *logrus.Logger, info *supplier.SubInfo) string {
 	return "[" + info.FromWhere + "]_" + strconv.FormatInt(info.TopN, 10) + "_" + infoName
 }
 
-// AddFrontName 娣诲姞鏂囦欢鐨勫墠缂€
+// AddFrontName 添加文件的前缀
 func AddFrontName(info supplier.SubInfo, orgName string) string {
 	return "[" + info.FromWhere + "]_" + strconv.FormatInt(info.TopN, 10) + "_" + orgName
 }
 
-// SearchMatchedSubFileByDir 鎼滅储绗﹀悎鍚庣紑鍚嶇殑瑙嗛鏂囦欢锛屾帓闄?Sub_SxE0 杩欐牱鐨勬枃浠跺す涓殑鏂囦欢
+// SearchMatchedSubFileByDir 搜索符合后缀名的视频文件，排除 Sub_SxE0 这样的文件夹中的文件
 func SearchMatchedSubFileByDir(log *logrus.Logger, dir string) ([]string, error) {
-	// 杩欓噷鏈変釜姊楋紝浼氬嚭鐜?__MACOSX 杩欑被鏂囦欢澶癸紝閭ｄ箞閲岄潰浼氭湁涓€鏍风殑鏂囦欢锛岄渶瑕佺敤鏂囦欢澶у皬鎺掗櫎涓€涓嬶紝鑷冲皯澶т簬 1 kb 鍚?
+	// 这里有个梗，会出现 __MACOSX 这类文件夹，那么里面会有一样的文件，需要用文件大小排除一下，至少大于 1 kb 吧
 	var fileFullPathList = make([]string, 0)
 	pathSep := string(os.PathSeparator)
 	files, err := os.ReadDir(dir)
@@ -248,18 +266,18 @@ func SearchMatchedSubFileByDir(log *logrus.Logger, dir string) ([]string, error)
 	for _, curFile := range files {
 		fullPath := dir + pathSep + curFile.Name()
 		if pkg.IsDir(fullPath) == true {
-			// 闇€瑕佹帓闄?Sub_S1E0銆丼ub_S2E0 杩欐牱鐨勬暣瀛ｇ殑瀛楀箷鏂囦欢澶癸紝杩欓噷浠呬粎鏄紦瀛橈紝涓嶄細琚姞杞界殑
+			// 需要排除 Sub_S1E0、Sub_S2E0 这样的整季的字幕文件夹，这里仅仅是缓存，不会被加载的
 			matched := regex_things.RegOneSeasonSubFolderNameMatch.FindAllStringSubmatch(curFile.Name(), -1)
 			if matched != nil && len(matched) > 0 {
 				continue
 			}
-			// 鍐呭眰鐨勯敊璇氨鏃犺浜?
+			// 内层的错误就无视了
 			oneList, _ := SearchMatchedSubFileByDir(log, fullPath)
 			if oneList != nil {
 				fileFullPathList = append(fileFullPathList, oneList...)
 			}
 		} else {
-			// 杩欓噷灏辨槸鏂囦欢浜?
+			// 这里就是文件了
 			if filter.SkipFileInfo(log, curFile, fullPath) == true {
 				continue
 			}
@@ -272,7 +290,7 @@ func SearchMatchedSubFileByDir(log *logrus.Logger, dir string) ([]string, error)
 	return fileFullPathList, nil
 }
 
-// SearchMatchedSubFileByOneVideo 鎼滅储杩欎釜瑙嗛褰撳墠鐩綍涓嬪尮閰嶇殑瀛楀箷
+// SearchMatchedSubFileByOneVideo 搜索这个视频当前目录下匹配的字幕
 func SearchMatchedSubFileByOneVideo(l *logrus.Logger, oneVideoFullPath string) ([]string, error) {
 	dir := filepath.Dir(oneVideoFullPath)
 	fileName := filepath.Base(oneVideoFullPath)
@@ -290,19 +308,19 @@ func SearchMatchedSubFileByOneVideo(l *logrus.Logger, oneVideoFullPath string) (
 		if curFile.IsDir() {
 			continue
 		}
-		// 杩欓噷灏辨槸鏂囦欢浜?
+		// 这里就是文件了
 		oldPath := dir + pathSep + curFile.Name()
 		if filter.SkipFileInfo(l, curFile, oldPath) == true {
 			continue
 		}
 
-		// 鍒ゆ柇鐨勬椂鍊欑敤灏忓啓鐨勶紝鍚庣画閲嶅懡鍚嶇殑鏃跺€欑敤鍘熸湁鐨勫悕绉?
+		// 判断的时候用小写的，后续重命名的时候用原有的名称
 		nowFileName := strings.ToLower(curFile.Name())
-		// 鍚庣紑鍚嶅緱瀵?
+		// 后缀名得对
 		if sub_parser_hub.IsSubExtWanted(filepath.Ext(nowFileName)) == false {
 			continue
 		}
-		// 瀛楀箷鏂囦欢鍚嶅簲璇ュ寘鍚?瑙嗛鏂囦欢鍚嶏紙鏃犲悗缂€锛?
+		// 字幕文件名应该包含 视频文件名（无后缀）
 		if strings.HasPrefix(nowFileName, fileName) == false {
 			continue
 		}
@@ -313,7 +331,7 @@ func SearchMatchedSubFileByOneVideo(l *logrus.Logger, oneVideoFullPath string) (
 	return matchedSubs, nil
 }
 
-// SearchVideoMatchSubFileAndRemoveExtMark 鎵惧埌鎵句釜瑙嗛鐩綍涓嬬浉鍖归厤鐨勫瓧骞曪紝鍚屾椂鍘婚櫎杩欎簺瀛楀箷涓?.default 鎴栬€?.forced 鐨勬爣璁般€傛敞鎰忚繖涓や釜鏍囪涓嶅簲璇ュ悓鏃跺嚭鐜帮紝鍚﹀垯鏃犳硶姝ｇ‘鍘婚櫎
+// SearchVideoMatchSubFileAndRemoveExtMark 找到找个视频目录下相匹配的字幕，同时去除这些字幕中 .default 或者 .forced 的标记。注意这两个标记不应该同时出现，否则无法正确去除
 func SearchVideoMatchSubFileAndRemoveExtMark(l *logrus.Logger, oneVideoFullPath string) error {
 
 	dir := filepath.Dir(oneVideoFullPath)
@@ -329,32 +347,32 @@ func SearchVideoMatchSubFileAndRemoveExtMark(l *logrus.Logger, oneVideoFullPath 
 		if curFile.IsDir() {
 			continue
 		} else {
-			// 杩欓噷灏辨槸鏂囦欢浜?
+			// 这里就是文件了
 			oldPath := dir + pathSep + curFile.Name()
 			if filter.SkipFileInfo(l, curFile, oldPath) == true {
 				continue
 			}
-			// 鍒ゆ柇鐨勬椂鍊欑敤灏忓啓鐨勶紝鍚庣画閲嶅懡鍚嶇殑鏃跺€欑敤鍘熸湁鐨勫悕绉?
+			// 判断的时候用小写的，后续重命名的时候用原有的名称
 			nowFileName := strings.ToLower(curFile.Name())
-			// 鍚庣紑鍚嶅緱瀵?
+			// 后缀名得对
 			if sub_parser_hub.IsSubExtWanted(filepath.Ext(nowFileName)) == false {
 				continue
 			}
-			// 瀛楀箷鏂囦欢鍚嶅簲璇ュ寘鍚?瑙嗛鏂囦欢鍚嶏紙鏃犲悗缂€锛?
+			// 字幕文件名应该包含 视频文件名（无后缀）
 			if strings.HasPrefix(nowFileName, fileName) == false {
 				continue
 			}
 
 			if strings.Contains(nowFileName, subparser.Sub_Ext_Mark_Default+".") == true {
-				// 寰楀寘鍚?.default. 鎵句釜鍏抽敭璇?
-				// 鍘婚櫎 .default.
+				// 得包含 .default. 找个关键词
+				// 去除 .default.
 				newPath := dir + pathSep + strings.ReplaceAll(curFile.Name(), subparser.Sub_Ext_Mark_Default+".", ".")
 				err = os.Rename(oldPath, newPath)
 				if err != nil {
 					return err
 				}
 			} else if strings.Contains(nowFileName, subparser.Sub_Ext_Mark_Forced+".") == true {
-				// 寰楀寘鍚?.forced. 鎵句釜鍏抽敭璇?
+				// 得包含 .forced. 找个关键词
 				oldPath := dir + pathSep + curFile.Name()
 				newPath := dir + pathSep + strings.ReplaceAll(curFile.Name(), subparser.Sub_Ext_Mark_Forced+".", ".")
 				err = os.Rename(oldPath, newPath)
@@ -370,7 +388,7 @@ func SearchVideoMatchSubFileAndRemoveExtMark(l *logrus.Logger, oneVideoFullPath 
 	return nil
 }
 
-// DeleteOneSeasonSubCacheFolder 鍒犻櫎涓€涓繛缁墽涓殑鎵€鏈変竴瀛ｅ瓧骞曠殑缂撳瓨鏂囦欢澶?
+// DeleteOneSeasonSubCacheFolder 删除一个连续剧中的所有一季字幕的缓存文件夹
 func DeleteOneSeasonSubCacheFolder(seriesDir string) error {
 
 	debugFolderByName, err := pkg.GetDebugFolderByName([]string{filepath.Base(seriesDir)})
@@ -401,13 +419,13 @@ func DeleteOneSeasonSubCacheFolder(seriesDir string) error {
 }
 
 /*
-	鍙拡瀵硅嫳鏂囧瓧骞曡繘琛屽悎骞跺垎鏁ｇ殑 DialoguesFilter
-	浼氶亣鍒拌繖鏍风殑瀛楀箷锛屽涓?
-	2line-The Card Counter (2021) WEBDL-1080p.chinese(inside).ass
-	瀹冪殑瀵圭櫧涓€鍙ヨ瘽鍒嗕簡涓や釜 dialogue 鍘诲仛銆傝繖鏍峰仛鍚庣画瀛楀箷鏃堕棿杞存牎姝ｅ氨浼氶亣鍒伴棶棰橈紝鍥犱负鍙湁涓€鍗婏紝鍖归厤鍗犳瘮浼氬緢浣?
-	(姣忎竴涓?Dialogue 鐨勯瀛楁瘝闇€瑕佸垎鏋愶紝澶у啓鍜屽皬鍐欑殑鍗犳瘮鏄灏戯紝缁熻涓€涓嬶紝姝ｅ父鐨勶紝鍜屼笂杩扮壒娈婄殑)
-	閭ｄ箞锛屽氨闇€瑕侀澶栫殑閫昏緫鍘诲 DialoguesFilterEx 杩涜棰濆鐨勬帹鏂?
-	鏆傛椂鑰冭檻鐨勬柟妗堟槸锛岃嫳鏂囧鐧芥瘡涓€鍙ョ殑寮€澶村簲璇ユ槸鑻辨枃澶у啓瀛楀箷锛屽鏋滄槸灏忓啓瀛楀箷锛屽氨搴旇涓庝笂璇彞鍚堝苟锛屼笖姣忎竴鍙ョ殑瀛楃闀垮害鏈夊ぇ浜庝竴瀹氭墠瑙﹀彂
+只针对英文字幕进行合并分散的 DialoguesFilter
+会遇到这样的字幕，如下0
+2line-The Card Counter (2021) WEBDL-1080p.chinese(inside).ass
+它的对白一句话分了两个 dialogue 去做。这样做后续字幕时间轴校正就会遇到问题，因为只有一半，匹配占比会很低
+(每一个 Dialogue 的首字母需要分析，大写和小写的占比是多少，统计一下，正常的，和上述特殊的)
+那么，就需要额外的逻辑去对 DialoguesFilterEx 进行额外的推断
+暂时考虑的方案是，英文对白每一句的开头应该是英文大写字幕，如果是小写字幕，就应该与上语句合并，且每一句的字符长度有大于一定才触发
 */
 func MergeMultiDialogue4EngSubtitle(inSubParser *subparser.FileInfo) {
 	merger := NewDialogueMerger()
@@ -417,18 +435,18 @@ func MergeMultiDialogue4EngSubtitle(inSubParser *subparser.FileInfo) {
 	inSubParser.DialoguesFilterEx = merger.Get()
 }
 
-// GetVADInfoFeatureFromSub 璺熶笅闈㈢殑 GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert 鍑芥暟鍔熻兘涓€鑷?
+// GetVADInfoFeatureFromSub 跟下面的 GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert 函数功能一致
 func GetVADInfoFeatureFromSub(fileInfo *subparser.FileInfo, frontAndEndPer float64, subUnitMaxCount int, insert bool) ([]SubUnit, error) {
 
 	return GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert(fileInfo, frontAndEndPer, subUnitMaxCount, 0, insert)
 }
 
 /*
-	GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert 鍙笉杩囪繖閲屽彲浠ュ姞涓€涓瘡涓€鍙ヨ瘽鍥哄畾鐨勫亸绉绘椂闂?
-	杩欓噷鐨勫瓧骞曡姹傛槸瀹屾暣鐨勪竴涓瓧骞?
-	1. 鎶藉彇瀛楀箷鐨勬椂闂寸墖娈电殑鏃跺€欙紝鏆傚畾锛屽墠 15% 鍜屽悗 15% 瑕侀伩寮€锛屽墠濂忋€佷富棰樻洸銆佺粨灏炬洸
-	2. 灏嗘暣涓瓧骞曪紝鎶藉彇杩炵画 5 鍙ュ璇濅负涓€涓崟鍏冿紝鎻愬彇鏃堕棿鐗囨淇℃伅
-	3. 杩欓噷鎶藉彇鐨勬槸鐗瑰緛锛屼篃灏辨湁棰濆鐨勯€昏緫鍘绘壘杩欎釜鐗瑰緛锛堟湰绋嬪簭鍐呬細鎻忚堪涓衡€滈挜鍖欌€濓級
+GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert 只不过这里可以加一个每一句话固定的偏移时间
+这里的字幕要求是完整的一个字幕
+1. 抽取字幕的时间片段的时候，暂定，前 15% 和后 15% 要避开，前奏、主题曲、结尾曲
+2. 将整个字幕，抽取连续 5 句对话为一个单元，提取时间片段信息
+3. 这里抽取的是特征，也就有额外的逻辑去找这个特征（本程序内会描述为“钥匙”）
 */
 func GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert(fileInfo *subparser.FileInfo, SkipFrontAndEndPer float64, subUnitMaxCount int, offsetTime float64, insert bool) ([]SubUnit, error) {
 	if subUnitMaxCount < 0 {
@@ -441,14 +459,14 @@ func GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert(fileInfo *subparser.FileIn
 	srcSubDialogueList := make([]subparser.OneDialogue, 0)
 	srcOneSubUnit := NewSubUnit()
 
-	// 鏈€鍚庝竴涓璇濈殑缁撴潫鏃堕棿
+	// 最后一个对话的结束时间
 	lastDialogueExTimeEnd, err := pkg.ParseTime(nowDialogue[len(nowDialogue)-1].EndTime)
 	if err != nil {
 		return nil, err
 	}
-	// 鐩稿綋浜庢€绘椂闀?
+	// 相当于总时长
 	fullDuration := pkg.Time2SecondNumber(lastDialogueExTimeEnd)
-	// 鏈€浣庣殑璧峰鏃堕棿锛屽洜涓哄彲鑳介渶瑕佽鍓寖鍥?
+	// 最低的起始时间，因为可能需要裁剪范围
 	startRangeTimeMin := fullDuration * SkipFrontAndEndPer
 	endRangeTimeMax := fullDuration * (1.0 - SkipFrontAndEndPer)
 
@@ -476,35 +494,35 @@ func GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert(fileInfo *subparser.FileIn
 		if nowDialogue[i].Lines == nil || len(nowDialogue[i].Lines) == 0 {
 			continue
 		}
-		// 濡傛灉褰撳墠鐨勮繖涓€鍙ヨ瘽锛屼负绌猴紝鎴栬€呰繘杩囨鍒欒〃杈惧紡鍓旈櫎鐗规畩瀛楃鍚庝负绌猴紝鍒欒烦杩?
+		// 如果当前的这一句话，为空，或者进过正则表达式剔除特殊字符后为空，则跳过
 		if pkg.ReplaceSpecString(nowDialogue[i].Lines[0], "") == "" {
 			continue
 		}
-		// 濡傛灉褰撳墠鐨勮繖涓€鍙ヨ瘽锛屼负绌猴紝鎴栬€呰繘杩囨鍒欒〃杈惧紡鍓旈櫎鐗规畩瀛楃鍚庝负绌猴紝鍒欒烦杩?
+		// 如果当前的这一句话，为空，或者进过正则表达式剔除特殊字符后为空，则跳过
 		if pkg.ReplaceSpecString(fileInfo.GetDialogueExContent(i), "") == "" {
 			continue
 		}
-		// 浣庝簬 5鍙ュ鐧斤紝鍒欐坊鍔?
+		// 低于 5句对白，则添加
 		if srcOneSubUnit.GetDialogueCount() < subUnitMaxCount {
-			// 绠椾笂鍋忕Щ
+			// 算上偏移
 			offsetTimeDuration := time.Duration(offsetTime * math.Pow10(9))
 			oneDialogueExTimeStart = oneDialogueExTimeStart.Add(offsetTimeDuration)
 			oneDialogueExTimeEnd = oneDialogueExTimeEnd.Add(offsetTimeDuration)
-			// 濡傛灉娌℃湁鍋忕Щ灏辨槸 0
+			// 如果没有偏移就是 0
 			if insert == true {
 				srcOneSubUnit.AddAndInsert(oneDialogueExTimeStart, oneDialogueExTimeEnd)
 			} else {
 				srcOneSubUnit.Add(oneDialogueExTimeStart, oneDialogueExTimeEnd)
 			}
-			// 杩欎竴涓崟鍏冪殑 Dialogue 闇€瑕佸悎骞惰捣鏉ワ紝鎵嶈兘鍒ゆ柇鏄惁绗﹀悎鈥滈挜鍖欌€濈殑瑕佹眰
+			// 这一个单元的 Dialogue 需要合并起来，才能判断是否符合“钥匙”的要求
 			srcSubDialogueList = append(srcSubDialogueList, nowDialogue[i])
 
 		} else {
-			// 鐢ㄥ畬娓呯┖
+			// 用完清空
 			srcSubDialogueList = make([]subparser.OneDialogue, 0)
-			// 灏嗘嫾鍑戣捣鏉ョ殑瀵硅瘽缁勬垚涓€涓崟鍏冭繘琛屽瓨鍌ㄨ捣鏉?
+			// 将拼凑起来的对话组成一个单元进行存储起来
 			srcSubUnitList = append(srcSubUnitList, *srcOneSubUnit)
-			// 鐒跺悗閲嶇疆
+			// 然后重置
 			srcOneSubUnit = NewSubUnit()
 		}
 	}
@@ -516,7 +534,7 @@ func GetVADInfoFeatureFromSubNeedOffsetTimeWillInsert(fileInfo *subparser.FileIn
 }
 
 /*
-	GetVADInfoFeatureFromSubNew 灏?Sub 鏂囦欢杞崲涓?VAD List 淇℃伅
+GetVADInfoFeatureFromSubNew 将 Sub 文件转换为 VAD List 信息
 */
 func GetVADInfoFeatureFromSubNew(fileInfo *subparser.FileInfo, SkipFrontAndEndPer float64) (*SubUnit, error) {
 
@@ -525,17 +543,17 @@ func GetVADInfoFeatureFromSubNew(fileInfo *subparser.FileInfo, SkipFrontAndEndPe
 		return nil, errors.New("GetVADInfoFeatureFromSubNew fileInfo Dialogue Length is 0")
 	}
 	/*
-		鍏堟嫾鍑戝嚭瀹屾暣鐨勪竴涓?VAD List
-		鍥犱负 VAD 鐨勭獥鍙ｆ槸 10ms锛岄偅涔堥渶瑕佸姣忎竴鍙ヨ瘽鎸?10 ms 鐨勫崟浣嶈繘琛屽彇鏁?
-		姣忎竴鍙ヨ瘽寮€濮嬨€佺粨鏉熺殑鏃堕棿锛岄渶瑕佸悜涓嬪彇鏁?
+		先拼凑出完整的一个 VAD List
+		因为 VAD 的窗口是 10ms，那么需要多每一句话按 10 ms 的单位进行取整
+		每一句话开始、结束的时间，需要向下取整
 	*/
 	subStartTimeFloor := pkg.MakeFloor10msMultipleFromFloat(pkg.Time2SecondNumber(fileInfo.GetStartTime()))
 	subEndTimeFloor := pkg.MakeFloor10msMultipleFromFloat(pkg.Time2SecondNumber(fileInfo.GetEndTime()))
-	// 濡傛灉鎯宠浠?0 鏃堕棿鐐瑰紑濮嬬畻锛岄偅涔?subStartTimeFloor 杩欎釜鍊煎氨闇€瑕侀噸缃埌0
+	// 如果想要从 0 时间点开始算，那么 subStartTimeFloor 这个值就需要重置到0
 	subStartTimeFloor = 0
 	subFullSecondTimeFloor := subEndTimeFloor - subStartTimeFloor
-	// 鏍规嵁杩欎釜鏃堕暱灏辫兘澶熷緱鍒颁竴涓畬鏁寸殑 VAD List锛岀劧鍚庡啀閫氳繃姣忎竴鍙ュ鐧借繘琛?VAD 鍊肩殑璋冩暣鍗冲彲锛岃繖鏍峰氨鑳藉淇濊瘉
-	// 鐩稿悓鐨勪竴涓瓧骞曞洜涓轰娇鐢?ffmpeg 瀵煎嚭 srt 鍜?ass 鍚庣殑锛屽彲鑳藉瓨鍦ㄦ€讳綋鏃堕棿杞翠笉涓€鑷寸殑闂
+	// 根据这个时长就能够得到一个完整的 VAD List，然后再通过每一句对白进行 VAD 值的调整即可，这样就能够保证
+	// 相同的一个字幕因为使用 ffmpeg 导出 srt 和 ass 后的，可能存在总体时间轴不一致的问题
 	// 123.450 - > 12345
 	vadLen := int(subFullSecondTimeFloor*100) + 2
 	subVADs := make([]vad.VADInfo, vadLen)
@@ -543,46 +561,46 @@ func GetVADInfoFeatureFromSubNew(fileInfo *subparser.FileInfo, SkipFrontAndEndPe
 	for i := 0; i < vadLen; i++ {
 		subVADs[i] = *vad.NewVADInfoBase(false, time.Duration((subStartTimeFloor10ms+float64(i))*math.Pow10(7)))
 	}
-	// 璁＄畻鍑洪渶瑕佹埅鍙栫殑鐗囨,璧峰鍜岀粨鏉?
+	// 计算出需要截取的片段,起始和结束
 	skipLen := int(float64(vadLen) * SkipFrontAndEndPer)
 	skipStartIndex := skipLen
 	skipEndIndex := vadLen - skipLen
-	// 鐜板湪闇€瑕佷粠 fileInfo 鐨勬瘡涓€鍙ュ鐧戒篃灏卞搴斾竴娈佃繛缁殑 VAD active = true 鏉ヨ繘琛屾敼鍐欙紝璁板緱鍚戜笅鍙栨暣
+	// 现在需要从 fileInfo 的每一句对白也就对应一段连续的 VAD active = true 来进行改写，记得向下取整
 	lastDialogueIndex := 0
 	for _, dialogue := range fileInfo.Dialogues {
 
 		if dialogue.Lines == nil || len(dialogue.Lines) == 0 {
 			continue
 		}
-		// 濡傛灉褰撳墠鐨勮繖涓€鍙ヨ瘽锛屼负绌猴紝鎴栬€呰繘杩囨鍒欒〃杈惧紡鍓旈櫎鐗规畩瀛楃鍚庝负绌猴紝鍒欒烦杩?
+		// 如果当前的这一句话，为空，或者进过正则表达式剔除特殊字符后为空，则跳过
 		if pkg.ReplaceSpecString(dialogue.Lines[0], "") == "" {
 			continue
 		}
-		// 瀛楀箷鐨勫紑濮嬫椂闂?
+		// 字幕的开始时间
 		oneDialogueStartTime, err := pkg.ParseTime(dialogue.StartTime)
 		if err != nil {
 			return nil, err
 		}
-		// 瀛楀箷鐨勭粨鏉熸椂闂?
+		// 字幕的结束时间
 		oneDialogueEndTime, err := pkg.ParseTime(dialogue.EndTime)
 		if err != nil {
 			return nil, err
 		}
-		// 瀛楀箷鐨勬椂闀匡紝瀵规椂闂磋繘琛屽悜涓嬪彇鏁?
+		// 字幕的时长，对时间进行向下取整
 		oneDialogueStartTimeFloor := pkg.MakeCeil10msMultipleFromFloat(pkg.Time2SecondNumber(oneDialogueStartTime))
 		oneDialogueEndTimeFloor := pkg.MakeFloor10msMultipleFromFloat(pkg.Time2SecondNumber(oneDialogueEndTime))
-		// 寰楀埌涓€鍙ュ鐧界殑鏃堕暱
+		// 得到一句对白的时长
 		changeVADStartIndex := int(oneDialogueStartTimeFloor * 100)
 		changeVADEndIndex := int(oneDialogueEndTimeFloor * 100)
-		// 涓嶈兘瓒呰繃 鏈€鍚庝竴鍙ヨ瘽鐨勬椂甯?
+		// 不能超过 最后一句话的时常
 		if changeVADStartIndex > int(subEndTimeFloor*100) {
 			continue
 		}
-		// 涔熶笉鑳芥瘮璧峰鐨勭涓€鍙ヨ瘽鏃堕棿杞存洿浣?
+		// 也不能比起始的第一句话时间轴更低
 		if changeVADStartIndex < int(subStartTimeFloor10ms) {
 			continue
 		}
-		// 褰撳墠杩欏彞璇濈殑寮€濮嬪拰缁撴潫淇℃伅
+		// 当前这句话的开始和结束信息
 		changerStartIndex := changeVADStartIndex - int(subStartTimeFloor10ms)
 		if changerStartIndex < 0 {
 			continue
@@ -591,7 +609,7 @@ func GetVADInfoFeatureFromSubNew(fileInfo *subparser.FileInfo, SkipFrontAndEndPe
 		if changerEndIndex < 0 {
 			continue
 		}
-		// 濡傛灉涓婁竴涓鐧界殑鏈€鍚庝竴涓?OffsetIndex 杩炴帴鐫€褰撳墠杩欎竴鍙ョ殑绱㈠紩鐨?VAD 淇℃伅 active 鏄?true 灏辫缃负 false
+		// 如果上一个对白的最后一个 OffsetIndex 连接着当前这一句的索引的 VAD 信息 active 是 true 就设置为 false
 		if lastDialogueIndex == changerStartIndex {
 			for i := 1; i <= 2; i++ {
 				if lastDialogueIndex-i >= 0 && subVADs[lastDialogueIndex-i].Active == true {
@@ -599,8 +617,8 @@ func GetVADInfoFeatureFromSubNew(fileInfo *subparser.FileInfo, SkipFrontAndEndPe
 				}
 			}
 		}
-		// 寮€濮嬫牴鎹綋鍓嶈繖鍙ヨ瘽杩涜 VAD 淇℃伅鐨勮缃?
-		// 璋冩暣涔嬪墠鍋氬ソ鐨勬暣浣?VAD 鐨勪俊鎭紝绗﹀悎 VAD active = true
+		// 开始根据当前这句话进行 VAD 信息的设置
+		// 调整之前做好的整体 VAD 的信息，符合 VAD active = true
 		if changerEndIndex >= vadLen {
 			changerEndIndex = vadLen - 1
 		}
@@ -610,7 +628,7 @@ func GetVADInfoFeatureFromSubNew(fileInfo *subparser.FileInfo, SkipFrontAndEndPe
 		lastDialogueIndex = changerEndIndex
 	}
 
-	// 鎴彇鍑烘潵褰撳墠杩欎竴娈?
+	// 截取出来当前这一段
 	tmpVADList := subVADs[skipStartIndex:skipEndIndex]
 	outSubUnits.VADList = tmpVADList
 

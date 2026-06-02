@@ -8,13 +8,12 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/a4k"
-
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/backend"
 
 	subSupplier "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/assrt"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/shooter"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/xunlei"
 
 	"github.com/gin-gonic/gin"
@@ -70,7 +69,6 @@ func (cb *ControllerBase) CheckProxyHandler(c *gin.Context) {
 		//subhd.NewSupplier(cb.fileDownloader),
 		xunlei.NewSupplier(cb.fileDownloader),
 		shooter.NewSupplier(cb.fileDownloader),
-		a4k.NewSupplier(cb.fileDownloader),
 	)
 
 	if settings.Get().SubtitleSources.AssrtSettings.Enabled == true &&
@@ -83,6 +81,12 @@ func (cb *ControllerBase) CheckProxyHandler(c *gin.Context) {
 		settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
 		// 如果开启了 SubtitleBest 字幕源，则需要测试 ASSRt 的代理
 		subSupplierHub.AddSubSupplier(subtitle_best.NewSupplier(cb.fileDownloader))
+	}
+
+	if settings.Get().SubtitleSources.SubDLSettings.Enabled == true &&
+		settings.Get().SubtitleSources.SubDLSettings.Key != "" {
+		// 如果开启了 SubDL 字幕源，则需要测试 SubDL 的代理
+		subSupplierHub.AddSubSupplier(subdl.NewSupplier(cb.fileDownloader))
 	}
 
 	outStatus := subSupplierHub.CheckSubSiteStatus()

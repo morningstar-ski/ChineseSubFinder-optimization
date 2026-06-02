@@ -24,7 +24,7 @@ func TestPipeline_getFramerateRatios2Try(t *testing.T) {
 func TestPipeline_FitGSS(t *testing.T) {
 
 	log := log_helper.GetLogger4Tester()
-	dirRoot := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_timeline_fixer"}, 4, true)
+	dirRoot := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_timeline_fixer"}, 4, true)
 	dirRoot = filepath.Join(dirRoot, "mix")
 	subParserHub := sub_parser_hub.NewSubParserHub(log, ass.NewParser(log), srt.NewParser(log))
 
@@ -121,7 +121,7 @@ func TestPipeline_FitGSS(t *testing.T) {
 
 func TestPipeline_FitGSSByAudio(t *testing.T) {
 
-	dirRoot := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_timeline_fixer"}, 4, true)
+	dirRoot := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_timeline_fixer"}, 4, true)
 	dirRoot = filepath.Join(dirRoot, "mix")
 
 	log := log_helper.GetLogger4Tester()

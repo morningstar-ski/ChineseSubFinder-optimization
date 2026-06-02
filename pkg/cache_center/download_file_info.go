@@ -16,6 +16,8 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/cache_center/models"
 )
 
+type DownloadFileCacheValidator func(subInfo *supplier.SubInfo) error
+
 func (c *CacheCenter) DownloadFileAdd(subInfo *supplier.SubInfo) error {
 	defer c.locker.Unlock()
 	c.locker.Lock()
@@ -60,7 +62,7 @@ func (c *CacheCenter) DownloadFileAdd(subInfo *supplier.SubInfo) error {
 	return nil
 }
 
-func (c *CacheCenter) DownloadFileGet(fileUrlUID string) (bool, *supplier.SubInfo, error) {
+func (c *CacheCenter) DownloadFileGet(fileUrlUID string, validators ...DownloadFileCacheValidator) (bool, *supplier.SubInfo, error) {
 	defer c.locker.Unlock()
 	c.locker.Lock()
 
@@ -68,44 +70,64 @@ func (c *CacheCenter) DownloadFileGet(fileUrlUID string) (bool, *supplier.SubInf
 	c.db.Where("uid = ?", fileUrlUID).Find(&dfs)
 
 	if len(dfs) == 0 {
+		c.Log.Debugln("DownloadFileGet", fileUrlUID, "cache_miss")
 		return false, nil, nil
 	}
 
 	df := dfs[0]
 	localFileFPath := filepath.Join(c.downloadFileSaveRootPath, df.RelPath)
-	if time.Now().After(df.ExpirationTime) {
-		c.removeDownloadFileInfo(&df, localFileFPath)
+	if df.ExpirationTime.Before(time.Now()) {
+		c.Log.Infoln("DownloadFileGet", fileUrlUID, "cache_expired")
+		c.deleteDownloadFileCacheLocked(df, localFileFPath)
 		return false, nil, nil
 	}
-
 	if pkg.IsFile(localFileFPath) == false {
-		c.removeDownloadFileInfo(&df, localFileFPath)
+		c.Log.Warningln("DownloadFileGet", fileUrlUID, "cache_invalid", "file missing")
+		c.deleteDownloadFileCacheLocked(df, localFileFPath)
 		return false, nil, nil
 	}
 
 	bytes, err := os.ReadFile(localFileFPath)
 	if err != nil {
-		c.removeDownloadFileInfo(&df, localFileFPath)
-		return false, nil, err
+		c.Log.Warningln("DownloadFileGet", fileUrlUID, "cache_invalid", "read file", err)
+		c.deleteDownloadFileCacheLocked(df, localFileFPath)
+		return false, nil, nil
 	}
 
 	var subInfo supplier.SubInfo
 	err = json.Unmarshal(bytes, &subInfo)
 	if err != nil {
-		c.removeDownloadFileInfo(&df, localFileFPath)
+		c.Log.Warningln("DownloadFileGet", fileUrlUID, "cache_invalid", "unmarshal", err)
+		c.deleteDownloadFileCacheLocked(df, localFileFPath)
 		return false, nil, nil
 	}
+	if subInfo.FileUrl == "" || len(subInfo.Data) == 0 {
+		c.Log.Warningln("DownloadFileGet", fileUrlUID, "cache_invalid", "empty sub info data")
+		c.deleteDownloadFileCacheLocked(df, localFileFPath)
+		return false, nil, nil
+	}
+	for _, validate := range validators {
+		if validate == nil {
+			continue
+		}
+		err = validate(&subInfo)
+		if err != nil {
+			c.Log.Warningln("DownloadFileGet", fileUrlUID, "cache_invalid", err)
+			c.deleteDownloadFileCacheLocked(df, localFileFPath)
+			return false, nil, nil
+		}
+	}
 
+	c.Log.Debugln("DownloadFileGet", fileUrlUID, "cache_hit")
 	return true, &subInfo, nil
 }
 
-func (c *CacheCenter) removeDownloadFileInfo(df *models.DownloadFileInfo, localFileFPath string) {
-	if pkg.IsFile(localFileFPath) == true {
-		if err := os.Remove(localFileFPath); err != nil && c.Log != nil {
-			c.Log.Warningln("DownloadFileGet.RemoveFile", localFileFPath, err)
+func (c *CacheCenter) deleteDownloadFileCacheLocked(df models.DownloadFileInfo, localFileFPath string) {
+	if localFileFPath != "" && pkg.IsFile(localFileFPath) == true {
+		err := os.Remove(localFileFPath)
+		if err != nil && os.IsNotExist(err) == false {
+			c.Log.Warningln("deleteDownloadFileCacheLocked", df.UID, "remove file", err)
 		}
 	}
-	if err := c.db.Delete(df).Error; err != nil && c.Log != nil {
-		c.Log.Warningln("DownloadFileGet.DeleteDb", df.UID, err)
-	}
+	c.db.Where("uid = ?", df.UID).Delete(&models.DownloadFileInfo{})
 }

@@ -10,7 +10,7 @@ import (
 
 func TestProcess(t *testing.T) {
 
-	rootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_chs_cht_changer"}, 4, true)
+	rootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_chs_cht_changer"}, 4, true)
 
 	type args struct {
 		srcSubFileFPath        string

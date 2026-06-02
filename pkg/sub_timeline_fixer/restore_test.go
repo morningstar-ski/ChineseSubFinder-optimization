@@ -11,7 +11,8 @@ import (
 
 func Test_searchBackUpSubFile(t *testing.T) {
 
-	files, err := searchBackUpSubFile(unit_test_helper.GetTestDataResourceRootPath([]string{"sub_timeline_fixer", "org", "movies"}, 4, false))
+	rootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_timeline_fixer", "org", "movies"}, 4, false)
+	files, err := searchBackUpSubFile(rootDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +23,7 @@ func Test_searchBackUpSubFile(t *testing.T) {
 
 func TestRestore(t *testing.T) {
 
-	rootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_timeline_fixer"}, 4, true)
+	rootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_timeline_fixer"}, 4, true)
 	movieDir := filepath.Join(rootDir, "movies")
 	seriesDir := filepath.Join(rootDir, "series")
 	count, err := Restore(log_helper.GetLogger4Tester(), []string{movieDir}, []string{seriesDir})

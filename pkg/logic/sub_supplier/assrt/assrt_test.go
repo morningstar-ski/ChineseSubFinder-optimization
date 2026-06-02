@@ -1,6 +1,7 @@
 package assrt
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -29,6 +30,7 @@ func defInstance() {
 }
 
 func TestSupplier_getSubListFromFile(t *testing.T) {
+	t.Skip("integration test depends on local media files and assrt availability")
 
 	//videoFPath := "X:\\电影\\失控玩家 (2021)\\失控玩家 (2021).mp4"
 	//isMovie := true
@@ -49,9 +51,17 @@ func TestSupplier_getSubListFromFile(t *testing.T) {
 }
 
 func TestSupplier_CheckAlive(t *testing.T) {
+	t.Skip("integration test depends on assrt availability")
 
 	defInstance()
 	bok, speed := assrtInstance.CheckAlive()
 	println(bok, speed)
 
+}
+
+func TestAssrtSearchKeywordOrder(t *testing.T) {
+	want := []string{"cn", "en", "org", "file"}
+	if !reflect.DeepEqual(assrtSearchKeywordOrder, want) {
+		t.Fatalf("assrtSearchKeywordOrder = %#v; want %#v", assrtSearchKeywordOrder, want)
+	}
 }

@@ -19,7 +19,7 @@ func TestHotFixProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testDataPath := unit_test_helper.GetTestDataResourceRootPath([]string{"hotfix", "001"}, 4, true)
+	testDataPath := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"hotfix", "001"}, 4, true)
 	movieDir := "movies"
 	seriesDir := "series"
 	// 测试文件夹

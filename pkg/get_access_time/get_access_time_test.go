@@ -9,7 +9,7 @@ import (
 
 func TestGetAccessTime_GetAccessTime(t *testing.T) {
 
-	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_parser", "org"}, 4, false)
+	testRootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_parser", "org"}, 4, false)
 	fileFPath := filepath.Join(testRootDir, "[xunlei]_0_C3A5CUsers5CAdministrator5CDesktop5CThe Boss Baby Family Business_S0E0.ass")
 
 	g := GetAccessTimeEx{}

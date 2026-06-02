@@ -10,9 +10,14 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/cache_center"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 )
 
 const taskQueueName = "testQueue"
+
+func init() {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+}
 
 func TestTaskQueue_AddAndGetAndDel(t *testing.T) {
 
@@ -77,6 +82,7 @@ func TestTaskQueue_AddAndClear(t *testing.T) {
 	cache_center.DelDb(taskQueueName)
 
 	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
+	defer taskQueue.Close()
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, pkg.RandStringBytesMaskImprSrcSB(10), i))
 		if err != nil {
@@ -105,6 +111,7 @@ func TestTaskQueue_Update(t *testing.T) {
 	cache_center.DelDb(taskQueueName)
 
 	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
+	defer taskQueue.Close()
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, pkg.RandStringBytesMaskImprSrcSB(10), i))
 		if err != nil {
@@ -168,6 +175,7 @@ func TestTaskQueue_UpdateAdGetOneWaiting(t *testing.T) {
 	cache_center.DelDb(taskQueueName)
 
 	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
+	defer taskQueue.Close()
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, fmt.Sprintf("%d", i), i))
 		if err != nil {
@@ -220,6 +228,7 @@ func TestTaskQueue_UpdatePriority(t *testing.T) {
 	cache_center.DelDb(taskQueueName)
 
 	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
+	defer taskQueue.Close()
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, fmt.Sprintf("%d", i), i))
 		if err != nil {
@@ -284,6 +293,7 @@ func TestTaskQueue_AddAndGetOneJob(t *testing.T) {
 	cache_center.DelDb(taskQueueName)
 
 	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
+	defer taskQueue.Close()
 
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, fmt.Sprintf("%d", i), DefaultTaskPriorityLevel))

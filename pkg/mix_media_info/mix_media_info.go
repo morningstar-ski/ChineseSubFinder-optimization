@@ -90,7 +90,7 @@ func GetMediaInfoAndSave(dealers *media_info_dealers.Dealers, imdbInfo *models.I
 	return mediaInfo, nil
 }
 
-// KeyWordSelect keyWordType cn, 中文， en，英文，org，原始名称, file，归一化文件名
+// KeyWordSelect keyWordType cn, 中文， en，英文，org，原始名称，file，归一化文件名
 func KeyWordSelect(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, keyWordType string) (string, error) {
 
 	keyWord := ""
@@ -111,9 +111,9 @@ func KeyWordSelect(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool,
 			return "", errors.New("OriginalTitle is empty")
 		}
 	} else if keyWordType == "file" {
-		keyWord = normalizeVideoFileName(videoFPath)
+		keyWord = normalizeFileKeyword(videoFPath)
 		if keyWord == "" {
-			return "", errors.New("file name is empty")
+			return "", errors.New("file keyword is empty")
 		}
 	} else {
 		return "", errors.New("keyWordType is not cn, en, org, file")
@@ -131,10 +131,12 @@ func KeyWordSelect(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool,
 	return keyWord, nil
 }
 
-func normalizeVideoFileName(videoFPath string) string {
-	keyWord := filepath.Base(videoFPath)
-	keyWord = strings.ReplaceAll(keyWord, filepath.Ext(keyWord), "")
-	keyWord = strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(keyWord)
-	keyWord = strings.Join(strings.Fields(keyWord), " ")
-	return keyWord
+func normalizeFileKeyword(videoFPath string) string {
+	fileName := strings.TrimSuffix(filepath.Base(videoFPath), filepath.Ext(videoFPath))
+	if fileInfo, err := decode.GetVideoInfoFromFileName(fileName); err == nil && fileInfo != nil && fileInfo.Title != "" {
+		fileName = fileInfo.Title
+	}
+	fileName = pkg.ReplaceSpecString(fileName, " ")
+	fileName = strings.Join(strings.Fields(fileName), " ")
+	return fileName
 }

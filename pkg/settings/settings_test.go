@@ -1,15 +1,15 @@
 package settings
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
-
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/strcut_json"
 )
 
 func TestNewSettings(t *testing.T) {
+	fileName := filepath.Join(t.TempDir(), "testfile.json")
 
 	inSettings := Settings{
 		UserInfo: &UserInfo{
@@ -55,7 +55,7 @@ func TestNewSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outSettings := NewSettings(pkg.ConfigRootDirFPath())
+	outSettings := NewSettings(t.TempDir())
 	err = strcut_json.ToStruct(fileName, &outSettings)
 	if err != nil {
 		t.Fatal(err)
@@ -65,5 +65,3 @@ func TestNewSettings(t *testing.T) {
 		t.Fatal("inSettings Write And Read Not The Same")
 	}
 }
-
-const fileName = "testfile.json"

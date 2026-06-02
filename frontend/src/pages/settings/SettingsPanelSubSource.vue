@@ -8,7 +8,7 @@
             <div>注册：https://assrt.net/user/register.xml，用户面板：https://assrt.net/usercp.php</div>
             <ul class="q-pl-md">
               <li>一般用户是 5c次/min 的 API 请求限制</li>
-              <li>建议设置完 Token 后，重启程序或者容器！</li>
+              <li>保存后会立即生效，无需重启程序或者容器。</li>
               <li>搜索字幕效果未知，如果不用就关闭即可</li>
               <li>建议配合“保存多字幕”的选项服用（如果你使用 Emby 的话）</li>
             </ul>
@@ -33,6 +33,39 @@
         </q-item-section>
       </q-item>
 
+      <template v-if="form.subdl_settings">
+        <q-item tag="label">
+          <q-item-section>
+            <q-item-label>SubDL</q-item-label>
+            <q-item-label caption>
+              <div>文档：https://subdl.com/api-doc</div>
+              <ul class="q-pl-md">
+                <li>当前接入是默认关闭的薄 PoC，优先走 IMDB/TMDB 和季集参数搜索。</li>
+                <li>保存后会立即生效，无需重启程序或者容器。</li>
+                <li>当前实现默认只请求中文字幕结果。</li>
+              </ul>
+            </q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.subdl_settings.enabled" />
+          </q-item-section>
+        </q-item>
+
+        <q-item class="q-mt-sm">
+          <q-item-section>
+            <q-input
+              :disable="!form.subdl_settings.enabled"
+              v-model="form.subdl_settings.key"
+              placeholder="填写你的ApiKey"
+              label="SubDL ApiKey"
+              standout
+              dense
+              :rules="[(val) => !!val || '不能为空']"
+            />
+          </q-item-section>
+        </q-item>
+      </template>
+
       <template v-if="form.subtitle_best_settings">
         <q-item tag="label">
           <q-item-section>
@@ -45,7 +78,7 @@
                   等信息，如果使用人数过多，请配置自己的 TMDB API 使用）。
                 </li>
                 <li>一般用户是每天 50 次下载限制。</li>
-                <li>建议设置完 ApiKey 后，重启程序或者容器！</li>
+                <li>保存后会立即生效，无需重启程序或者容器。</li>
               </ul>
             </q-item-label>
           </q-item-section>

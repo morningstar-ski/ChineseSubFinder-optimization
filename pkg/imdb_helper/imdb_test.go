@@ -29,6 +29,7 @@ func TestGetVideoInfoFromIMDB(t *testing.T) {
 }
 
 func TestIsChineseVideo(t *testing.T) {
+	t.Skip("integration test requires external media metadata services and credentials")
 	type args struct {
 		imdbID  string
 		isMovie bool
@@ -111,6 +112,7 @@ var (
 )
 
 func TestGetIMDBInfoFromVideoFile(t *testing.T) {
+	t.Skip("integration test requires local media library and external metadata services")
 
 	defInstance()
 

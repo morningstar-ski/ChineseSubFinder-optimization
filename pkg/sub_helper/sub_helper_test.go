@@ -17,7 +17,7 @@ import (
 func TestDeleteOneSeasonSubCacheFolder(t *testing.T) {
 	const testSerName = "XXX"
 	const needDelFolderName = "Sub_S1E0"
-	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_helper", "org", needDelFolderName}, 4, false)
+	testRootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_helper", "org", needDelFolderName}, 4, false)
 	desSerFullPath, err := pkg.GetDebugFolderByName([]string{testSerName})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestGetVADInfosFromSub(t *testing.T) {
 	// 这两个字幕是一样的，只不过是格式不同而已
 	subParserHub := sub_parser_hub.NewSubParserHub(log, ass.NewParser(log), srt.NewParser(log))
 
-	testRootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_helper", "org", "R&M-S05E10"}, 4, false)
+	testRootDir := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"sub_helper", "org", "R&M-S05E10"}, 4, false)
 
 	baseSubFile := filepath.Join(testRootDir, "Rick and Morty - S05E10 - Rickmurai Jack WEBRip-1080p.chinese(简,zimuku).default.srt")
 	srcSubFile := filepath.Join(testRootDir, "Rick and Morty - S05E10 - Rickmurai Jack WEBRip-1080p.chinese(简英,zimuku).ass")

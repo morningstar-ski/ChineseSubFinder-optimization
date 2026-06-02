@@ -84,7 +84,7 @@ func (d *Downloader) queueDownloaderLocal() {
 					return
 				}
 				if bok == false {
-					d.log.Errorln(fmt.Sprintf("d.downloadQueue.Del(%d) == false", oneJob.Id))
+					d.log.Errorln(fmt.Sprintf("d.downloadQueue.Del(%s) == false", oneJob.Id))
 					return
 				}
 				return
@@ -99,7 +99,7 @@ func (d *Downloader) queueDownloaderLocal() {
 					return
 				}
 				if bok == false {
-					d.log.Errorln(fmt.Sprintf("d.downloadQueue.Del(%d) == false", oneJob.Id))
+					d.log.Errorln(fmt.Sprintf("d.downloadQueue.Del(%s) == false", oneJob.Id))
 					return
 				}
 				return
@@ -121,7 +121,7 @@ func (d *Downloader) queueDownloaderLocal() {
 				return
 			}
 			if bok == false {
-				d.log.Errorln(fmt.Sprintf("d.downloadQueue.Del(%d) == false", oneJob.Id))
+				d.log.Errorln(fmt.Sprintf("d.downloadQueue.Del(%s) == false", oneJob.Id))
 				return
 			}
 			d.log.Infoln(oneJob.VideoFPath, "is missing, Delete This Job")

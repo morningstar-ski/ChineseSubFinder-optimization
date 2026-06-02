@@ -1,6 +1,8 @@
 package subtitle_best
 
 import (
+	"time"
+
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/mix_media_info"
@@ -11,7 +13,6 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"time"
 )
 
 type Supplier struct {
@@ -22,6 +23,7 @@ type Supplier struct {
 	api                *Api
 	dailyDownloadCount int
 	dailyDownloadLimit int
+	limitInfoReady     bool
 }
 
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
@@ -33,6 +35,7 @@ func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 	sup.isAlive = true // 默认是可以使用的，如果 check 后，再调整状态
 	sup.dailyDownloadCount = 0
 	sup.dailyDownloadLimit = 0
+	sup.limitInfoReady = false
 
 	if settings.Get().AdvancedSettings.Topic != common2.DownloadSubsPerSite {
 		settings.Get().AdvancedSettings.Topic = common2.DownloadSubsPerSite
@@ -77,6 +80,10 @@ func (s *Supplier) OverDailyDownloadLimit() bool {
 	// 如果没有设置这个 API 接口，那么就任务是不可用的
 	if settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey == "" {
 		return true
+	}
+	// 第一次探活之前还没有限额信息，不能因为零值把站点误判成超限
+	if s.limitInfoReady == false {
+		return false
 	}
 	// 留 5 个下载次数的余量
 	if s.dailyDownloadCount >= s.dailyDownloadLimit-5 {
@@ -141,6 +148,7 @@ func (s *Supplier) GetSubListFromFile4Anime(seriesInfo *series.SeriesInfo) ([]su
 func (s *Supplier) updateLimitInfo(limitInfo *LimitInfo) {
 	s.dailyDownloadCount = limitInfo.DailyCount()
 	s.dailyDownloadLimit = limitInfo.DailyLimit()
+	s.limitInfoReady = true
 }
 
 func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier.SubInfo, error) {
@@ -170,6 +178,7 @@ func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier
 		}
 		allSupplierSubInfo = append(allSupplierSubInfo, one...)
 	}
+
 	// 返回前，需要把每一个 Eps 的 Season Episode 信息填充到每个 SubInfo 中
 	return allSupplierSubInfo, nil
 }
@@ -217,7 +226,7 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 		var dSubInfo *supplier.SubInfo
 		// 获取具体的下载地址
 		// 这里需要先从本地的缓存判断是否已经下载过了
-		found, dSubInfo, err = s.fileDownloader.CacheCenter.DownloadFileGet(subInfo.SubSha256)
+		found, dSubInfo, err = s.fileDownloader.CacheCenter.DownloadFileGet(subInfo.SubSha256, s.fileDownloader.ValidateCachedSubInfo)
 		if err != nil {
 			s.log.Errorln(s.GetSupplierName(), "DownloadFileGet", err)
 			continue
@@ -238,8 +247,15 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 				continue
 			}
 			// 这里需要注意的是 SubtitleBest 的下载地址是时效性的，所以不能以下载地址进行唯一性存储
-			dSubInfo, err = s.fileDownloader.GetSubtitleBest(s.GetSupplierName(), int64(index), subInfo.Season, subInfo.Episode,
-				subInfo.Title, subInfo.Ext, subInfo.SubSha256, downloadUrl.DownloadLink)
+			dSubInfo, err = s.fileDownloader.GetSubtitleBest(
+				s.GetSupplierName(),
+				int64(index),
+				subInfo.Season,
+				subInfo.Episode,
+				subInfo.Title,
+				subInfo.Ext,
+				subInfo.SubSha256,
+				downloadUrl.DownloadLink)
 			if err != nil {
 				s.log.Error("FileDownloader.Get", err)
 				continue
