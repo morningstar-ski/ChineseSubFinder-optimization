@@ -38,6 +38,16 @@ func (r *RandomAuthKey) GetAuthKey() (string, error) {
 
 func (r RandomAuthKey) getAuthKey(hourUnixTime int64) (string, error) {
 
+	if len(r.authKey.BaseKey) < r.offset {
+		return "", fmt.Errorf("base key is not set, len=%d", len(r.authKey.BaseKey))
+	}
+	if len(r.authKey.AESKey16) != 16 {
+		return "", fmt.Errorf("AESKey16 is not set, %s", r.authKey.AESKey16)
+	}
+	if len(r.authKey.AESIv16) != 16 {
+		return "", fmt.Errorf("AESIv16 is not set, %s", r.authKey.AESIv16)
+	}
+
 	nowUnixTimeStr := fmt.Sprintf("%d", hourUnixTime)
 	prefixStr := nowUnixTimeStr[len(nowUnixTimeStr)-r.offset:] + nowUnixTimeStr[:r.offset]
 	// 拼接

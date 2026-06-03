@@ -1,0 +1,13 @@
+.git
+.github
+cache
+Logs
+TestCode
+frontend/node_modules
+frontend/dist/spa
+go/bin
+go/pkg
+go/src
+*.exe
+*.db
+ChineseSubFinderSettings.json

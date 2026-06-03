@@ -5,6 +5,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/srt"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/subparser"
 	"github.com/sirupsen/logrus"
 )
@@ -65,12 +66,18 @@ func (m MarkingSystem) SelectEachSiteTop1SubFile(organizeSubFiles []string) ([]s
 	var outSiteName = make([]string, 0)
 	var outSubParserFileInfos = make([]subparser.FileInfo, 0)
 	subInfoDict := m.parseSubFileInfo(organizeSubFiles)
+	siteNames := make([]string, 0, len(subInfoDict))
+	for siteName := range subInfoDict {
+		siteNames = append(siteNames, siteName)
+	}
+	orderedSiteNames := common.OrderSubSiteNames(siteNames, m.subSiteSequence)
 	// 这里需要循环四轮：
 	// 第一轮，双语、字幕类型自定义，优先
 	// 第二轮，单语言（中文）、字幕类型自定义，优先
 	// 第三轮，双语、字幕类型0，优先
 	// 第四轮，单语言（中文）、字幕类型0，优先
-	for siteName, infos := range subInfoDict {
+	for _, siteName := range orderedSiteNames {
+		infos := subInfoDict[siteName]
 		// 每个网站保存一个
 		for i := 0; i < 4; i++ {
 			if i == 0 {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/ranking"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/mix_media_info"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
@@ -204,7 +206,7 @@ func (s *Supplier) searchCandidatesWithFallback(mediaInfo *models.MediaInfo, vid
 			return nil, err
 		}
 
-		candidates := selectCandidates(searchResponse.Results, isMovie, season, episode, s.topic)
+		candidates := selectCandidates(searchResponse.Results, videoFPath, isMovie, season, episode, s.topic)
 		if len(candidates) == 0 {
 			continue
 		}
@@ -277,7 +279,7 @@ func normalizeYear(year string) string {
 	return ""
 }
 
-func selectCandidates(results []SubtitleHit, isMovie bool, season, episode, limit int) []subtitleCandidate {
+func selectCandidates(results []SubtitleHit, videoFPath string, isMovie bool, season, episode, limit int) []subtitleCandidate {
 	out := make([]subtitleCandidate, 0)
 	seen := make(map[string]struct{})
 
@@ -300,10 +302,9 @@ func selectCandidates(results []SubtitleHit, isMovie bool, season, episode, limi
 					DownloadURL: url,
 					Season:      season,
 					Episode:     episode,
+					Hi:          unpack.Hi,
+					Releases:    append([]string{}, result.Releases...),
 				})
-				if len(out) >= limit {
-					return out
-				}
 			}
 		}
 
@@ -320,13 +321,58 @@ func selectCandidates(results []SubtitleHit, isMovie bool, season, episode, limi
 			DownloadURL: url,
 			Season:      result.Season,
 			Episode:     result.Episode,
+			Hi:          result.Hi,
+			Releases:    append([]string{}, result.Releases...),
 		})
-		if len(out) >= limit {
-			return out
-		}
 	}
 
+	rankCandidates(out, videoFPath, isMovie, season, episode)
+	if len(out) > limit {
+		return out[:limit]
+	}
 	return out
+}
+
+func rankCandidates(candidates []subtitleCandidate, videoFPath string, isMovie bool, season, episode int) {
+	if len(candidates) < 2 {
+		return
+	}
+
+	matcher := ranking.NewTargetMatcher(videoFPath, isMovie)
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		left := scoreCandidate(candidates[i], matcher, isMovie, season, episode)
+		right := scoreCandidate(candidates[j], matcher, isMovie, season, episode)
+		if left != right {
+			return left > right
+		}
+		return candidates[i].Name < candidates[j].Name
+	})
+}
+
+func scoreCandidate(candidate subtitleCandidate, matcher ranking.TargetMatcher, isMovie bool, season, episode int) int {
+	return ranking.ScoreCandidate(matcher, subdlCandidateMetadata(candidate), ranking.CandidateScoreSpec{
+		IsMovie:       isMovie,
+		TargetSeason:  season,
+		TargetEpisode: episode,
+		EpisodeMatchWeights: &ranking.EpisodeMatchWeights{
+			ExactMatch:   120,
+			SeasonPack:   20,
+			WrongEpisode: -120,
+		},
+		HIPenalty:           -5,
+		ReleaseMatchWeights: ranking.SubDLReleaseMatchWeights,
+	})
+}
+
+func subdlCandidateMetadata(candidate subtitleCandidate) ranking.CandidateMetadata {
+	return ranking.CandidateMetadata{
+		Name:         candidate.Name,
+		ReleaseNames: append([]string(nil), candidate.Releases...),
+		Season:       candidate.Season,
+		Episode:      candidate.Episode,
+		HasHI:        candidate.Hi,
+	}
 }
 
 func normalizeDownloadURL(rawURL string) string {

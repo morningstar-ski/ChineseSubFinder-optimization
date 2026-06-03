@@ -20,6 +20,23 @@ type SubtitleBestApi struct {
 	randomAuthKey *random_auth_key.RandomAuthKey
 }
 
+func (s *SubtitleBestApi) validateAuthKey() error {
+	if s.authKey.BaseKey == "" || s.authKey.AESKey16 == "" || s.authKey.AESIv16 == "" {
+		return errors.New("auth key is not set")
+	}
+	if s.authKey.BaseKey == random_auth_key.BaseKey || s.authKey.AESKey16 == random_auth_key.AESKey16 || s.authKey.AESIv16 == random_auth_key.AESIv16 {
+		return errors.New("auth key is not set")
+	}
+	if len(s.authKey.AESKey16) != 16 {
+		return errors.New(fmt.Sprintf("AESKey16 is not set, %s", s.authKey.AESKey16))
+	}
+	if len(s.authKey.AESIv16) != 16 {
+		return errors.New(fmt.Sprintf("AESIv16 is not set, %s", s.authKey.AESIv16))
+	}
+
+	return nil
+}
+
 func NewSubtitleBestApi(log *logrus.Logger, inAuthKey random_auth_key.AuthKey) *SubtitleBestApi {
 	return &SubtitleBestApi{
 		log:           log,
@@ -30,8 +47,8 @@ func NewSubtitleBestApi(log *logrus.Logger, inAuthKey random_auth_key.AuthKey) *
 
 func (s *SubtitleBestApi) CheckAlive() error {
 
-	if s.authKey.BaseKey == random_auth_key.BaseKey || s.authKey.AESKey16 == random_auth_key.AESKey16 || s.authKey.AESIv16 == random_auth_key.AESIv16 {
-		return errors.New("auth key is not set")
+	if err := s.validateAuthKey(); err != nil {
+		return err
 	}
 
 	postUrl := webUrlBase + "/v1/subhd-code"
@@ -62,8 +79,8 @@ func (s *SubtitleBestApi) CheckAlive() error {
 
 func (s *SubtitleBestApi) GetCode() (string, error) {
 
-	if s.authKey.BaseKey == random_auth_key.BaseKey || s.authKey.AESKey16 == random_auth_key.AESKey16 || s.authKey.AESIv16 == random_auth_key.AESIv16 {
-		return "", errors.New("auth key is not set")
+	if err := s.validateAuthKey(); err != nil {
+		return "", err
 	}
 
 	postUrl := webUrlBase + "/v1/subhd-code"
@@ -109,14 +126,8 @@ func (s *SubtitleBestApi) GetCode() (string, error) {
 
 func (s *SubtitleBestApi) GetMediaInfo(id, source, videoType string) (*MediaInfoReply, error) {
 
-	if s.authKey.BaseKey == random_auth_key.BaseKey || s.authKey.AESKey16 == random_auth_key.AESKey16 || s.authKey.AESIv16 == random_auth_key.AESIv16 {
-		return nil, errors.New("auth key is not set")
-	}
-	if len(s.authKey.AESKey16) != 16 {
-		return nil, errors.New(fmt.Sprintf("AESKey16 is not set, %s", s.authKey.AESKey16))
-	}
-	if len(s.authKey.AESIv16) != 16 {
-		return nil, errors.New(fmt.Sprintf("AESIv16 is not set, %s", s.authKey.AESIv16))
+	if err := s.validateAuthKey(); err != nil {
+		return nil, err
 	}
 
 	postUrl := webUrlBase + "/v1/media-info"
@@ -155,14 +166,8 @@ func (s *SubtitleBestApi) GetMediaInfo(id, source, videoType string) (*MediaInfo
 // ConvertId 目前仅仅支持 TMDB ID 转 IMDB ID
 func (s *SubtitleBestApi) ConvertId(id, source, videoType string) (*IdConvertReply, error) {
 
-	if s.authKey.BaseKey == random_auth_key.BaseKey || s.authKey.AESKey16 == random_auth_key.AESKey16 || s.authKey.AESIv16 == random_auth_key.AESIv16 {
-		return nil, errors.New("auth key is not set")
-	}
-	if len(s.authKey.AESKey16) != 16 {
-		return nil, errors.New(fmt.Sprintf("AESKey16 is not set, %s", s.authKey.AESKey16))
-	}
-	if len(s.authKey.AESIv16) != 16 {
-		return nil, errors.New(fmt.Sprintf("AESIv16 is not set, %s", s.authKey.AESIv16))
+	if err := s.validateAuthKey(); err != nil {
+		return nil, err
 	}
 
 	postUrl := webUrlBase + "/v1/id-convert"
@@ -200,14 +205,8 @@ func (s *SubtitleBestApi) ConvertId(id, source, videoType string) (*IdConvertRep
 
 func (s *SubtitleBestApi) FeedBack(id, version, MediaServer string, EnableShare, EnableApiKey bool) (*FeedReply, error) {
 
-	if s.authKey.BaseKey == random_auth_key.BaseKey || s.authKey.AESKey16 == random_auth_key.AESKey16 || s.authKey.AESIv16 == random_auth_key.AESIv16 {
-		return nil, errors.New("auth key is not set")
-	}
-	if len(s.authKey.AESKey16) != 16 {
-		return nil, errors.New(fmt.Sprintf("AESKey16 is not set, %s", s.authKey.AESKey16))
-	}
-	if len(s.authKey.AESIv16) != 16 {
-		return nil, errors.New(fmt.Sprintf("AESIv16 is not set, %s", s.authKey.AESIv16))
+	if err := s.validateAuthKey(); err != nil {
+		return nil, err
 	}
 
 	postUrl := webUrlBase + "/v1/feedback"

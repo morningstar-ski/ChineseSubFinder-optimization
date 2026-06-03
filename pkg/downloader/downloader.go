@@ -71,13 +71,7 @@ func NewDownloader(inSubFormatter ifaces.ISubFormatter, fileDownloader *file_dow
 	// 这里就不单独弄一个 settings.SubNameFormatter 字段来传递值了，因为 inSubFormatter 就已经知道是什么 formatter 了
 	downloader.subNameFormatter = subCommon.FormatterName(downloader.subFormatter.GetFormatterFormatterName())
 
-	var sitesSequence = make([]string, 0)
-	// TODO 这里写固定了抉择字幕的顺序
-	sitesSequence = append(sitesSequence, common2.SubSiteSubtitleBest)
-	sitesSequence = append(sitesSequence, common2.SubSiteAssrt)
-	sitesSequence = append(sitesSequence, common2.SubSiteA4K)
-	sitesSequence = append(sitesSequence, common2.SubSiteShooter)
-	sitesSequence = append(sitesSequence, common2.SubSiteXunLei)
+	sitesSequence := common2.DefaultSubSiteSequence()
 	downloader.mk = markSystem.NewMarkingSystem(downloader.log, sitesSequence, settings.Get().AdvancedSettings.SubTypePriority)
 
 	// 初始化，字幕校正的实例

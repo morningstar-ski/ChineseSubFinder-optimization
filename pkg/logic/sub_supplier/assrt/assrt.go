@@ -1,12 +1,14 @@
 package assrt
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/ranking"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 
@@ -41,8 +44,7 @@ func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 	sup := Supplier{}
 	sup.log = fileDownloader.Log
 	sup.fileDownloader = fileDownloader
-	sup.isAlive = true // 默认是可以使用的，如果 check 后，再调整状态
-
+	sup.isAlive = true // 婵帗绋掗…鍫ヮ敇婵犳艾鍙婃い鏍ㄨ壘鐠佹彃霉閻橆喖鍔欏┑鐐叉喘閹粙濡歌閻ｉ亶鏌ㄥ☉妯垮妞も敪鍥у嚑?check 闂佸憡鑹鹃崙鐣屾濠靛绀冪€广儱鐗忓▓鍫曟煛娴ｅ壊鍤熷┑顔芥倐楠炩偓?
 	if settings.Get().AdvancedSettings.Topic != common2.DownloadSubsPerSite {
 		settings.Get().AdvancedSettings.Topic = common2.DownloadSubsPerSite
 	}
@@ -54,13 +56,11 @@ func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 
 func (s *Supplier) CheckAlive() (bool, int64) {
 
-	// 如果没有设置这个 API 接口，那么就任务是不可用的
 	if settings.Get().SubtitleSources.AssrtSettings.Token == "" {
 		s.isAlive = false
 		return false, 0
 	}
 
-	// 计算当前时间
 	startT := time.Now()
 	userInfo, err := s.getUserInfo()
 	if err != nil {
@@ -68,8 +68,8 @@ func (s *Supplier) CheckAlive() (bool, int64) {
 		s.isAlive = false
 		return false, 0
 	}
+
 	s.log.Infoln(s.GetSupplierName(), "CheckAlive", "UserInfo.Status:", userInfo.Status, "UserInfo.Quota:", userInfo.User.Quota)
-	// 计算耗时
 	s.isAlive = true
 	return true, time.Since(startT).Milliseconds()
 }
@@ -85,7 +85,6 @@ func (s *Supplier) OverDailyDownloadLimit() bool {
 		return true
 	}
 
-	// 对于这个接口暂时没有限制
 	return false
 }
 
@@ -161,12 +160,13 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 	if searchSubResult == nil || searchSubResult.Sub.Subs == nil || len(searchSubResult.Sub.Subs) == 0 {
 		return nil, nil
 	}
+	sortAssrtSearchSubs(searchSubResult.Sub.Subs, videoFPath, isMovie)
 
 	videoFileName := filepath.Base(videoFPath)
 	for index, subInfo := range searchSubResult.Sub.Subs {
 
-		// 获取具体的下载地址
-		oneSubDetail, err := s.getSubDetail(subInfo.Id)
+		// 闂佸吋鍎抽崲鑼躲亹閸ヮ剙绀傞柧姘€荤粔濂告煟閵娿儱顏х紒妤€鎳忓顏堟寠婢跺瀣€闂佺鈧崑?
+		oneSubDetail, err := s.getSubDetail(int(subInfo.Id))
 		if err != nil {
 			s.log.Errorln("getSubDetail", err)
 			continue
@@ -175,12 +175,11 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 		if len(oneSubDetail.Sub.Subs) < 1 {
 			continue
 		}
-		// 这里需要注意的是 ASSRT 说明了，下载的地址是有时效性的，那么如果缓存整个地址则不是正确的
-		// 需要缓存的应该是这个字幕的 ID
+		// 闁哄鏅滈悷鈺呭闯閻戣姤顥嗛柍褜鍓涢幉鐗堟媴鐟欏嫭娈橀梺瑙勬緲缁绘帒鈻撻幋锕€鍙?ASSRT 闁荤姴娲ら悺銊ノｉ幋鐐殿洸闁糕槅鍘剧粈澶娾槈閹炬剚鍎撴繛鏉戞喘閹啴宕熼锝呭瑎闂佺鈧崑鎾绘煛閸曢潧鐏℃繝鈧笟鈧顕€鎳滈崹顐ｇ彙闂佽鍎搁崨顔炬殸闂佹寧绋戦惌鍌炲磻閸涱喚鈻曢柛顐ｇ箥濞层倝鏌＄€ｎ偆鐭岀紒鎲嬪閳ь剚绋掕摫闁哄棴绲剧粙澶愵敂閸曨剙瀣€闂佺鈧崑鎾绘煕閹烘挾鎳佺紒妤€顦靛浼搭敍濞戝崬濡х紒缁㈠弾閸犳艾鈻?		// 闂傚倸娲犻崑鎾绘偡閺囨俺鍏岀紒鎲嬪閳ь剚绋掗…鍥р枔閹寸偞鍎熼柡鍐ㄦ祩閸ゅ鏌￠崟闈涚仴缂佺粯鐗楃粙澶愵敂閸曨厽鎲诲Δ鐘靛仦濞叉粌鈻?ID
 		nowSubDownloadUrl := oneSubDetail.Sub.Subs[0].Url
 		subInfo, err := s.fileDownloader.Get(s.GetSupplierName(), int64(index), videoFileName, nowSubDownloadUrl,
 			0, 0,
-			// 得到一个特殊的替代 FileDownloadUrl 的特征字符串
+			// 閻庣數澧楅〃鍛村春鐏炲墽鈻旈柍褜鍓氱粙澶愵敂閸℃妫楀┑鐐茬墕閿曪箑鈻撻幋锕€鍗冲鍓侇焾閺?FileDownloadUrl 闂佹眹鍔岀€氼喗绔熼幒鎴殫濞达絽鎽滈幗鐔虹磼濡ゅ绱伴悷?
 			fmt.Sprintf("%s-%s-%d", s.GetSupplierName(), subInfo.NativeName, subInfo.Id),
 		)
 		if err != nil {
@@ -189,7 +188,7 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 		}
 
 		outSubInfoList = append(outSubInfoList, *subInfo)
-		// 如果够了那么多个字幕就返回
+		// 婵犵鈧啿鈧綊鎮樻径瀣窞闁绘柨澧庨崯濠囨⒑椤撱劎瀵肩紒鐘靛仦瀵板嫬顫濋锕€娈濋柣搴㈢⊕椤ㄥ懐绮绘搴濈剨閺夊牜鍋嗙粻鏌ユ煕?
 		if len(outSubInfoList) >= settings.Get().AdvancedSettings.Topic {
 			return outSubInfoList, nil
 		}
@@ -252,7 +251,7 @@ func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier
 	var allSupplierSubInfo = make([]supplier.SubInfo, 0)
 
 	index := 0
-	// 这里拿到的 seriesInfo ，里面包含了，需要下载字幕的 Eps 信息
+	// 闁哄鏅滈悷鈺呭闯閻戣棄绠柛顭戝枛閻撳倿鏌?seriesInfo 闂佹寧绋戦惌鍌炲闯閻戣姤顥堥柕蹇曞Т閻﹀爼鏌涘鐓庝簵缂侇煉绻濋弫宥呯暆閸曨兛绮柣鐔告磻濡炴帞绮崨顔藉闁芥ê顦遍幗鐔割殽閻愬瓨绀堟繛?Eps 婵烇絽娲犻崜婵囧?
 	for _, episodeInfo := range seriesInfo.NeedDlEpsKeyList {
 
 		index++
@@ -262,19 +261,19 @@ func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier
 			continue
 		}
 		if one == nil {
-			// 没有搜索到字幕
+			// 濠电偛澶囬崜婵嗭耿娓氣偓楠炴牕顭ㄩ崨顓炰憾闂佸憡甯楀姗€鎮鸿閻?
 			s.log.Infoln(s.GetSupplierName(), "Not Find Sub can be download",
 				episodeInfo.Title, episodeInfo.Season, episodeInfo.Episode)
 			continue
 		}
-		// 需要赋值给字幕结构
+		// 闂傚倸娲犻崑鎾绘偡閺囨碍绁扮紒浣规尦瀹曟劙鎳栭埡鍐煑闁诲孩绋掗〃鍛不妞嬪海纾奸柟鎯ь嚟閳?
 		for i := range one {
 			one[i].Season = episodeInfo.Season
 			one[i].Episode = episodeInfo.Episode
 		}
 		allSupplierSubInfo = append(allSupplierSubInfo, one...)
 	}
-	// 返回前，需要把每一个 Eps 的 Season Episode 信息填充到每个 SubInfo 中
+	// 闁哄鏅滈弻銊ッ洪弽顓炵鐎广儱绻掔粈澶愭⒒閸ワ絽浜鹃柣鐔告磻閻掞附淇婄粙鍟冩帟绠涙惔锝庝紘婵?Eps 闂?Season Episode 婵烇絽娲犻崜婵囧閸涱喚绠欐い鎰╁灩鐢娀鏌涢幒鏂款暭闁伙腹鍓濈粙?SubInfo 婵?
 	return allSupplierSubInfo, nil
 }
 
@@ -285,6 +284,7 @@ func (s *Supplier) getSubByKeyWord(keyword string) (*SearchSubResult, error) {
 	}()
 
 	var searchSubResult SearchSubResult
+	var errKnow error
 
 	s.log.Infoln("Search KeyWord:", keyword)
 	tt := url.QueryEscape(keyword)
@@ -292,7 +292,6 @@ func (s *Supplier) getSubByKeyWord(keyword string) (*SearchSubResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	var errKnow error
 	resp, err := httpClient.R().
 		Get(settings.Get().AdvancedSettings.SuppliersSettings.Assrt.RootUrl +
 			"/sub/search?q=" + tt +
@@ -302,26 +301,23 @@ func (s *Supplier) getSubByKeyWord(keyword string) (*SearchSubResult, error) {
 		return nil, err
 	}
 	/*
-		这里有个梗， Sub 有值的时候是一个列表，但是如果为空的时候，又是一个空的结构体
-		所以出现两个结构体需要去尝试解析
-		SearchSubResultEmpty
+		闁哄鏅滈悷鈺呭闯閻戣棄瀚夊璺侯樀閸ゅ鎱ㄦ繝鍐炬缂?Sub 闂佸搫鐗嗛ˇ顖炲焵椤掑啫浜规繛鍫熷灴瀵喚鎹勭悰鈥充壕婵炲棙鍔栫瑧婵炴垶鎸撮崑鎾斥槈閹垮啩绨婚柛顭戜簽閹即鈥﹂幒鏃傤槷婵炶揪绲藉Λ娆徫ｉ崨濠佺箚闁稿本绋撴禍顖氣槈閹捐顏犻柍瑙勭墵閹啴宕熼渚囨Н闂佺锕ラ悷杈╂濠靛鐭楅柛顐ゅ枑绗戞繛鎴炴尨閸嬫挸鈽夐幙鍐х敖闁宠鐗犻幆鍐礋椤撶姵灏濋梺鍝勵儏鐎氼亞绱?		闂佸湱顣介崑鎾趁归悩顔煎姎闁搞値鍙冮幃铏紣娴ｈВ鎷℃繛鎴炴惄娴滅偟鍒掗妸鈺佸嚑闁告洦浜炵粔濂告⒒閸ワ絽浜鹃柣鐔告磻缁€渚€鐛幘鏈电剨婵犻潧锕﹀Σ鎼佹偡濞嗘瑧绋婚柣?		SearchSubResultEmpty
 		SearchSubResult
-		比如这个情况：
-		jsonString := "{\"sub\":{\"action\":\"search\",\"subs\":{},\"result\":\"succeed\",\"keyword\":\"追杀夏娃 S04E07\"},\"status\":0}"
+		濠殿噯绲鹃弻銊┿€呰濞艰鈻庢惔銊ユ疂闂佽鍨伴幊搴ㄥ窗瀹€鍕櫖?		jsonString := "{\"sub\":{\"action\":\"search\",\"subs\":{},\"result\":\"succeed\",\"keyword\":\"闁哄鏅炴慨銈咁焽閸愨晛绶為煫鍥ㄦ尨閺?S04E07\"},\"status\":0}"
 	*/
 	err = json.Unmarshal([]byte(resp.String()), &searchSubResult)
 	if err != nil {
-		// 再此尝试解析空列表
+		// 闂佸憡鍔曠粔鐢割敆濠靛牅鐒婃繝闈涳功濡叉悂鎮峰▎娆戠ɑ闁诲海鏅划姘跺传閸曨偆浠氶柣?
+		errKnow = err
 		var searchSubResultEmpty SearchSubResultEmpty
 		err = json.Unmarshal([]byte(resp.String()), &searchSubResultEmpty)
 		if err != nil {
-			// 如果还是解析错误，那么就要把现在的错误和上面的错误仪器返回出去
-			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", keyword, errKnow.Error())
+			// 婵犵鈧啿鈧綊鎮樻径瀣氦婵☆垳绮瑧闁荤喐鐟辩徊楣冩倵娴犲鐓ユ繛鍡樺俯閸ゆ牠鏌ㄥ☉妯肩劯闁稿鎳忕粙濠囧醇濠靛洨娈ら柣鐔告磻閻掞附淇婇幖浣瑰仢闁哄瀵ч煬顒勬煟閵娿儱顏柡浣革功閹风娀顢涘顓烆伅婵炴垶鎸搁敃顏勵焽娴煎瓨鍎嶉柛鏇ㄥ灡閺呪晠鎮归崶璺虹仧闁告閰ｅ畷鎶藉Ω閵娧咁唹闂佹悶鍎抽崑娑㈠吹椤撱垹鍌?			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", keyword, errKnow.Error())
 			s.log.Errorln(s.GetSupplierName(), "json.Unmarshal", err)
 			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("keyword: %s, resp: %s, error: %s", keyword, resp.String(), errKnow.Error()))
-			return nil, err
+			return nil, errKnow
 		}
-		// 赋值过去
+		// 闁荤姍鍐惧剰闁逞屽墲婢瑰牏鎹㈤崘顔煎偍?
 		searchSubResult.Sub.Action = searchSubResultEmpty.Sub.Action
 		searchSubResult.Sub.Result = searchSubResultEmpty.Sub.Result
 		searchSubResult.Sub.Keyword = searchSubResultEmpty.Sub.Keyword
@@ -331,6 +327,42 @@ func (s *Supplier) getSubByKeyWord(keyword string) (*SearchSubResult, error) {
 	}
 
 	return &searchSubResult, nil
+}
+
+func sortAssrtSearchSubs(subs []SearchSubItem, videoFPath string, isMovie bool) {
+	if len(subs) < 2 {
+		return
+	}
+
+	matcher := ranking.NewTargetMatcher(videoFPath, isMovie)
+	sort.SliceStable(subs, func(i, j int) bool {
+		left := scoreAssrtSearchSub(subs[i], matcher)
+		right := scoreAssrtSearchSub(subs[j], matcher)
+		if left != right {
+			return left > right
+		}
+		if subs[i].VoteScore != subs[j].VoteScore {
+			return subs[i].VoteScore > subs[j].VoteScore
+		}
+		if subs[i].Revision != subs[j].Revision {
+			return subs[i].Revision > subs[j].Revision
+		}
+		return subs[i].Id < subs[j].Id
+	})
+}
+
+func scoreAssrtSearchSub(sub SearchSubItem, matcher ranking.TargetMatcher) int {
+	return ranking.ScoreCandidate(matcher, assrtCandidateMetadata(sub), ranking.CandidateScoreSpec{
+		ReleaseMatchWeights: ranking.StandardReleaseMatchWeights,
+	})
+}
+
+func assrtCandidateMetadata(sub SearchSubItem) ranking.CandidateMetadata {
+	return ranking.CandidateMetadata{
+		ReleaseNames:   []string{sub.Videoname, sub.NativeName},
+		Subtype:        sub.Subtype,
+		AuthorityScore: int(sub.VoteScore)*10 + int(sub.Revision)*2,
+	}
 }
 
 func (s *Supplier) getSubDetail(subID int) (OneSubDetail, error) {
@@ -357,13 +389,13 @@ func (s *Supplier) getSubDetail(subID int) (OneSubDetail, error) {
 			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", subID, err.Error())
 			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("subID: %d, resp: %s, error: %s", subID, resp.String(), err.Error()))
 
-			// 输出调试文件
+			// 闁哄鐗婇幐鎼佸吹椤撶姵瀚柛鎰靛幘濡叉悂鏌￠崒姘煑婵?
 			cacheCenterFolder, err := pkg.GetRootCacheCenterFolder()
 			if err != nil {
 				s.log.Errorln(s.GetSupplierName(), "GetRootCacheCenterFolder", err)
 			}
 			desJsonInfo := filepath.Join(cacheCenterFolder, strconv.Itoa(subID)+"--assrt_search_error_getSubDetail.json")
-			// 写字符串到文件种
+			// 闂佸憡鍔栭悷銉╂偤瑜忕划顓㈡晜閼愁垼娲梺鍛婂笧婢ф寮搁崘鈺冾浄闁告挷绶″?
 			file, _ := os.Create(desJsonInfo)
 			defer func() {
 				_ = file.Close()
@@ -414,70 +446,62 @@ type SearchSubResultEmpty struct {
 
 type SearchSubResult struct {
 	Sub struct {
-		Action string `json:"action"`
-		Subs   []struct {
-			Lang struct {
-				Desc     string `json:"desc,omitempty"`
-				Langlist struct {
-					Langcht bool `json:"langcht,omitempty"`
-					Langdou bool `json:"langdou,omitempty"`
-					Langeng bool `json:"langeng,omitempty"`
-					Langchs bool `json:"langchs,omitempty"`
-				} `json:"langlist,omitempty"`
-			} `json:"lang,omitempty"`
-			Id          int    `json:"id,omitempty"`
-			VoteScore   int    `json:"vote_score,omitempty"`
-			Videoname   string `json:"videoname,omitempty"`
-			ReleaseSite string `json:"release_site,omitempty"`
-			Revision    int    `json:"revision,omitempty"`
-			Subtype     string `json:"subtype,omitempty"`
-			NativeName  string `json:"native_name,omitempty"`
-			UploadTime  string `json:"upload_time,omitempty"`
-		} `json:"subs,omitempty"`
-		Result  string `json:"result,omitempty"`
-		Keyword string `json:"keyword,omitempty"`
+		Action  string          `json:"action"`
+		Subs    []SearchSubItem `json:"subs,omitempty"`
+		Result  string          `json:"result,omitempty"`
+		Keyword string          `json:"keyword,omitempty"`
 	} `json:"sub,omitempty"`
 	Status int `json:"status,omitempty"`
+}
+
+type SearchSubItem struct {
+	Lang struct {
+		Desc     string        `json:"desc,omitempty"`
+		Langlist assrtLangList `json:"langlist,omitempty"`
+	} `json:"lang,omitempty"`
+	Id          assrtFlexibleInt `json:"id,omitempty"`
+	VoteScore   assrtFlexibleInt `json:"vote_score,omitempty"`
+	Videoname   string           `json:"videoname,omitempty"`
+	ReleaseSite string           `json:"release_site,omitempty"`
+	Revision    assrtFlexibleInt `json:"revision,omitempty"`
+	Subtype     string           `json:"subtype,omitempty"`
+	NativeName  string           `json:"native_name,omitempty"`
+	UploadTime  string           `json:"upload_time,omitempty"`
 }
 
 type OneSubDetail struct {
 	Sub struct {
 		Action string `json:"action"`
 		Subs   []struct {
-			DownCount int `json:"down_count,omitempty"`
-			ViewCount int `json:"view_count,omitempty"`
+			DownCount assrtFlexibleInt `json:"down_count,omitempty"`
+			ViewCount assrtFlexibleInt `json:"view_count,omitempty"`
 			Lang      struct {
-				Desc     string `json:"desc,omitempty"`
-				Langlist struct {
-					Langcht bool `json:"langcht,omitempty"`
-					Langdou bool `json:"langdou,omitempty"`
-					Langeng bool `json:"langeng,omitempty"`
-					Langchs bool `json:"langchs,omitempty"`
-				} `json:"langlist,omitempty"`
+				Desc     string        `json:"desc,omitempty"`
+				Langlist assrtLangList `json:"langlist,omitempty"`
 			} `json:"lang,omitempty"`
-			Size       int    `json:"size,omitempty"`
-			Title      string `json:"title,omitempty"`
-			Videoname  string `json:"videoname,omitempty"`
-			Revision   int    `json:"revision,omitempty"`
-			NativeName string `json:"native_name,omitempty"`
-			UploadTime string `json:"upload_time,omitempty"`
+			Size       assrtFlexibleInt `json:"size,omitempty"`
+			Title      string           `json:"title,omitempty"`
+			Videoname  string           `json:"videoname,omitempty"`
+			Revision   assrtFlexibleInt `json:"revision,omitempty"`
+			NativeName string           `json:"native_name,omitempty"`
+			UploadTime string           `json:"upload_time,omitempty"`
 			Producer   struct {
 				Producer string `json:"producer,omitempty"`
 				Verifier string `json:"verifier,omitempty"`
 				Uploader string `json:"uploader,omitempty"`
 				Source   string `json:"source,omitempty"`
 			} `json:"producer,omitempty"`
-			Subtype     string `json:"subtype,omitempty"`
-			VoteScore   int    `json:"vote_score,omitempty"`
-			ReleaseSite string `json:"release_site,omitempty"`
+			Subtype     string           `json:"subtype,omitempty"`
+			VoteScore   assrtFlexibleInt `json:"vote_score,omitempty"`
+			ReleaseSite string           `json:"release_site,omitempty"`
 			//Filelist    []struct {
 			//	S   string `json:"s,omitempty"`
 			//	F   string `json:"f,omitempty"`
 			//	Url string `json:"url,omitempty"`
 			//} `json:"filelist,omitempty"`
-			Id       int    `json:"id,omitempty"`
-			Filename string `json:"filename,omitempty"`
-			Url      string `json:"url,omitempty"`
+			Id       assrtFlexibleInt `json:"id,omitempty"`
+			Filename string           `json:"filename,omitempty"`
+			Url      string           `json:"url,omitempty"`
 		} `json:"subs,omitempty"`
 		Result string `json:"result,omitempty"`
 	} `json:"sub,omitempty"`
@@ -491,4 +515,69 @@ type UserInfo struct {
 		Quota  int    `json:"quota,omitempty"`
 	} `json:"user,omitempty"`
 	Status int `json:"status,omitempty"`
+}
+
+type assrtLangList struct {
+	Langcht bool `json:"langcht,omitempty"`
+	Langdou bool `json:"langdou,omitempty"`
+	Langeng bool `json:"langeng,omitempty"`
+	Langchs bool `json:"langchs,omitempty"`
+}
+
+type assrtFlexibleInt int
+
+func (l *assrtLangList) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) || bytes.Equal(trimmed, []byte("[]")) {
+		*l = assrtLangList{}
+		return nil
+	}
+
+	type alias assrtLangList
+	var parsed alias
+	if err := json.Unmarshal(trimmed, &parsed); err != nil {
+		return err
+	}
+
+	*l = assrtLangList(parsed)
+	return nil
+}
+
+func (v *assrtFlexibleInt) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) || bytes.Equal(trimmed, []byte(`""`)) {
+		*v = 0
+		return nil
+	}
+
+	if trimmed[0] == '"' {
+		var text string
+		if err := json.Unmarshal(trimmed, &text); err != nil {
+			return err
+		}
+		if text == "" {
+			*v = 0
+			return nil
+		}
+		value, err := strconv.Atoi(text)
+		if err != nil {
+			return err
+		}
+		*v = assrtFlexibleInt(value)
+		return nil
+	}
+
+	var number json.Number
+	decoder := json.NewDecoder(bytes.NewReader(trimmed))
+	decoder.UseNumber()
+	if err := decoder.Decode(&number); err != nil {
+		return err
+	}
+
+	value, err := number.Int64()
+	if err != nil {
+		return err
+	}
+	*v = assrtFlexibleInt(value)
+	return nil
 }

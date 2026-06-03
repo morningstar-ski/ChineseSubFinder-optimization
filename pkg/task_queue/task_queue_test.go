@@ -2,6 +2,7 @@ package task_queue
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -19,17 +20,38 @@ func init() {
 	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
 }
 
+func newTestTaskQueue(t *testing.T) *TaskQueue {
+	t.Helper()
+
+	cache_center.DelDb(taskQueueName)
+	taskQueue := newTaskQueueOrSkip(t)
+	t.Cleanup(func() {
+		taskQueue.Close()
+		cache_center.DelDb(taskQueueName)
+	})
+
+	return taskQueue
+}
+
+func newTaskQueueOrSkip(t *testing.T) (taskQueue *TaskQueue) {
+	t.Helper()
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprint(r)
+			if strings.Contains(msg, "go-sqlite3 requires cgo to work") {
+				t.Skip("skip task_queue tests: sqlite driver requires cgo in this environment")
+			}
+			panic(r)
+		}
+	}()
+
+	return NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
+}
+
 func TestTaskQueue_AddAndGetAndDel(t *testing.T) {
 
-	defer func() {
-		cache_center.DelDb(taskQueueName)
-	}()
-	cache_center.DelDb(taskQueueName)
-
-	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
-	defer func() {
-		taskQueue.Close()
-	}()
+	taskQueue := newTestTaskQueue(t)
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, pkg.RandStringBytesMaskImprSrcSB(10), i))
 		if err != nil {
@@ -76,13 +98,7 @@ func TestTaskQueue_AddAndGetAndDel(t *testing.T) {
 
 func TestTaskQueue_AddAndClear(t *testing.T) {
 
-	defer func() {
-		cache_center.DelDb(taskQueueName)
-	}()
-	cache_center.DelDb(taskQueueName)
-
-	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
-	defer taskQueue.Close()
+	taskQueue := newTestTaskQueue(t)
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, pkg.RandStringBytesMaskImprSrcSB(10), i))
 		if err != nil {
@@ -105,13 +121,7 @@ func TestTaskQueue_AddAndClear(t *testing.T) {
 
 func TestTaskQueue_Update(t *testing.T) {
 
-	defer func() {
-		cache_center.DelDb(taskQueueName)
-	}()
-	cache_center.DelDb(taskQueueName)
-
-	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
-	defer taskQueue.Close()
+	taskQueue := newTestTaskQueue(t)
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, pkg.RandStringBytesMaskImprSrcSB(10), i))
 		if err != nil {
@@ -169,13 +179,7 @@ func TestTaskQueue_Update(t *testing.T) {
 
 func TestTaskQueue_UpdateAdGetOneWaiting(t *testing.T) {
 
-	defer func() {
-		cache_center.DelDb(taskQueueName)
-	}()
-	cache_center.DelDb(taskQueueName)
-
-	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
-	defer taskQueue.Close()
+	taskQueue := newTestTaskQueue(t)
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, fmt.Sprintf("%d", i), i))
 		if err != nil {
@@ -222,13 +226,7 @@ func TestTaskQueue_UpdateAdGetOneWaiting(t *testing.T) {
 
 func TestTaskQueue_UpdatePriority(t *testing.T) {
 
-	defer func() {
-		cache_center.DelDb(taskQueueName)
-	}()
-	cache_center.DelDb(taskQueueName)
-
-	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
-	defer taskQueue.Close()
+	taskQueue := newTestTaskQueue(t)
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, fmt.Sprintf("%d", i), i))
 		if err != nil {
@@ -287,13 +285,7 @@ func TestTaskQueue_UpdatePriority(t *testing.T) {
 
 func TestTaskQueue_AddAndGetOneJob(t *testing.T) {
 
-	defer func() {
-		cache_center.DelDb(taskQueueName)
-	}()
-	cache_center.DelDb(taskQueueName)
-
-	taskQueue := NewTaskQueue(cache_center.NewCacheCenter(taskQueueName, log_helper.GetLogger4Tester()))
-	defer taskQueue.Close()
+	taskQueue := newTestTaskQueue(t)
 
 	for i := taskPriorityCount; i >= 0; i-- {
 		bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, fmt.Sprintf("%d", i), DefaultTaskPriorityLevel))

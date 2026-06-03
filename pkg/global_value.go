@@ -163,6 +163,7 @@ func LinuxConfigPathInSelfPath() string {
 func SetLinuxConfigPathInSelfPath(setPath string) {
 
 	setLinuxConfigPathInSelfPath = setPath
+	_configRootDirFPath = ""
 }
 
 var setLinuxConfigPathInSelfPath = ""

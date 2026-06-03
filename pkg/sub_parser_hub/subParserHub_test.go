@@ -1,8 +1,10 @@
 package sub_parser_hub
 
 import (
+	"bytes"
 	"path/filepath"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/ass"
@@ -111,4 +113,40 @@ func TestIsEmbySubChineseLangStringWanted(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDetermineFileTypeFromBytesSupportsUTF16LEASS(t *testing.T) {
+	test4Log := log_helper.GetLogger4Tester()
+	subParserHub := NewSubParserHub(test4Log, ass.NewParser(test4Log), srt.NewParser(test4Log))
+
+	utf16ASS := encodeUTF16LEWithBOM(
+		"[Script Info]\r\n" +
+			"Title: Test\r\n" +
+			"\r\n" +
+			"[Events]\r\n" +
+			"Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\r\n" +
+			"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,你好\\NHello\r\n",
+	)
+
+	bFind, subFileInfo, err := subParserHub.DetermineFileTypeFromBytes(utf16ASS, ".ass")
+	if err != nil {
+		t.Fatalf("DetermineFileTypeFromBytes returned error: %v", err)
+	}
+	if bFind == false || subFileInfo == nil {
+		t.Fatal("expected utf16le ass bytes to be detected")
+	}
+	if len(subFileInfo.DialoguesFilter) == 0 {
+		t.Fatal("expected dialogue entries to be parsed")
+	}
+}
+
+func encodeUTF16LEWithBOM(text string) []byte {
+	encoded := utf16.Encode([]rune(text))
+	out := bytes.NewBuffer(make([]byte, 0, 2+len(encoded)*2))
+	out.Write([]byte{0xFF, 0xFE})
+	for _, r := range encoded {
+		out.WriteByte(byte(r))
+		out.WriteByte(byte(r >> 8))
+	}
+	return out.Bytes()
 }

@@ -31,4 +31,6 @@ type subtitleCandidate struct {
 	DownloadURL string
 	Season      int
 	Episode     int
+	Hi          bool
+	Releases    []string
 }

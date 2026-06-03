@@ -28,6 +28,28 @@ ChineseSubFinder 是一个面向电影与剧集媒体库的中文字幕自动检
 
 ## 使用介绍
 
+### Docker 一键部署
+
+当前仓库已经提供源码直出镜像的默认链路，直接在仓库根目录执行：
+
+```bash
+docker compose up -d --build
+```
+
+默认会：
+
+- 使用仓库当前源码构建前端和后端
+- 生成你自己的 `chinesesubfinder` 镜像，而不是下载上游官方 release
+- 启动容器 `chinesesubfinder`
+
+可选构建参数：
+
+```bash
+APP_VERSION=v0.55.4-local GOPROXY=https://goproxy.cn,direct docker compose up -d --build
+```
+
+运行配置见根目录 [compose.yaml](compose.yaml)。
+
 ### 1. 准备媒体目录
 
 先准备电影和剧集目录，并确保程序可以访问这些路径。
@@ -68,6 +90,12 @@ go test ./...
 cd frontend
 npm run build
 ```
+
+## Docker 说明
+
+- 根目录 `Dockerfile` 是当前仓库推荐的可部署构建链路
+- 根目录 `compose.yaml` 是默认启动入口
+- `docker/full-release.Dockerfile` 仍保留作历史文件，不适合本仓库源码直出部署
 
 ## 说明
 

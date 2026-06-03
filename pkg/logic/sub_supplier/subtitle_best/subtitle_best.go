@@ -1,10 +1,12 @@
 package subtitle_best
 
 import (
+	"sort"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/ranking"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/mix_media_info"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
@@ -219,6 +221,7 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 	if len(subtitle.Subtitles) <= 0 {
 		return nil, nil
 	}
+	sortSubtitleBestSubtitles(subtitle.Subtitles, videoFPath, isMovie, season, episode)
 
 	for index, subInfo := range subtitle.Subtitles {
 
@@ -275,3 +278,44 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 const (
 	headerToken = "5akwmGAbuFWqgaZf9QwT"
 )
+
+func sortSubtitleBestSubtitles(subtitles []Subtitle, videoFPath string, isMovie bool, season, episode int) {
+	if len(subtitles) < 2 {
+		return
+	}
+
+	matcher := ranking.NewTargetMatcher(videoFPath, isMovie)
+	sort.SliceStable(subtitles, func(i, j int) bool {
+		left := scoreSubtitleBestSubtitle(subtitles[i], matcher, isMovie, season, episode)
+		right := scoreSubtitleBestSubtitle(subtitles[j], matcher, isMovie, season, episode)
+		if left != right {
+			return left > right
+		}
+		return subtitles[i].SubSha256 < subtitles[j].SubSha256
+	})
+}
+
+func scoreSubtitleBestSubtitle(sub Subtitle, matcher ranking.TargetMatcher, isMovie bool, season, episode int) int {
+	return ranking.ScoreCandidate(matcher, subtitleBestCandidateMetadata(sub), ranking.CandidateScoreSpec{
+		IsMovie:       isMovie,
+		TargetSeason:  season,
+		TargetEpisode: episode,
+		SeasonEpisodeWeights: &ranking.SeasonEpisodeWeights{
+			SeasonMatch:     20,
+			SeasonMismatch:  -20,
+			EpisodeMatch:    30,
+			EpisodeMismatch: -40,
+		},
+		SubTypePriority:     settings.Get().AdvancedSettings.SubTypePriority,
+		ReleaseMatchWeights: ranking.StandardReleaseMatchWeights,
+	})
+}
+
+func subtitleBestCandidateMetadata(sub Subtitle) ranking.CandidateMetadata {
+	return ranking.CandidateMetadata{
+		Name:        sub.Title,
+		Season:      sub.Season,
+		Episode:     sub.Episode,
+		SubtitleExt: sub.Ext,
+	}
+}

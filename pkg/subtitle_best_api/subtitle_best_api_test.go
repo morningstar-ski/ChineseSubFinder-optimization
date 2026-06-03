@@ -51,3 +51,15 @@ func TestSubtitleBestApi_AuthRequired(t *testing.T) {
 		})
 	}
 }
+
+func TestSubtitleBestApi_EmptyAuthRequired(t *testing.T) {
+	bapi := NewSubtitleBestApi(log_helper.GetLogger4Tester(), random_auth_key.AuthKey{})
+
+	_, err := bapi.GetCode()
+	if err == nil {
+		t.Fatal("expected auth validation error")
+	}
+	if !strings.Contains(err.Error(), "auth key is not set") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

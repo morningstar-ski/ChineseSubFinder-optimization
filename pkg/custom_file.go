@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -9,10 +10,11 @@ import (
 )
 
 func ReadCustomPortFile(log *logrus.Logger) int {
-	if IsFile(customPort) == false {
+	customPortFilePath := resolveCustomFilePath(customPort)
+	if IsFile(customPortFilePath) == false {
 		return defPort
 	} else {
-		bytes, err := os.ReadFile(customPort)
+		bytes, err := os.ReadFile(customPortFilePath)
 		if err != nil {
 			log.Errorln("ReadFile CustomPort Error", err)
 			log.Infoln("Use DefPort", defPort)
@@ -32,10 +34,11 @@ func ReadCustomPortFile(log *logrus.Logger) int {
 }
 
 func ReadCustomAuthFile(log *logrus.Logger) bool {
-	if IsFile(customAuth) == false {
+	customAuthFilePath := resolveCustomFilePath(customAuth)
+	if IsFile(customAuthFilePath) == false {
 		return false
 	} else {
-		bytes, err := os.ReadFile(customAuth)
+		bytes, err := os.ReadFile(customAuthFilePath)
 		if err != nil {
 			log.Errorln("ReadFile CustomAuth Error", err)
 			return false
@@ -55,6 +58,24 @@ func ReadCustomAuthFile(log *logrus.Logger) bool {
 		log.Infoln("Use CustomAuth")
 		return true
 	}
+}
+
+func resolveCustomFilePath(fileName string) string {
+	if IsFile(fileName) {
+		return fileName
+	}
+
+	configRootDir := ConfigRootDirFPath()
+	if configRootDir == "" {
+		return fileName
+	}
+
+	configRootFilePath := filepath.Join(configRootDir, fileName)
+	if IsFile(configRootFilePath) {
+		return configRootFilePath
+	}
+
+	return fileName
 }
 
 const (

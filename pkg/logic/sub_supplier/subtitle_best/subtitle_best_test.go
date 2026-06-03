@@ -1,6 +1,7 @@
 package subtitle_best
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -89,5 +90,71 @@ func TestSupplier_OverDailyDownloadLimitBeforeFirstCheck(t *testing.T) {
 	supplier.dailyDownloadLimit = 100
 	if supplier.OverDailyDownloadLimit() == false {
 		t.Fatal("expected known near-limit state to block downloads")
+	}
+}
+
+func TestSortSubtitleBestSubtitlesPrefersMatchingMetadata(t *testing.T) {
+	subtitles := []Subtitle{
+		{
+			SubSha256: "a",
+			Title:     "My Show S01E03 720p HDTV-OTHER",
+			Ext:       ".srt",
+			IsMovie:   false,
+			Season:    1,
+			Episode:   3,
+		},
+		{
+			SubSha256: "b",
+			Title:     "My Show S01E03 1080p WEB-DL-GROUP",
+			Ext:       ".srt",
+			IsMovie:   false,
+			Season:    1,
+			Episode:   3,
+		},
+	}
+
+	sortSubtitleBestSubtitles(subtitles, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3)
+	if subtitles[0].SubSha256 != "b" {
+		t.Fatalf("expected metadata-matching subtitle first, got %#v", subtitles[0])
+	}
+}
+
+func TestSortSubtitleBestSubtitlesPrefersExactEpisode(t *testing.T) {
+	subtitles := []Subtitle{
+		{
+			SubSha256: "a",
+			Title:     "My Show S01E04 1080p WEB-DL-GROUP",
+			Ext:       ".srt",
+			IsMovie:   false,
+			Season:    1,
+			Episode:   4,
+		},
+		{
+			SubSha256: "b",
+			Title:     "My Show S01E03 1080p WEB-DL-GROUP",
+			Ext:       ".srt",
+			IsMovie:   false,
+			Season:    1,
+			Episode:   3,
+		},
+	}
+
+	sortSubtitleBestSubtitles(subtitles, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3)
+	if subtitles[0].SubSha256 != "b" {
+		t.Fatalf("expected exact episode subtitle first, got %#v", subtitles[0])
+	}
+}
+
+func TestSubtitleBestCandidateMetadata(t *testing.T) {
+	sub := Subtitle{
+		Title:   "My Show S01E03 1080p WEB-DL-GROUP",
+		Ext:     ".srt",
+		Season:  1,
+		Episode: 3,
+	}
+
+	metadata := subtitleBestCandidateMetadata(sub)
+	if metadata.Name != sub.Title || metadata.SubtitleExt != sub.Ext || metadata.Season != 1 || metadata.Episode != 3 {
+		t.Fatalf("unexpected metadata %#v", metadata)
 	}
 }

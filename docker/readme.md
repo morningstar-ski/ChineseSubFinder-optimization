@@ -1,5 +1,30 @@
 ## 前言
 
+### 当前仓库推荐方式
+
+这个仓库现在默认使用**源码直出镜像**的方式部署，请优先在仓库根目录执行：
+
+```bash
+docker compose up -d --build
+```
+
+如果构建环境需要代理，可以显式传入：
+
+```bash
+APP_VERSION=v0.55.4-local \
+GOPROXY=https://goproxy.cn,direct \
+HTTP_PROXY=http://127.0.0.1:7890 \
+HTTPS_PROXY=http://127.0.0.1:7890 \
+docker compose up -d --build
+```
+
+说明：
+
+- 根目录 `Dockerfile` 会从当前仓库源码构建前端和后端
+- 根目录 `compose.yaml` 是默认启动入口
+- `docker/full-release.Dockerfile` 会下载上游官方 release，**不适合**这个改写仓库的发布
+- `docker/lite-release.Dockerfile` 只保留历史参考意义，默认也不作为一键部署入口
+
 使用本程序是有前提的，高度依赖 Emby、Jellyfin、Plex、tinyMediaManager 这类软件对你的视频（电影、连续剧）进行削刮。
 
 > 没有削刮的时候，电影可以正常下载字幕，连续剧无法正确下载，如果目录结构不对，也不确定能够下载，也不打算解决类似的问题

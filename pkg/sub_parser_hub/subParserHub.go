@@ -61,9 +61,13 @@ func (p SubParserHub) DetermineFileTypeFromFile(filePath string) (bool, *subpars
 // DetermineFileTypeFromBytes 确定字幕文件的类型，是双语字幕或者某一种语言等等信息，如果返回 nil ，那么就说明都没有字幕的格式匹配上
 // 如果要做字幕的时间轴匹配，很可能需要一个功能 sub_helper.MergeMultiDialogue4EngSubtitle，但是仅仅是合并了 English 字幕时间轴
 func (p SubParserHub) DetermineFileTypeFromBytes(inBytes []byte, nowExt string) (bool, *subparser.FileInfo, error) {
+	normalizedBytes, err := language.ChangeFileCoding2UTF8(inBytes)
+	if err != nil {
+		return false, nil, err
+	}
 
 	for _, parser := range p.Parser {
-		bFind, subFileInfo, err := parser.DetermineFileTypeFromBytes(inBytes, nowExt)
+		bFind, subFileInfo, err := parser.DetermineFileTypeFromBytes(normalizedBytes, nowExt)
 		if err != nil {
 			return false, nil, err
 		}
