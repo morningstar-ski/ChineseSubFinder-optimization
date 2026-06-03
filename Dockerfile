@@ -75,7 +75,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=backend-builder /out/chinesesubfinder /usr/bin/chinesesubfinder
 COPY docker/lite-entrypoint.sh /usr/bin/entrypoint.sh
-RUN chmod +x /usr/bin/chinesesubfinder /usr/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/bin/entrypoint.sh \
+    && chmod +x /usr/bin/chinesesubfinder /usr/bin/entrypoint.sh
 VOLUME ["/config", "/media"]
 WORKDIR /config
 EXPOSE 19035 19037
