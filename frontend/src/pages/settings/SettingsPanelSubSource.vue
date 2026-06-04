@@ -66,6 +66,93 @@
         </q-item>
       </template>
 
+      <template v-if="form.opensubtitles_settings">
+        <q-item tag="label">
+          <q-item-section>
+            <q-item-label>OpenSubtitles</q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.opensubtitles_settings.enabled" />
+          </q-item-section>
+        </q-item>
+
+        <q-item class="q-mt-sm">
+          <q-item-section>
+            <q-input
+              :disable="!form.opensubtitles_settings.enabled"
+              v-model="form.opensubtitles_settings.api_key"
+              placeholder="API key"
+              label="OpenSubtitles API key"
+              standout
+              dense
+              :rules="[(val) => !!val || 'Required']"
+            />
+          </q-item-section>
+        </q-item>
+
+        <q-item class="q-mt-sm">
+          <q-item-section>
+            <q-input
+              :disable="!form.opensubtitles_settings.enabled"
+              v-model="form.opensubtitles_settings.username"
+              placeholder="Username"
+              label="OpenSubtitles username"
+              standout
+              dense
+              :rules="[(val) => !!val || 'Required']"
+            />
+          </q-item-section>
+        </q-item>
+
+        <q-item class="q-mt-sm">
+          <q-item-section>
+            <q-input
+              :disable="!form.opensubtitles_settings.enabled"
+              v-model="form.opensubtitles_settings.password"
+              placeholder="Password"
+              label="OpenSubtitles password"
+              standout
+              dense
+              type="password"
+              :rules="[(val) => !!val || 'Required']"
+            />
+          </q-item-section>
+        </q-item>
+      </template>
+
+      <template v-if="form.tvsubtitles_settings">
+        <q-item tag="label">
+          <q-item-section>
+            <q-item-label>TVsubtitles</q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.tvsubtitles_settings.enabled" />
+          </q-item-section>
+        </q-item>
+      </template>
+
+      <template v-if="form.moviesubtitles_settings">
+        <q-item tag="label">
+          <q-item-section>
+            <q-item-label>Moviesubtitles</q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.moviesubtitles_settings.enabled" />
+          </q-item-section>
+        </q-item>
+      </template>
+
+      <template v-if="form.subhd_settings">
+        <q-item tag="label">
+          <q-item-section>
+            <q-item-label>SubHD</q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.subhd_settings.enabled" />
+          </q-item-section>
+        </q-item>
+      </template>
+
       <template v-if="form.subtitle_best_settings">
         <q-item tag="label">
           <q-item-section>

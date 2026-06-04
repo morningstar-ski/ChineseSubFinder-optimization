@@ -155,7 +155,7 @@
       <q-item>
         <q-item-section>
           <q-item-label class="q-mb-sm"> 字幕源设置</q-item-label>
-          <q-item v-for="item in form.suppliers_settings" :key="item" clickable>
+          <q-item v-for="item in visibleSuppliers" :key="item.name" clickable>
             <q-item-section avatar class="text-bold" style="width: 120px">
               {{ item.name }}
             </q-item-section>
@@ -327,6 +327,35 @@
         </q-item-section>
       </q-item>
 
+      <template v-if="form.fix_time_line">
+        <q-item class="q-mt-sm">
+          <q-item-section>
+            <q-input
+              v-model.number="formModel.timeline_fixer_settings.max_offset_time"
+              type="number"
+              label="Timeline max offset (sec)"
+              standout
+              dense
+              :rules="timelineMaxOffsetRules"
+            />
+          </q-item-section>
+        </q-item>
+
+        <q-item class="q-mt-sm">
+          <q-item-section>
+            <q-input
+              v-model.number="formModel.timeline_fixer_settings.min_offset"
+              type="number"
+              label="Timeline min offset (sec)"
+              standout
+              dense
+              step="0.1"
+              :rules="timelineMinOffsetRules"
+            />
+          </q-item-section>
+        </q-item>
+      </template>
+
       <q-separator spaced inset></q-separator>
 
       <q-item tag="label" v-ripple>
@@ -374,6 +403,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import {
   SUB_NAME_FORMAT_EMBY,
   SUB_NAME_FORMAT_NORMAL,
@@ -394,7 +424,23 @@ const subNameFormatDescMap = {
   [SUB_NAME_VIDEO]: '无语言描述后缀，AAA.ass or AAA.srt',
 };
 
+const timelineMaxOffsetRules = [
+  (val) => Number.isFinite(val) || 'Enter a number',
+  (val) => val >= 1 || 'Must be at least 1',
+  (val) => val <= 700 || 'Must be 700 or less',
+];
+
+const timelineMinOffsetRules = [
+  (val) => Number.isFinite(val) || 'Enter a number',
+  (val) => val > 0 || 'Must be greater than 0',
+  (val) => val <= 1 || 'Must be 1 or less',
+];
+
 const { advanced_settings: form } = toRefs(formModel);
+const hiddenSupplierNames = new Set(['a4k', 'zimuku']);
+const visibleSuppliers = computed(() =>
+  Object.values(form.value?.suppliers_settings ?? {}).filter((item) => item && !hiddenSupplierNames.has(item.name))
+);
 
 const handleSubSourceUpdate = (item, data) => {
   formModel.advanced_settings.suppliers_settings[item.name].root_url = data.url;

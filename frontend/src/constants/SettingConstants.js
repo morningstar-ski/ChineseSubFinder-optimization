@@ -37,10 +37,13 @@ export const AUTO_CONVERT_LANG_NAME_MAP = {
 export const DEFAULT_SUB_SOURCE_URL_MAP = {
   xunlei: 'http://sub.xmp.sandai.net:8000/subxl/%s.json',
   shooter: 'https://www.shooter.cn/api/subapi.php',
+  opensubtitles: 'https://api.opensubtitles.com/api/v1',
+  tvsubtitles: 'https://www.tvsubtitles.net',
+  moviesubtitles: 'https://www.moviesubtitles.org',
+  subdl: 'https://api.subdl.com/api/v1',
+  subtitle_best: 'https://api.subtitle.best/share-sub/v1',
   subhd: 'https://subhd.tv',
-  zimuku: 'https://zimuku.org',
   assrt: 'https://api.assrt.net/v1',
-  a4k: 'https://www.a4k.net',
 };
 
 export const PROXY_TYPE_HTTP = 'http';

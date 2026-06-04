@@ -6,8 +6,12 @@ import "sort"
 func DefaultSubSiteSequence() []string {
 	return []string{
 		SubSiteSubtitleBest,
+		SubSiteOpenSubtitles,
+		SubSiteTVSubtitles,
+		SubSiteMovieSubtitles,
 		SubSiteAssrt,
 		SubSiteSubDL,
+		SubSiteSubHd,
 		SubSiteShooter,
 		SubSiteXunLei,
 	}

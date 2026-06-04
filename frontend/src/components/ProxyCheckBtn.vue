@@ -11,13 +11,19 @@
       <q-card-section>
         <q-list dense>
           <q-item v-for="item in checkList" :key="item.name">
-            <q-item-section>{{ item.name }}</q-item-section>
+            <q-item-section>
+              <q-item-label>{{ item.name }}</q-item-label>
+              <q-item-label v-if="getStatusMeta(item)" caption>{{ getStatusMeta(item) }}</q-item-label>
+            </q-item-section>
             <q-item-section side>
               <div class="row items-center q-gutter-sm" v-if="item.valid">
                 <span class="text-positive">{{ item.speed }}ms</span>
                 <q-icon name="done" size="18px" color="positive"></q-icon>
               </div>
-              <q-icon v-else name="close" size="18px" color="negative"></q-icon>
+              <div v-else class="column items-end">
+                <span v-if="item.reason" class="text-negative text-caption">{{ item.reason }}</span>
+                <q-icon name="close" size="18px" color="negative"></q-icon>
+              </div>
             </q-item-section>
           </q-item>
         </q-list>
@@ -45,5 +51,16 @@ const checkProxy = async () => {
   checking.value = false;
   checkList.value = res?.sub_site_status || [];
   show.value = true;
+};
+
+const getStatusMeta = (item) => {
+  const parts = [];
+  if (item.runtime_mode) {
+    parts.push(`mode: ${item.runtime_mode}`);
+  }
+  if (item.enabled === false) {
+    parts.push('disabled');
+  }
+  return parts.join(' | ');
 };
 </script>

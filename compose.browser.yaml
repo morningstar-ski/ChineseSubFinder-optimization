@@ -1,0 +1,7 @@
+services:
+  chinesesubfinder:
+    build:
+      args:
+        LITE_MODE: "false"
+        INSTALL_BROWSER: "true"
+    image: ${CSF_BROWSER_IMAGE:-weishaw/chinesesubfinder:local-browser}

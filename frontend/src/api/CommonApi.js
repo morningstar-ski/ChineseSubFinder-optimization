@@ -7,6 +7,8 @@ class CommonAPi extends BaseApi {
 
   checkProxy = (params) => this.http('/check-proxy', params, 'POST', { timeout: 2 * 60 * 1000 });
 
+  checkSubSupplier = (params) => this.http('/v1/check-sub-supplier', params, 'POST', { timeout: 2 * 60 * 1000 });
+
   checkPath = (params) => this.http('/check-path', params, 'POST');
 
   checkEmbyPath = (data) => this.http('/check-emby-path', data, 'POST');

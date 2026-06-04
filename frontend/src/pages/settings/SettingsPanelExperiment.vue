@@ -71,7 +71,7 @@
       <template v-if="form.remote_chrome_settings.enable">
         <q-item>
           <q-item-section>
-            <q-item-label>远程 Docker 地址</q-item-label>
+            <q-item-label>Remote Chrome ws URL</q-item-label>
           </q-item-section>
           <q-item-section avatar>
             <q-input
@@ -86,22 +86,7 @@
 
         <q-item>
           <q-item-section>
-            <q-item-label>远程 Docker 中的 ADBlocker 目录</q-item-label>
-          </q-item-section>
-          <q-item-section avatar>
-            <q-input
-              v-model="form.remote_chrome_settings.remote_adblock_path"
-              placeholder="/mnt/share/adblock1"
-              standout
-              dense
-              :rules="[(val) => (form.remote_chrome_settings.enable && !!val) || '不能为空']"
-            />
-          </q-item-section>
-        </q-item>
-
-        <q-item>
-          <q-item-section>
-            <q-item-label>远程 Docker 中的缓存文件夹目录</q-item-label>
+            <q-item-label>Remote user data dir</q-item-label>
           </q-item-section>
           <q-item-section avatar>
             <q-input
@@ -109,7 +94,6 @@
               placeholder="/mnt/share/tmp"
               standout
               dense
-              :rules="[(val) => (form.remote_chrome_settings.enable && !!val) || '不能为空']"
             />
           </q-item-section>
         </q-item>

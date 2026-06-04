@@ -23,6 +23,9 @@ const (
 	SubSiteA4K              = "a4k"
 	SubSiteSubDL            = "subdl"
 	SubSiteSubtitleBest     = "subtitle_best"
+	SubSiteOpenSubtitles    = "opensubtitles"
+	SubSiteTVSubtitles      = "tvsubtitles"
+	SubSiteMovieSubtitles   = "moviesubtitles"
 )
 
 const (

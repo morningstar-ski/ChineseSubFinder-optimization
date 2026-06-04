@@ -103,6 +103,7 @@ func InitRouter(
 
 		GroupV1.GET("/settings", cbV1.SettingsHandler)
 		GroupV1.PUT("/settings", cbV1.SettingsHandler)
+		GroupV1.POST("/check-sub-supplier", cbV1.CheckSubSupplierHandler)
 
 		GroupV1.POST("/daemon/start", cbV1.DaemonStartHandler)
 		GroupV1.POST("/daemon/stop", cbV1.DaemonStopHandler)

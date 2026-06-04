@@ -6,8 +6,12 @@ func TestDefaultSubSiteSequence(t *testing.T) {
 	got := DefaultSubSiteSequence()
 	want := []string{
 		SubSiteSubtitleBest,
+		SubSiteOpenSubtitles,
+		SubSiteTVSubtitles,
+		SubSiteMovieSubtitles,
 		SubSiteAssrt,
 		SubSiteSubDL,
+		SubSiteSubHd,
 		SubSiteShooter,
 		SubSiteXunLei,
 	}
@@ -29,12 +33,14 @@ func TestDefaultSubSiteSequence(t *testing.T) {
 
 func TestOrderSubSiteNames(t *testing.T) {
 	got := OrderSubSiteNames(
-		[]string{SubSiteShooter, "custom_site", SubSiteAssrt, SubSiteSubDL, SubSiteShooter},
+		[]string{SubSiteShooter, "custom_site", SubSiteAssrt, SubSiteOpenSubtitles, SubSiteSubDL, SubSiteSubHd, SubSiteShooter},
 		DefaultSubSiteSequence(),
 	)
 	want := []string{
+		SubSiteOpenSubtitles,
 		SubSiteAssrt,
 		SubSiteSubDL,
+		SubSiteSubHd,
 		SubSiteShooter,
 		"custom_site",
 	}

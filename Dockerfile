@@ -28,6 +28,7 @@ ARG HTTPS_PROXY
 ARG NO_PROXY
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG APP_VERSION=dev
+ARG LITE_MODE=true
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -51,11 +52,12 @@ RUN set -eux; \
     export GOARCH="${TARGETARCH:-amd64}"; \
     if [ "${GOARCH}" = "arm" ] && [ -n "${TARGETVARIANT:-}" ]; then export GOARM="${TARGETVARIANT#v}"; fi; \
     CGO_ENABLED=1 go build \
-      -ldflags="-s -w -X main.AppVersion=${APP_VERSION} -X main.LiteMode=true" \
+      -ldflags="-s -w -X main.AppVersion=${APP_VERSION} -X main.LiteMode=${LITE_MODE}" \
       -o /out/chinesesubfinder \
       ./cmd/chinesesubfinder
 
 FROM ${RUNTIME_IMAGE}
+ARG INSTALL_BROWSER=false
 ENV TZ=Asia/Shanghai \
     PERMS=true \
     PUID=1026 \
@@ -70,6 +72,29 @@ RUN apt-get update \
         gosu \
         tini \
         tzdata \
+    && if [ "${INSTALL_BROWSER}" = "true" ]; then apt-get install -y --no-install-recommends \
+        chromium \
+        fonts-liberation \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libcups2 \
+        libdbus-1-3 \
+        libdrm2 \
+        libgbm1 \
+        libgtk-3-0 \
+        libnspr4 \
+        libnss3 \
+        libu2f-udev \
+        libvulkan1 \
+        libx11-xcb1 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+        tesseract-ocr \
+        xdg-utils; fi \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*

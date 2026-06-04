@@ -30,6 +30,11 @@ func NewMarkingSystem(log *logrus.Logger, subSiteSequence []string, subTypePrior
 func (m MarkingSystem) SelectOneSubFile(organizeSubFiles []string) *subparser.FileInfo {
 	var finalSubFile *subparser.FileInfo
 	subInfoDict := m.parseSubFileInfo(organizeSubFiles)
+	siteNames := make([]string, 0, len(subInfoDict))
+	for siteName := range subInfoDict {
+		siteNames = append(siteNames, siteName)
+	}
+	orderedSiteNames := common.OrderSubSiteNames(siteNames, m.subSiteSequence)
 	// 优先级别暂定 subSiteSequence: zimuku -> subhd -> xunlei -> shooter
 	// 这里需要循环四轮：
 	// 第一轮，双语、字幕类型自定义，优先
@@ -37,7 +42,7 @@ func (m MarkingSystem) SelectOneSubFile(organizeSubFiles []string) *subparser.Fi
 	// 第三轮，双语、字幕类型0，优先
 	// 第四轮，单语言（中文）、字幕类型0，优先
 	for i := 0; i < 4; i++ {
-		for _, subSite := range m.subSiteSequence {
+		for _, subSite := range orderedSiteNames {
 			infos, ok := subInfoDict[subSite]
 			if ok == false {
 				continue

@@ -25,4 +25,16 @@ const (
 	SubSubtitleBestSearchTVSeasonPackageUrl     = "/search-tv-season-package"
 	SubSubtitleBestSearchTVSeasonPackageByIDUrl = "/search-tv-season-package-id"
 	SubSubtitleBestGetDlURLUrl                  = "/get-dl-url"
+
+	SubOpenSubtitlesRootUrlDef  = "https://api.opensubtitles.com/api/v1"
+	SubOpenSubtitlesSearchUrl   = "/subtitles"
+	SubOpenSubtitlesLoginUrl    = "/login"
+	SubOpenSubtitlesDownloadUrl = "/download"
+	SubOpenSubtitlesFeaturesUrl = "/features"
+
+	SubTVSubtitlesRootUrlDef = "https://www.tvsubtitles.net"
+	SubTVSubtitlesSearchUrl  = "/search1.php"
+
+	SubMovieSubtitlesRootUrlDef = "https://www.moviesubtitles.org"
+	SubMovieSubtitlesSearchUrl  = "/search.php"
 )
