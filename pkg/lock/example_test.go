@@ -3,6 +3,10 @@
 
 package lock
 
+import "sync"
+
+var counter int
+
 func ExampleNewLock() {
 	var l = NewLock()
 	var wg sync.WaitGroup

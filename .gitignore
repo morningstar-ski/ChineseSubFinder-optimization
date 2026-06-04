@@ -14,6 +14,7 @@ TestData/*
 /something.yaml
 /.rod
 /cmd/GetCAPTCHA
+/.codegraph
 /*.iml
 /**/ChineseSubFinderSettings.json
 /**/*.db

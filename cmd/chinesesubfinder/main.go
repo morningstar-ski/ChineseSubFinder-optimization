@@ -52,19 +52,7 @@ func init() {
 	log_helper.CleanAndLoadOnceLogs()
 	loggerBase = newLog()
 	AppVersion = resolveAppVersion()
-
-	if strings.ToLower(LiteMode) == "true" || *setLiteModeFlag == true {
-		loggerBase.Info("LiteMode is true")
-		if AppVersion == "" {
-			AppVersion = "Lite"
-		} else {
-			AppVersion += " Lite"
-		}
-		pkg.SetLiteMode(true)
-	} else {
-		loggerBase.Info("LiteMode is false")
-		pkg.SetLiteMode(false)
-	}
+	pkg.SetLiteMode(false)
 
 	loggerBase.Infoln("ChineseSubFinder Version:", AppVersion)
 	pkg.SetAppVersion(AppVersion)
@@ -133,7 +121,6 @@ func main() {
 
 	if settings.Get().SpeedDevMode == true {
 		loggerBase.Infoln("Speed Dev Mode is On")
-		pkg.SetLiteMode(true)
 	} else {
 		loggerBase.Infoln("Speed Dev Mode is Off")
 	}
@@ -217,14 +204,10 @@ var ExtEnCode = "abcdefg1234567890"
 // For SPK builds that cannot write /config, use the program directory as config root.
 var setLinuxConfigPathInSelfPathFlag = flag.String("setconfigselfpath", "", "for SPK builds that cannot write /config, use the current program directory as config root")
 
-var setLiteModeFlag = flag.Bool("litemode", false, "run in lite mode without browser-based providers")
-
 var (
 	BaseKey  = "0123456789123456789" // Seed key used to derive runtime keys.
 	AESKey16 = "1234567890123456"    // AES key.
 	AESIv16  = "1234567890123456"    // AES IV.
 )
-
-var LiteMode = "false" // Lightweight mode disables browser-based providers such as SubHD.
 
 var loggerBase *logrus.Logger

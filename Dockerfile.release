@@ -52,7 +52,7 @@ RUN set -eux; \
     export GOARCH="${TARGETARCH:-amd64}"; \
     if [ "${GOARCH}" = "arm" ] && [ -n "${TARGETVARIANT:-}" ]; then export GOARM="${TARGETVARIANT#v}"; fi; \
     CGO_ENABLED=1 go build \
-      -ldflags="-s -w -X main.AppVersion=${APP_VERSION} -X main.LiteMode=false" \
+      -ldflags="-s -w -X main.AppVersion=${APP_VERSION}" \
       -o /out/chinesesubfinder \
       ./cmd/chinesesubfinder
 

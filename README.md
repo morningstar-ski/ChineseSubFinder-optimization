@@ -34,9 +34,9 @@ ChineseSubFinder 是一个面向电影与剧集媒体库的中文字幕自动检
 
 `GitHub tag -> GitHub Actions -> GHCR 镜像 -> 飞牛 pull/up`
 
-当前首个标准发布版本为 `v0.55.4-provider.1`，默认镜像为：
+当前标准发布版本示例为 `v0.55.4-3`，默认镜像为：
 
-`ghcr.io/morningstar-ski/chinesesubfinder-provider-pack:v0.55.4-provider.1`
+`ghcr.io/morningstar-ski/chinesesubfinder-optimization:latest`
 
 直接在仓库根目录执行：
 
@@ -47,7 +47,7 @@ docker compose up -d
 
 默认会：
 
-- 拉取固定版本号的正式镜像
+- 拉取 GHCR 上最新的正式镜像
 - 启动容器 `chinesesubfinder`
 - 保持飞牛侧部署方式稳定，不再依赖本机临时 build
 
@@ -64,7 +64,7 @@ docker compose -f compose.source.yaml up -d --build
 可选构建参数：
 
 ```bash
-APP_VERSION=v0.55.4-provider.1 GOPROXY=https://goproxy.cn,direct docker compose -f compose.source.yaml up -d --build
+APP_VERSION=v0.55.4-3 GOPROXY=https://goproxy.cn,direct docker compose -f compose.source.yaml up -d --build
 ```
 
 ### 1. 准备媒体目录
@@ -110,7 +110,7 @@ npm run build
 
 ## Docker 说明
 
-- 根目录 `compose.yaml` 是正式部署入口，默认拉取 GHCR 固定版本镜像
+- 根目录 `compose.yaml` 是正式部署入口，默认拉取 `morningstar-ski/ChineseSubFinder-optimization` 对应的 GHCR 固定版本镜像
 - 根目录 `compose.source.yaml` 是本地源码构建入口
 - 根目录 `Dockerfile` 保留为 lite 模式源码直构建链路
 - 根目录 `Dockerfile.release` 是正式 full 功能发布镜像链路
