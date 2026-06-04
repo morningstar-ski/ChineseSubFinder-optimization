@@ -6,6 +6,9 @@ func TestDefaultSubSiteSequence(t *testing.T) {
 	got := DefaultSubSiteSequence()
 	want := []string{
 		SubSiteSubtitleBest,
+		SubSiteOpenSubtitles,
+		SubSiteTVSubtitles,
+		SubSiteMovieSubtitles,
 		SubSiteAssrt,
 		SubSiteSubDL,
 		SubSiteShooter,

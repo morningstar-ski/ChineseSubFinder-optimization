@@ -50,6 +50,21 @@ func TestNeedRestartHTTPServer(t *testing.T) {
 				newSettings.SubtitleSources.SubDLSettings.Key = "subdl-key"
 				newSettings.SubtitleSources.SubtitleBestSettings.Enabled = true
 				newSettings.SubtitleSources.SubtitleBestSettings.ApiKey = "subtitle-best-key"
+				newSettings.SubtitleSources.OpenSubtitlesSettings.Enabled = true
+				newSettings.SubtitleSources.OpenSubtitlesSettings.ApiKey = "opensubtitles-key"
+				newSettings.SubtitleSources.OpenSubtitlesSettings.Username = "user"
+				newSettings.SubtitleSources.OpenSubtitlesSettings.Password = "pass"
+				newSettings.SubtitleSources.TVsubtitlesSettings.Enabled = true
+				newSettings.SubtitleSources.MoviesubtitlesSettings.Enabled = true
+			},
+			want: false,
+		},
+		{
+			name: "supplier roots changed",
+			mutate: func(newSettings *settings.Settings) {
+				newSettings.AdvancedSettings.SuppliersSettings.OpenSubtitles.RootUrl = "https://mirror.example/api/v1"
+				newSettings.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl = "https://mirror.example/tv"
+				newSettings.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl = "https://mirror.example/movie"
 			},
 			want: false,
 		},
@@ -92,6 +107,12 @@ func newSettingsForNeedRestartTest(t *testing.T) *settings.Settings {
 	cfg.SubtitleSources.SubDLSettings.Key = ""
 	cfg.SubtitleSources.SubtitleBestSettings.Enabled = false
 	cfg.SubtitleSources.SubtitleBestSettings.ApiKey = ""
+	cfg.SubtitleSources.OpenSubtitlesSettings.Enabled = false
+	cfg.SubtitleSources.OpenSubtitlesSettings.ApiKey = ""
+	cfg.SubtitleSources.OpenSubtitlesSettings.Username = ""
+	cfg.SubtitleSources.OpenSubtitlesSettings.Password = ""
+	cfg.SubtitleSources.TVsubtitlesSettings.Enabled = false
+	cfg.SubtitleSources.MoviesubtitlesSettings.Enabled = false
 
 	return cfg
 }

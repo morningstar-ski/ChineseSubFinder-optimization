@@ -52,9 +52,6 @@ func (s *SaveSubHelper) WriteSubFile2VideoPath(videoFileFullPath string, finalSu
 	if err != nil {
 		return err
 	}
-	s.log.Infoln("----------------------------------")
-	s.log.Infoln("OrgSubName:", finalSubFile.Name)
-	s.log.Infoln("SubDownAt:", desSubFullPath)
 
 	// 然后还需要判断是否需要校正字幕的时间轴
 	if settings.Get().AdvancedSettings.FixTimeLine == true {
@@ -86,6 +83,10 @@ func (s *SaveSubHelper) WriteSubFile2VideoPath(videoFileFullPath string, finalSu
 			return err
 		}
 	}
+
+	s.log.Infoln("----------------------------------")
+	s.log.Infoln("OrgSubName:", finalSubFile.Name)
+	s.log.Infoln("SubDownAt:", desSubFullPath)
 
 	return nil
 }

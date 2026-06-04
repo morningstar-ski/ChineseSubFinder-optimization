@@ -5,35 +5,43 @@ import (
 )
 
 type SuppliersSettings struct {
-	Xunlei       *OneSupplierSettings `json:"xunlei"`
-	Shooter      *OneSupplierSettings `json:"shooter"`
-	Assrt        *OneSupplierSettings `json:"assrt"`
-	A4k          *OneSupplierSettings `json:"a4k"`
-	SubDL        *OneSupplierSettings `json:"subdl"`
-	SubHD        *OneSupplierSettings `json:"subhd"`
-	Zimuku       *OneSupplierSettings `json:"zimuku"`
-	SubtitleBest *OneSupplierSettings `json:"subtitle_best"`
+	Xunlei         *OneSupplierSettings `json:"xunlei"`
+	Shooter        *OneSupplierSettings `json:"shooter"`
+	Assrt          *OneSupplierSettings `json:"assrt"`
+	A4k            *OneSupplierSettings `json:"a4k"`
+	SubDL          *OneSupplierSettings `json:"subdl"`
+	SubtitleBest   *OneSupplierSettings `json:"subtitle_best"`
+	OpenSubtitles  *OneSupplierSettings `json:"opensubtitles"`
+	TVSubtitles    *OneSupplierSettings `json:"tvsubtitles"`
+	MovieSubtitles *OneSupplierSettings `json:"moviesubtitles"`
+	SubHD          *OneSupplierSettings `json:"subhd"`
+	Zimuku         *OneSupplierSettings `json:"zimuku"`
 }
 
 func NewSuppliersSettings() *SuppliersSettings {
 	return &SuppliersSettings{
-		Xunlei:       NewOneSupplierSettings(common.SubSiteXunLei, common.SubXunLeiRootUrlDef, "", -1),
-		Shooter:      NewOneSupplierSettings(common.SubSiteShooter, common.SubShooterRootUrlDef, "", -1),
-		Assrt:        NewOneSupplierSettings(common.SubSiteAssrt, common.SubAssrtRootUrlDef, "", -1),
-		A4k:          NewOneSupplierSettings(common.SubSiteA4K, common.SubA4kRootUrlDef, common.SubA4kSearchUrl, -1),
-		SubDL:        NewOneSupplierSettings(common.SubSiteSubDL, common.SubSubDLRootUrlDef, common.SubSubDLSearchUrl, -1),
-		SubtitleBest: NewOneSupplierSettings(common.SubSiteSubtitleBest, common.SubSubtitleBestRootUrlDef, common.SubSubtitleBestSearchMovieUrl, -1),
-		// 依然需要给出来，用于手动搜索字幕使用
-		SubHD:  NewOneSupplierSettings(common.SubSiteSubHd, common.SubSubHDRootUrlDef, common.SubSubHDSearchUrl, 20),
-		Zimuku: NewOneSupplierSettings(common.SubSiteZiMuKu, common.SubZiMuKuRootUrlDef, common.SubZiMuKuSearchFormatUrl, 20),
+		Xunlei:         NewOneSupplierSettings(common.SubSiteXunLei, common.SubXunLeiRootUrlDef, "", -1),
+		Shooter:        NewOneSupplierSettings(common.SubSiteShooter, common.SubShooterRootUrlDef, "", -1),
+		Assrt:          NewOneSupplierSettings(common.SubSiteAssrt, common.SubAssrtRootUrlDef, "", -1),
+		A4k:            NewOneSupplierSettings(common.SubSiteA4K, common.SubA4kRootUrlDef, common.SubA4kSearchUrl, -1),
+		SubDL:          NewOneSupplierSettings(common.SubSiteSubDL, common.SubSubDLRootUrlDef, common.SubSubDLSearchUrl, -1),
+		SubtitleBest:   NewOneSupplierSettings(common.SubSiteSubtitleBest, common.SubSubtitleBestRootUrlDef, common.SubSubtitleBestSearchMovieUrl, -1),
+		OpenSubtitles:  NewOneSupplierSettings(common.SubSiteOpenSubtitles, common.SubOpenSubtitlesRootUrlDef, common.SubOpenSubtitlesSearchUrl, -1),
+		TVSubtitles:    NewOneSupplierSettings(common.SubSiteTVSubtitles, common.SubTVSubtitlesRootUrlDef, common.SubTVSubtitlesSearchUrl, -1),
+		MovieSubtitles: NewOneSupplierSettings(common.SubSiteMovieSubtitles, common.SubMovieSubtitlesRootUrlDef, common.SubMovieSubtitlesSearchUrl, -1),
+		SubHD:          NewOneSupplierSettings(common.SubSiteSubHd, common.SubSubHDRootUrlDef, common.SubSubHDSearchUrl, 20),
+		Zimuku:         NewOneSupplierSettings(common.SubSiteZiMuKu, common.SubZiMuKuRootUrlDef, common.SubZiMuKuSearchFormatUrl, 20),
 	}
 }
 
-// ReSetSearchUrl 因为 SuppliersSettings 中每个网站的 searchUrl 参数没有开放更改，所以如果有变动，需要重新设置
 func (s *SuppliersSettings) ReSetSearchUrl() {
+	s.ensureDefaults()
 	s.A4k.SearchUrl = common.SubA4kSearchUrl
 	s.SubDL.SearchUrl = common.SubSubDLSearchUrl
 	s.SubtitleBest.SearchUrl = common.SubSubtitleBestSearchMovieUrl
+	s.OpenSubtitles.SearchUrl = common.SubOpenSubtitlesSearchUrl
+	s.TVSubtitles.SearchUrl = common.SubTVSubtitlesSearchUrl
+	s.MovieSubtitles.SearchUrl = common.SubMovieSubtitlesSearchUrl
 	s.SubHD.SearchUrl = common.SubSubHDSearchUrl
 	s.Zimuku.SearchUrl = common.SubZiMuKuSearchFormatUrl
 }
@@ -42,7 +50,7 @@ type OneSupplierSettings struct {
 	Name               string `json:"name"`
 	RootUrl            string `json:"root_url"`
 	SearchUrl          string `json:"search_url"`
-	DailyDownloadLimit int    `json:"daily_download_limit" default:"-1"` // -1 是无限制
+	DailyDownloadLimit int    `json:"daily_download_limit" default:"-1"`
 }
 
 func NewOneSupplierSettings(name string, rootUrl, searchUrl string, dailyDownloadLimit int) *OneSupplierSettings {
@@ -51,4 +59,42 @@ func NewOneSupplierSettings(name string, rootUrl, searchUrl string, dailyDownloa
 
 func (s *OneSupplierSettings) GetSearchUrl() string {
 	return s.RootUrl + s.SearchUrl
+}
+
+func (s *SuppliersSettings) ensureDefaults() {
+	defaults := NewSuppliersSettings()
+
+	if s.Xunlei == nil {
+		s.Xunlei = defaults.Xunlei
+	}
+	if s.Shooter == nil {
+		s.Shooter = defaults.Shooter
+	}
+	if s.Assrt == nil {
+		s.Assrt = defaults.Assrt
+	}
+	if s.A4k == nil {
+		s.A4k = defaults.A4k
+	}
+	if s.SubDL == nil {
+		s.SubDL = defaults.SubDL
+	}
+	if s.SubtitleBest == nil {
+		s.SubtitleBest = defaults.SubtitleBest
+	}
+	if s.OpenSubtitles == nil {
+		s.OpenSubtitles = defaults.OpenSubtitles
+	}
+	if s.TVSubtitles == nil {
+		s.TVSubtitles = defaults.TVSubtitles
+	}
+	if s.MovieSubtitles == nil {
+		s.MovieSubtitles = defaults.MovieSubtitles
+	}
+	if s.SubHD == nil {
+		s.SubHD = defaults.SubHD
+	}
+	if s.Zimuku == nil {
+		s.Zimuku = defaults.Zimuku
+	}
 }

@@ -34,3 +34,28 @@ func NewAdvancedSettings() *AdvancedSettings {
 		DownloadFileCache: NewDownloadFileCache(),
 	}
 }
+
+func (a *AdvancedSettings) ensureDefaults() {
+	defaults := NewAdvancedSettings()
+
+	if a.ProxySettings == nil {
+		a.ProxySettings = defaults.ProxySettings
+	}
+	if a.SuppliersSettings == nil {
+		a.SuppliersSettings = defaults.SuppliersSettings
+	} else {
+		a.SuppliersSettings.ensureDefaults()
+	}
+	if a.ScanLogic == nil {
+		a.ScanLogic = defaults.ScanLogic
+	}
+	if a.TaskQueue == nil {
+		a.TaskQueue = defaults.TaskQueue
+	}
+	if a.DownloadFileCache == nil {
+		a.DownloadFileCache = defaults.DownloadFileCache
+	}
+	if a.CustomVideoExts == nil {
+		a.CustomVideoExts = defaults.CustomVideoExts
+	}
+}

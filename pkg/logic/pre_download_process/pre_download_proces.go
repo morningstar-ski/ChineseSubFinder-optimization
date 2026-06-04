@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/local_http_proxy_server"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/moviesubtitles"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/opensubtitles"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitle_best"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/tvsubtitles"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -21,6 +24,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/notify_center"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/something_static"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/subtitle_best_api"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/url_connectedness_helper"
 	"github.com/sirupsen/logrus"
 )
@@ -67,11 +71,16 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 		nowTimeFileNamePrix := fmt.Sprintf("%d%d%d", nowTT.Year(), nowTT.Month(), nowTT.Day())
 		updateTimeString, code, err := something_static.GetCodeFromWeb(p.log, nowTimeFileNamePrix, p.fileDownloader)
 		if err != nil {
-			notify_center.Notify.Add("GetSubhdCode", "GetCodeFromWeb,"+err.Error())
-			p.log.Errorln("something_static.GetCodeFromWeb", err)
-			p.log.Errorln("Skip Subhd download")
-			// 没有则需要清空
-			common2.SubhdCode = ""
+			if errors.Is(err, subtitle_best_api.ErrAuthKeyNotSet) {
+				p.log.Warningln("SubtitleBestCodeProvider.GetCode auth key is not set continue without shared code")
+				common2.SubhdCode = ""
+			} else {
+				notify_center.Notify.Add("GetSubhdCode", "GetCodeFromWeb,"+err.Error())
+				p.log.Errorln("something_static.GetCodeFromWeb", err)
+				p.log.Errorln("Skip Subhd download")
+				// 没有则需要清空
+				common2.SubhdCode = ""
+			}
 		} else {
 
 			// 获取到的更新时间不是当前的日期，那么本次也跳过本次
@@ -88,7 +97,11 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 					common2.SubhdCode = ""
 					p.log.Warningln("something_static.GetCodeFromWeb, GetCodeTime:", updateTimeString, "NowTime:", time.Now().String(), "Skip")
 				} else {
-					p.log.Infoln("GetCode", updateTimeString, code)
+					if code == "" {
+						p.log.Warningln("SubtitleBestCodeProvider.GetCode returned empty code continue without shared code")
+					} else {
+						p.log.Infoln("GetCode", updateTimeString, code)
+					}
 					common2.SubhdCode = code
 				}
 			}
@@ -126,6 +139,21 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 			settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
 			// 如果开启了 SubtitleBest 字幕源，则需要新增
 			p.SubSupplierHub.AddSubSupplier(subtitle_best.NewSupplier(p.fileDownloader))
+		}
+
+		if settings.Get().SubtitleSources.OpenSubtitlesSettings.Enabled == true &&
+			settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey != "" &&
+			settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
+			settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
+			p.SubSupplierHub.AddSubSupplier(opensubtitles.NewSupplier(p.fileDownloader))
+		}
+
+		if settings.Get().SubtitleSources.TVsubtitlesSettings.Enabled == true {
+			p.SubSupplierHub.AddSubSupplier(tvsubtitles.NewSupplier(p.fileDownloader))
+		}
+
+		if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled == true {
+			p.SubSupplierHub.AddSubSupplier(moviesubtitles.NewSupplier(p.fileDownloader))
 		}
 
 		if pkg.LiteMode() == false {

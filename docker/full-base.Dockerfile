@@ -12,6 +12,9 @@ RUN apt-get update \
        gtk2-engines-pixbuf \
        imagemagick \
        libasound2 \
+       tesseract-ocr \
+       tesseract-ocr-chi-sim \
+       tesseract-ocr-eng \
        libgbm1 \
        libgcc-9-dev \
        libgtk-3-0 \
