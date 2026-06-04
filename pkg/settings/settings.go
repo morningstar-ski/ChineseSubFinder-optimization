@@ -104,12 +104,12 @@ func (s *Settings) read() error {
 	s.AdvancedSettings.SuppliersSettings.ReSetSearchUrl()
 	s.TimelineFixerSettings.Check()
 
-	newEmbyAddressUrl := removeSuffixAddressSlash(s.EmbySettings.AddressUrl)
-	_, err = url.Parse(newEmbyAddressUrl)
+	newEmbyAddressURL := removeSuffixAddressSlash(s.EmbySettings.AddressUrl)
+	_, err = url.Parse(newEmbyAddressURL)
 	if err != nil {
 		return err
 	}
-	s.EmbySettings.AddressUrl = newEmbyAddressUrl
+	s.EmbySettings.AddressUrl = newEmbyAddressURL
 
 	return nil
 }
@@ -119,12 +119,12 @@ func (s *Settings) Save() error {
 	s.AdvancedSettings.SuppliersSettings.ReSetSearchUrl()
 	s.TimelineFixerSettings.Check()
 
-	newEmbyAddressUrl := removeSuffixAddressSlash(s.EmbySettings.AddressUrl)
-	_, err := url.Parse(newEmbyAddressUrl)
+	newEmbyAddressURL := removeSuffixAddressSlash(s.EmbySettings.AddressUrl)
+	_, err := url.Parse(newEmbyAddressURL)
 	if err != nil {
 		return err
 	}
-	s.EmbySettings.AddressUrl = newEmbyAddressUrl
+	s.EmbySettings.AddressUrl = newEmbyAddressURL
 
 	return strcut_json.ToFile(s.configFPath, s)
 }
@@ -204,9 +204,8 @@ func isFile(filePath string) bool {
 	return !s.IsDir()
 }
 
-func removeSuffixAddressSlash(orgAddressUrlString string) string {
-	outString := orgAddressUrlString
-
+func removeSuffixAddressSlash(orgAddressURLString string) string {
+	outString := orgAddressURLString
 	for {
 		if strings.HasSuffix(outString, "/") == true {
 			outString = outString[:len(outString)-1]

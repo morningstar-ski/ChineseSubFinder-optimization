@@ -148,7 +148,7 @@ func (s *SubTimelineFixerHelperEx) Process(videoFileFullPath, srcSubFPath string
 	}
 	s.log.Infoln("TimeLine Fix -- Score:", pipeResultMax.Score, srcSubFPath)
 	s.log.Infoln("Fix Offset:", pipeResultMax.GetOffsetTime(), srcSubFPath)
-	s.log.Infoln("BackUp Org SubFile:", pipeResultMax.GetOffsetTime(), srcSubFPath+sub_timeline_fixer.BackUpExt)
+	s.log.Infoln("BackUp Org SubFile:", srcSubFPath+sub_timeline_fixer.BackUpExt)
 
 	return nil
 }

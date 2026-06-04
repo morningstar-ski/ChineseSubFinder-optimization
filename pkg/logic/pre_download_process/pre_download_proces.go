@@ -2,23 +2,24 @@ package pre_download_process
 
 import (
 	"errors"
+	"time"
+
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/local_http_proxy_server"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
+	subSupplier "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/assrt"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/moviesubtitles"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/opensubtitles"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/shooter"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitle_best"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/tvsubtitles"
-	"time"
-
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
-	subSupplier "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/assrt"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/shooter"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/xunlei"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/notify_center"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/subtitle_best_api"
 	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/url_connectedness_helper"
 	"github.com/sirupsen/logrus"
@@ -60,7 +61,14 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 		codeProvider := subhd.NewSubtitleBestCodeProvider(p.fileDownloader)
 		updateTimeString, code, err := codeProvider.GetCode()
 		if err != nil {
-			p.log.Warningln("SubtitleBestCodeProvider.GetCode", err, "continue without shared code")
+			if errors.Is(err, subtitle_best_api.ErrAuthKeyNotSet) {
+				p.log.Warningln("SubtitleBestCodeProvider.GetCode auth key is not set continue without shared code")
+			} else {
+				notify_center.Notify.Add("GetSubhdCode", "GetCodeFromWeb,"+err.Error())
+				p.log.Errorln("SubtitleBestCodeProvider.GetCode", err)
+				p.log.Errorln("Skip Subhd download")
+			}
+			common2.SubhdCode = ""
 		} else {
 			codeTime, err := time.Parse("2006-01-02", updateTimeString)
 			if err != nil {
@@ -68,7 +76,11 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 			} else if codeTime.YearDay() != time.Now().YearDay() {
 				p.log.Warningln("SubtitleBestCodeProvider.GetCode, GetCodeTime:", updateTimeString, "NowTime:", time.Now().String(), "Skip")
 			} else {
-				p.log.Infoln("GetCode", updateTimeString, code)
+				if code == "" {
+					p.log.Warningln("SubtitleBestCodeProvider.GetCode returned empty code continue without shared code")
+				} else {
+					p.log.Infoln("GetCode", updateTimeString, code)
+				}
 				common2.SubhdCode = code
 			}
 		}

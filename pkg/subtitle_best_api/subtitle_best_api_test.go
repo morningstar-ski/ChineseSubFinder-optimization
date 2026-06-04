@@ -1,6 +1,7 @@
 package subtitle_best_api
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -45,6 +46,9 @@ func TestSubtitleBestApi_AuthRequired(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected auth validation error")
 			}
+			if !errors.Is(err, ErrAuthKeyNotSet) {
+				t.Fatalf("expected ErrAuthKeyNotSet, got %v", err)
+			}
 			if !strings.Contains(err.Error(), "auth key is not set") {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -58,6 +62,9 @@ func TestSubtitleBestApi_EmptyAuthRequired(t *testing.T) {
 	_, err := bapi.GetCode()
 	if err == nil {
 		t.Fatal("expected auth validation error")
+	}
+	if !errors.Is(err, ErrAuthKeyNotSet) {
+		t.Fatalf("expected ErrAuthKeyNotSet, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "auth key is not set") {
 		t.Fatalf("unexpected error: %v", err)

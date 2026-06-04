@@ -11,21 +11,30 @@ elif command -v su-exec >/dev/null 2>&1; then
         su-exec "$@"
     }
 else
-    echo "缺少 gosu 或 su-exec，无法切换到 PUID/PGID 指定用户" >&2
+    echo "missing gosu or su-exec, cannot switch to requested PUID/PGID" >&2
     exit 1
 fi
 
-## 重设权限
-chown -R "${PUID}:${PGID}" /config
-if [[ ${PERMS} == true ]]; then
-    echo "已设置 PERMS=true，重设 '/media' 目录权限为 ${PUID}:${PGID} 所有（媒体文件多，花的时间也多，耐心等）..."
-    chown -R "${PUID}:${PGID}" /media
+skip_recursive_chown=false
+if [[ "${PUID}:${PGID}" == "0:0" ]]; then
+    skip_recursive_chown=true
 fi
 
-## 兼容旧的缓存目录
+if [[ "${skip_recursive_chown}" == true ]]; then
+    echo "PUID/PGID=0:0, skip recursive ownership reset for /config and /media"
+else
+    chown -R "${PUID}:${PGID}" /config
+    if [[ ${PERMS} == true ]]; then
+        echo "PERMS=true, reset ownership for /media to ${PUID}:${PGID}..."
+        chown -R "${PUID}:${PGID}" /media
+    fi
+fi
+
 if [[ -d /app/cache ]]; then
-    echo "检测到映射了 '/app/cache'，创建软连接 '/config/cache' -> '/app/cache'（如果原有缓存多，花的时间也多，耐心等）"
-    chown -R "${PUID}:${PGID}" /app
+    echo "Detected /app/cache mount, ensure /config/cache points to it"
+    if [[ "${skip_recursive_chown}" != true ]]; then
+        chown -R "${PUID}:${PGID}" /app
+    fi
     if [[ -L /config/cache && $(readlink -f /config/cache) != /app/cache ]]; then
         rm -rf /config/cache &>/dev/null
     fi
@@ -34,7 +43,7 @@ if [[ -d /app/cache ]]; then
     fi
 else
     if [[ -L /config/cache ]]; then
-        echo "检测到 '/config/cache' 指向了不存在的目录 '/app/cache'，删除之，如想保留缓存，请将旧的 'cache' 目录移动到 '/config' 路径下..."
+        echo "Detected stale /config/cache symlink to missing /app/cache, removing it"
         rm -rf /config/cache &>/dev/null
     fi
 fi
