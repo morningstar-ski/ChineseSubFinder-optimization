@@ -36,7 +36,7 @@ ChineseSubFinder 是一个面向电影与剧集媒体库的中文字幕自动检
 
 当前首个标准发布版本为 `v0.55.4-provider.1`，默认镜像为：
 
-`ghcr.io/morningstar-ski/chinesesubfinder-provider-pack:v0.55.4-provider.1`
+`ghcr.io/morningstar-ski/chinesesubfinder-optimization:v0.55.4-provider.1`
 
 直接在仓库根目录执行：
 
@@ -110,7 +110,7 @@ npm run build
 
 ## Docker 说明
 
-- 根目录 `compose.yaml` 是正式部署入口，默认拉取 GHCR 固定版本镜像
+- 根目录 `compose.yaml` 是正式部署入口，默认拉取 `morningstar-ski/ChineseSubFinder-optimization` 对应的 GHCR 固定版本镜像
 - 根目录 `compose.source.yaml` 是本地源码构建入口
 - 根目录 `Dockerfile` 保留为 lite 模式源码直构建链路
 - 根目录 `Dockerfile.release` 是正式 full 功能发布镜像链路

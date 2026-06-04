@@ -11,7 +11,7 @@ on:
         required: true
 
 env:
-  IMAGE_NAME: ghcr.io/morningstar-ski/chinesesubfinder-provider-pack
+  IMAGE_NAME: ghcr.io/morningstar-ski/chinesesubfinder-optimization
 
 jobs:
   test:

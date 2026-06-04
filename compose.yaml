@@ -1,6 +1,6 @@
 services:
   chinesesubfinder:
-    image: ${CSF_IMAGE:-ghcr.io/morningstar-ski/chinesesubfinder-provider-pack:v0.55.4-provider.1}
+    image: ${CSF_IMAGE:-ghcr.io/morningstar-ski/chinesesubfinder-optimization:v0.55.4-provider.1}
     container_name: chinesesubfinder
     hostname: chinesesubfinder
     restart: always
