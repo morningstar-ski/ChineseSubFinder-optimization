@@ -1,0 +1,114 @@
+# syntax=docker/dockerfile:1.7
+
+ARG NODE_IMAGE=node:20-bookworm-slim
+ARG GO_IMAGE=golang:1.22-bookworm
+ARG RUNTIME_IMAGE=ubuntu:22.04
+
+FROM ${NODE_IMAGE} AS frontend-builder
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG NPM_CONFIG_REGISTRY
+ENV http_proxy=${HTTP_PROXY} \
+    https_proxy=${HTTPS_PROXY} \
+    no_proxy=${NO_PROXY} \
+    HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY}
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM ${GO_IMAGE} AS backend-builder
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG APP_VERSION=dev
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+ENV http_proxy=${HTTP_PROXY} \
+    https_proxy=${HTTPS_PROXY} \
+    no_proxy=${NO_PROXY} \
+    HTTP_PROXY=${HTTP_PROXY} \
+    HTTPS_PROXY=${HTTPS_PROXY} \
+    NO_PROXY=${NO_PROXY} \
+    GOPROXY=${GOPROXY} \
+    CGO_CFLAGS=-D_LARGEFILE64_SOURCE
+WORKDIR /src
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates git pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+RUN set -eux; \
+    export GOOS="${TARGETOS:-linux}"; \
+    export GOARCH="${TARGETARCH:-amd64}"; \
+    if [ "${GOARCH}" = "arm" ] && [ -n "${TARGETVARIANT:-}" ]; then export GOARM="${TARGETVARIANT#v}"; fi; \
+    CGO_ENABLED=1 go build \
+      -ldflags="-s -w -X main.AppVersion=${APP_VERSION} -X main.LiteMode=false" \
+      -o /out/chinesesubfinder \
+      ./cmd/chinesesubfinder
+
+FROM ${RUNTIME_IMAGE}
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai \
+    PERMS=true \
+    PUID=1026 \
+    PGID=100 \
+    UMASK=022 \
+    DISPLAY=:99 \
+    PS1="\u@\h:\w \$ "
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+       bash \
+       ca-certificates \
+       dbus-x11 \
+       ffmpeg \
+       fonts-liberation \
+       fonts-noto-cjk \
+       fonts-noto-color-emoji \
+       gosu \
+       gtk2-engines-pixbuf \
+       imagemagick \
+       libasound2 \
+       libgbm1 \
+       libgcc-9-dev \
+       libgtk-3-0 \
+       libnss3 \
+       libstdc++6 \
+       libxss1 \
+       libxtst6 \
+       tesseract-ocr \
+       tesseract-ocr-chi-sim \
+       tesseract-ocr-eng \
+       tini \
+       tzdata \
+       wget \
+       x11-apps \
+       xfonts-100dpi \
+       xfonts-75dpi \
+       xfonts-base \
+       xfonts-cyrillic \
+       xfonts-scalable \
+       xorg \
+       xvfb \
+       yasm \
+    && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
+    && echo "${TZ}" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=nevinee/s6-overlay:2.2.0.3-bin-is-softlink / /
+COPY --from=backend-builder /out/chinesesubfinder /usr/bin/chinesesubfinder
+COPY docker/full-rootfs/ /
+RUN sed -i 's/\r$//' /etc/cont-init.d/10-fixuser /etc/services.d/chinesesubfinder/run /etc/services.d/xvfb/run \
+    && chmod +x /usr/bin/chinesesubfinder /etc/cont-init.d/10-fixuser /etc/services.d/chinesesubfinder/run /etc/services.d/xvfb/run
+VOLUME ["/config", "/media"]
+WORKDIR /config
+EXPOSE 19035 19037
+ENTRYPOINT ["/init"]

@@ -1,6 +1,16 @@
 services:
   chinesesubfinder:
-    image: ${CSF_IMAGE:-ghcr.io/morningstar-ski/chinesesubfinder-optimization:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-}
+    image: ${CSF_IMAGE:-chinesesubfinder:local}
     container_name: chinesesubfinder
     hostname: chinesesubfinder
     restart: always
