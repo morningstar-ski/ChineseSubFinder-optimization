@@ -1,15 +1,17 @@
-## 更新说明
-- v0.51.x TMDB API 支持选择备用地址（根据你的网络环境自己测试）
-- v0.52.x 新增一种字幕保存命名，与视频文件同名（不增加字幕语言类型后缀）
-- v0.53.x 修复解析百位数的剧集故障问题
+## 当前仓库
 
-## 变更说明
-- 原有的 CSF 内置的“共享字幕”功能，将于 2023年5月1日 正式下线，不在维护，请至少更新到 v0.47.x 及其以上版本；
-- CSF 不再维护本地字幕爬虫，全功能版本已经取消支持，所有镜像都指向到 lite 版本；
-- 请开启 SubtitleBest 字幕源设置，缓解字幕下载的问题；
+- 当前界面和运行时以 [ChineseSubFinder-optimization](https://github.com/morningstar-ski/ChineseSubFinder-optimization) 为准。
+- 这里展示的是优化仓库自己的说明，不再复用上游官方发布内容。
 
-## 初次使用
-- 第一次使用，请务必阅读：[电影和连续剧目录结构示例](https://github.com/ChineseSubFinder/ChineseSubFinder/blob/docs/DesignFile/电影和连续剧目录结构示例.md)、[连续剧目录结构要求](https://github.com/ChineseSubFinder/ChineseSubFinder/blob/docs/DesignFile/连续剧目录结构要求.md)，按要求填写电影和连续剧的目录；
-- 使用本程序的前提：必须是**削刮**过的媒体库，否则无法正常使用；
-- 媒体库如果是**软连接**挂载，目前反馈是无法正常使用的，建议使用硬链接（作者没有相关环境和使用经验，期待有人提交修复方案）；
-- 如果媒体库是远程的网盘，那么请不要开启“字幕时间轴矫正”功能；
+## 当前版本已对齐的内容
+
+- 新增并接通 `OpenSubtitles`、`TVsubtitles`、`Moviesubtitles`、`SubHD`。
+- 修复预任务初始化完成信号，避免前端长时间停在初始化状态。
+- 帮助文档和问题反馈统一跳转到当前优化仓库。
+- 设置页已移除 `a4k`、`zimuku` 的前端展示入口。
+
+## 常用入口
+
+- 帮助文档：[仓库主页](https://github.com/morningstar-ski/ChineseSubFinder-optimization)
+- Docker 部署文档：[docker/readme.md](https://github.com/morningstar-ski/ChineseSubFinder-optimization/blob/main/docker/readme.md)
+- 问题反馈：[Issues](https://github.com/morningstar-ski/ChineseSubFinder-optimization/issues)

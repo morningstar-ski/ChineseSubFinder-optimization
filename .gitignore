@@ -20,3 +20,6 @@ TestData/*
 /**/Logs
 /**/cache
 /**/CustomAuth
+/.codegraph/
+/CustomPort
+/tmp/

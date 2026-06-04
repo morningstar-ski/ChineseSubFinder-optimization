@@ -10,6 +10,17 @@
       </template>
       <span> </span>
     </q-banner>
+    <q-banner inline-actions class="bg-blue-1 text-blue-10 q-mb-md">
+      <template v-slot:avatar>
+        <q-icon name="info" />
+      </template>
+      未注入版本号时不再显示占位版本；进阶配置里的“自动校正字幕时间轴”当前仍是内置 ffsubsync 复刻方案；远程 Chrome
+      现在只接了 ws 地址和可选用户目录，当前主要影响浏览器型字幕源。
+      <template v-slot:action>
+        <q-btn flat color="primary" label="仓库" @click="openPage(PROJECT_REPO_URL)" />
+        <q-btn flat color="primary" label="Issues" @click="openPage(PROJECT_ISSUES_URL)" />
+      </template>
+    </q-banner>
     <q-card v-if="isSettingsLoaded" flat>
       <q-tabs
         v-model="tab"
@@ -81,10 +92,15 @@ import { isJobRunning } from 'src/store/systemState';
 import ExperimentSettings from 'pages/settings/SettingsPanelExperiment';
 import FormSubmitArea from 'pages/settings/FormSubmitArea';
 import SubSourceSettings from 'pages/settings/SettingsPanelSubSource';
+import { PROJECT_ISSUES_URL, PROJECT_REPO_URL } from 'src/constants/ProjectLinks';
 
-const tab = ref('basic');
+const tab = ref('subSource');
 
 const isSettingsLoaded = computed(() => Object.keys(formModel).length);
+
+const openPage = (url) => {
+  window.open(url, '_blank');
+};
 
 useSettings();
 </script>

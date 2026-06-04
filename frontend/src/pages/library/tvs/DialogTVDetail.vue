@@ -119,7 +119,7 @@
                               flat
                               dense
                               icon="construction"
-                              :title="`字幕时间轴校准${
+                              :title="`字幕时间轴校准（当前是内置 ffsubsync 复刻方案）${
                                 !formModel.advanced_settings.fix_time_line
                                   ? '（此功能需要在进阶设置里开启自动校正字幕时间轴，检测到你当前尚未开启此选项）'
                                   : ''

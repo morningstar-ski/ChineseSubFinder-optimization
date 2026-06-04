@@ -7,16 +7,10 @@
         <q-space />
         <version-update-item>
           <q-item clickable>
-            <q-item-section class="relative-position q-px-sm">
-              版本升级
-              <div class="absolute-top-right bg-red" style="border-radius: 50%; width: 8px; height: 8px"></div>
-            </q-item-section>
+            <q-item-section class="q-px-sm"> 版本升级 </q-item-section>
           </q-item>
         </version-update-item>
-        <q-item
-          clickable
-          @click="openPage('https://github.com/ChineseSubFinder/ChineseSubFinder/blob/master/docker/readme.md')"
-        >
+        <q-item clickable @click="openPage(PROJECT_HELP_URL)">
           <q-item-section> 帮助文档 </q-item-section>
         </q-item>
         <BugReportItem />
@@ -46,7 +40,7 @@
           <img src="icons/logo.png" alt="" style="filter: invert(100%); height: 60px" />
         </div>
         <div class="q-mt-sm text-center relative-position">
-          <q-badge align="top">{{ systemState.systemInfo?.version }}</q-badge>
+          <q-badge v-if="displayVersion" align="top">{{ displayVersion }}</q-badge>
           ChineseSubFinder
         </div>
       </div>
@@ -65,7 +59,7 @@
 
 <script setup>
 import routes from 'src/router/routes';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import MenuItem from 'layouts/MenuItem';
 import { systemState } from 'src/store/systemState';
@@ -75,11 +69,14 @@ import AccessApi from 'src/api/AccessApi';
 import BugReportItem from 'layouts/BugReportItem';
 import VersionUpdateItem from 'components/VersionUpdateItem';
 import NoticeDialog from 'components/NoticeDialog';
+import { PROJECT_HELP_URL } from 'src/constants/ProjectLinks';
+import { normalizeDisplayVersion } from 'src/utils/version';
 
 const router = useRouter();
 
 const leftDrawerOpen = ref(false);
 const menus = routes.find((e) => e.path === '/').children;
+const displayVersion = computed(() => normalizeDisplayVersion(systemState.systemInfo?.version));
 
 const logout = () => {
   userState.username = '';
