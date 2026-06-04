@@ -30,25 +30,42 @@ ChineseSubFinder 是一个面向电影与剧集媒体库的中文字幕自动检
 
 ### Docker 一键部署
 
-当前仓库已经提供源码直出镜像的默认链路，直接在仓库根目录执行：
+默认部署链路已经切换为：
+
+`GitHub tag -> GitHub Actions -> GHCR 镜像 -> 飞牛 pull/up`
+
+当前首个标准发布版本为 `v0.55.4-provider.1`，默认镜像为：
+
+`ghcr.io/morningstar-ski/chinesesubfinder-provider-pack:v0.55.4-provider.1`
+
+直接在仓库根目录执行：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 默认会：
 
-- 使用仓库当前源码构建前端和后端
-- 生成你自己的 `chinesesubfinder` 镜像，而不是下载上游官方 release
+- 拉取固定版本号的正式镜像
 - 启动容器 `chinesesubfinder`
+- 保持飞牛侧部署方式稳定，不再依赖本机临时 build
+
+运行配置见根目录 [compose.yaml](compose.yaml)。
+
+### 源码自构建
+
+如果你需要在本地直接从源码构建镜像，使用：
+
+```bash
+docker compose -f compose.source.yaml up -d --build
+```
 
 可选构建参数：
 
 ```bash
-APP_VERSION=v0.55.4-local GOPROXY=https://goproxy.cn,direct docker compose up -d --build
+APP_VERSION=v0.55.4-provider.1 GOPROXY=https://goproxy.cn,direct docker compose -f compose.source.yaml up -d --build
 ```
-
-运行配置见根目录 [compose.yaml](compose.yaml)。
 
 ### 1. 准备媒体目录
 
@@ -93,9 +110,11 @@ npm run build
 
 ## Docker 说明
 
-- 根目录 `Dockerfile` 是当前仓库推荐的可部署构建链路
-- 根目录 `compose.yaml` 是默认启动入口
-- `docker/full-release.Dockerfile` 仍保留作历史文件，不适合本仓库源码直出部署
+- 根目录 `compose.yaml` 是正式部署入口，默认拉取 GHCR 固定版本镜像
+- 根目录 `compose.source.yaml` 是本地源码构建入口
+- 根目录 `Dockerfile` 保留为 lite 模式源码直构建链路
+- 根目录 `Dockerfile.release` 是正式 full 功能发布镜像链路
+- `.github/workflows/release-image.yml` 负责 tag 触发的测试与镜像发布
 
 ## 说明
 
