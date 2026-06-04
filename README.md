@@ -34,9 +34,9 @@ ChineseSubFinder 是一个面向电影与剧集媒体库的中文字幕自动检
 
 `GitHub tag -> GitHub Actions -> GHCR 镜像 -> 飞牛 pull/up`
 
-当前首个标准发布版本为 `v0.55.4-provider.1`，默认镜像为：
+当前标准发布版本为 `v0.55.4-provider.2`，默认镜像为：
 
-`ghcr.io/morningstar-ski/chinesesubfinder-optimization:v0.55.4-provider.1`
+`ghcr.io/morningstar-ski/chinesesubfinder-optimization:v0.55.4-provider.2`
 
 直接在仓库根目录执行：
 
@@ -64,7 +64,7 @@ docker compose -f compose.source.yaml up -d --build
 可选构建参数：
 
 ```bash
-APP_VERSION=v0.55.4-provider.1 GOPROXY=https://goproxy.cn,direct docker compose -f compose.source.yaml up -d --build
+APP_VERSION=v0.55.4-provider.2 GOPROXY=https://goproxy.cn,direct docker compose -f compose.source.yaml up -d --build
 ```
 
 ### 1. 准备媒体目录
