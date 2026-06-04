@@ -1,0 +1,40 @@
+package common
+
+const (
+	SubXunLeiRootUrlDef  = "http://sub.xmp.sandai.net:8000/subxl/%s.json"
+	SubShooterRootUrlDef = "https://www.shooter.cn/api/subapi.php"
+
+	SubZiMuKuRootUrlDef      = "https://zimuku.org"
+	SubZiMuKuSearchFormatUrl = "/search?q=%s"
+
+	SubSubHDRootUrlDef = "https://subhd.tv"
+	SubSubHDSearchUrl  = "/search/%s"
+
+	SubAssrtRootUrlDef = "https://api.assrt.net/v1"
+
+	SubA4kRootUrlDef = "https://www.a4k.net"
+	SubA4kSearchUrl  = "/search?keyword="
+
+	SubSubDLRootUrlDef   = "https://api.subdl.com/api/v1"
+	SubSubDLSearchUrl    = "/subtitles"
+	SubSubDLDownloadRoot = "https://dl.subdl.com"
+
+	SubSubtitleBestRootUrlDef                   = "https://api.subtitle.best/share-sub/v1"
+	SubSubtitleBestSearchMovieUrl               = "/search-movie"
+	SubSubtitleBestSearchTVEpsUrl               = "/search-tv-eps"
+	SubSubtitleBestSearchTVSeasonPackageUrl     = "/search-tv-season-package"
+	SubSubtitleBestSearchTVSeasonPackageByIDUrl = "/search-tv-season-package-id"
+	SubSubtitleBestGetDlURLUrl                  = "/get-dl-url"
+
+	SubOpenSubtitlesRootUrlDef  = "https://api.opensubtitles.com/api/v1"
+	SubOpenSubtitlesSearchUrl   = "/subtitles"
+	SubOpenSubtitlesLoginUrl    = "/login"
+	SubOpenSubtitlesDownloadUrl = "/download"
+	SubOpenSubtitlesFeaturesUrl = "/features"
+
+	SubTVSubtitlesRootUrlDef = "https://www.tvsubtitles.net"
+	SubTVSubtitlesSearchUrl  = "/search1.php"
+
+	SubMovieSubtitlesRootUrlDef = "https://www.moviesubtitles.org"
+	SubMovieSubtitlesSearchUrl  = "/search.php"
+)
