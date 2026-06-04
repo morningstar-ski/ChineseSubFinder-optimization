@@ -20,8 +20,11 @@ docker compose up -d --build
 
 说明：
 
-- 根目录 `Dockerfile` 会从当前仓库源码构建前端和后端
-- 根目录 `compose.yaml` 是默认启动入口
+- 根目录 `Dockerfile` 会从当前仓库源码构建前端和后端，默认构建 **非 Lite** 标准版，并安装 Chromium
+- 根目录 `compose.yaml` 是默认启动入口，默认会得到可直接使用浏览器型字幕源的镜像
+- 运行时会自动探测 `/usr/bin/chromium` 等常见路径，一般不需要再到实验室里手填本地 Chrome 路径
+- `compose.browser.yaml` 仅保留给已经在使用浏览器覆盖文件的兼容场景
+- 如需显式退回轻量模式，请自行传入 `LITE_MODE=true` 和 `INSTALL_BROWSER=false`
 - `docker/full-release.Dockerfile` 会下载上游官方 release，**不适合**这个改写仓库的发布
 - `docker/lite-release.Dockerfile` 只保留历史参考意义，默认也不作为一键部署入口
 
@@ -62,6 +65,8 @@ docker compose up -d --build
 - **不支持**从 subhd、zimuku 下载字幕，其他字幕源不受影响，针对少了两个字幕来源的问题，建议开启`实验室->共享字幕`功能，可在一定程度上缓解下载字幕难的问题；
 
 - 宿主机无论是基于 `glibc` 还是 `musl-libc` 的系统，都可以使用。
+
+- 对当前这个改写仓库来说，Lite 不再是本地源码构建的默认模式。
 
 ## 创建
 

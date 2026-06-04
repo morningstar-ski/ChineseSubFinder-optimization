@@ -103,18 +103,16 @@
 
       <q-item>
         <q-item-section>
-          <q-item-label>本地Chrome</q-item-label>
+          <q-item-label>本地Chrome（可选覆盖）</q-item-label>
           <q-item-label caption>
-            如果本程序能够自动下载 Chrome 就不建议自己制定 Chrome 版本，因为如果本程序更新了， Chrome
-            也会自动下载最新的，但是你指定的，我是没法更新的，有问题也只有你自己去手动更新 Chrome。建
-            议还是优先还是解决网络问题去下载 Chrome。下载 Chrome 是又 go-rod 进行的，有问题也只能去提
-            issues。注意以下几点：
+            标准版 Docker 镜像现在已内置 Chromium，程序会自动探测
+            <code>/usr/bin/chromium</code>、<code>/usr/bin/chromium-browser</code>
+            等常见路径，一般不需要开启这个开关，也不需要手填路径。只有你想强制指定另一个浏览器可执行文件时，才需要在这里填写。注意以下几点：
             <div>
               <ol>
                 <li>
-                  如果是 Docker 用户，推荐映射你解压后的 /volume1/docker/chinesesubfinder/Chrome 文件 夹 到
-                  /app/cache/Plugin/Chrome 文件夹中，那么你需要填写的 Chrome 容器内的完整路径应 该是（举例，按自己下载的
-                  Chrome 来改）: /app/cache/Plugin/Chrome/chrome
+                  如果你自己额外挂载了浏览器，可填写容器内完整路径，比如
+                  <code>/app/cache/Plugin/Chrome/chrome</code>
                 </li>
                 <li>如果是 Windows 用户，那么就是你 Chrome.exe 的完整路径</li>
                 <li>Chrome 版本不要太低</li>
@@ -133,11 +131,12 @@
           <q-item-section>
             <q-input
               v-model="form.local_chrome_settings.local_chrome_exe_f_path"
-              label="Chrome(.exe) 的完整路径"
-              placeholder="/your/chrome/path/chrome.exe"
+              label="Chrome(.exe) 的完整路径（可留空自动探测）"
+              placeholder="/usr/bin/chromium"
               standout
               dense
-              :rules="[(val) => !!val || '不能为空']"
+              hint="标准版 Docker 留空会自动使用容器内已安装的 Chromium"
+              persistent-hint
             />
           </q-item-section>
         </q-item>

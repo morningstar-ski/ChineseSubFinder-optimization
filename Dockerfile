@@ -28,7 +28,7 @@ ARG HTTPS_PROXY
 ARG NO_PROXY
 ARG GOPROXY=https://proxy.golang.org,direct
 ARG APP_VERSION=dev
-ARG LITE_MODE=true
+ARG LITE_MODE=false
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -57,7 +57,7 @@ RUN set -eux; \
       ./cmd/chinesesubfinder
 
 FROM ${RUNTIME_IMAGE}
-ARG INSTALL_BROWSER=false
+ARG INSTALL_BROWSER=true
 ENV TZ=Asia/Shanghai \
     PERMS=true \
     PUID=1026 \

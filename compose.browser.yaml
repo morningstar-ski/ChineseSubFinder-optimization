@@ -1,5 +1,7 @@
 services:
   chinesesubfinder:
+    # Legacy compatibility override for users already calling
+    # `docker compose -f compose.yaml -f compose.browser.yaml`.
     build:
       args:
         LITE_MODE: "false"

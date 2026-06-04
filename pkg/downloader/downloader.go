@@ -38,6 +38,7 @@ type Downloader struct {
 	fileDownloader           *file_downloader.FileDownloader
 	ctx                      context.Context
 	cancel                   context.CancelFunc
+	ctxLock                  sync.RWMutex
 	subSupplierHub           *subSupplier.SubSupplierHub                      // 字幕提供源的集合，这个需要定时进行扫描，这些字幕源是否有效，以及下载验证码信息
 	mk                       *markSystem.MarkingSystem                        // MarkingSystem，字幕的评价系统
 	subFormatter             ifaces.ISubFormatter                             // 字幕格式化命名的实现
@@ -83,7 +84,7 @@ func NewDownloader(inSubFormatter ifaces.ISubFormatter, fileDownloader *file_dow
 	// 任务队列
 	downloader.downloadQueue = downloadQueue
 	// 单个任务的超时设置
-	downloader.ctx, downloader.cancel = context.WithCancel(context.Background())
+	downloader.ResetContext()
 	if settings.Get().EmbySettings.Enable == true {
 		// 用于字幕下载后的刷新
 		downloader.embyHelper = embyHelper.NewEmbyHelper(downloader.fileDownloader.MediaInfoDealers)
@@ -171,8 +172,26 @@ func (d *Downloader) Cancel() {
 	if d == nil {
 		return
 	}
-	d.cancel()
+	d.ctxLock.RLock()
+	cancel := d.cancel
+	d.ctxLock.RUnlock()
+	if cancel != nil {
+		cancel()
+	}
 	d.log.Infoln("Downloader.Cancel()")
+}
+
+func (d *Downloader) ResetContext() {
+	d.ctxLock.Lock()
+	d.ctx, d.cancel = context.WithCancel(context.Background())
+	d.ctxLock.Unlock()
+}
+
+func (d *Downloader) currentContext() context.Context {
+	d.ctxLock.RLock()
+	defer d.ctxLock.RUnlock()
+
+	return d.ctx
 }
 
 func (d *Downloader) ReloadSettings(inSubFormatter ifaces.ISubFormatter) error {

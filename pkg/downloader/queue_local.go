@@ -250,18 +250,16 @@ func (d *Downloader) queueDownloaderLocal() {
 	}()
 
 	downloadCounter++
+	jobCtx := d.currentContext()
 	// 创建一个 chan 用于任务的中断和超时
-	done := make(chan interface{}, 1)
+	done := make(chan error, 1)
 	// 接收内部任务的 panic
 	panicChan := make(chan interface{}, 1)
 
 	go func() {
+		var runErr error
+
 		defer func() {
-			if p := recover(); p != nil {
-				panicChan <- p
-			}
-			close(done)
-			close(panicChan)
 			// 每下载完毕一次，进行一次缓存和 Chrome 的清理
 			err = pkg.ClearRootTmpFolder()
 			if err != nil {
@@ -271,19 +269,25 @@ func (d *Downloader) queueDownloaderLocal() {
 			if pkg.LiteMode() == false {
 				pkg.CloseChrome(d.log)
 			}
+
+			if p := recover(); p != nil {
+				panicChan <- p
+				return
+			}
+
+			done <- runErr
 		}()
 
 		if oneJob.VideoType == common2.Movie {
 			// 电影
 			// 具体的下载逻辑 func()
-			done <- d.movieDlFunc(d.ctx, oneJob, downloadCounter)
+			runErr = d.movieDlFunc(jobCtx, oneJob, downloadCounter)
 		} else if oneJob.VideoType == common2.Series {
 			// 连续剧
 			// 具体的下载逻辑 func()
-			done <- d.seriesDlFunc(d.ctx, oneJob, downloadCounter)
+			runErr = d.seriesDlFunc(jobCtx, oneJob, downloadCounter)
 		} else {
 			d.log.Errorln("oneJob.VideoType not support, oneJob.VideoType = ", oneJob.VideoType)
-			done <- nil
 		}
 	}()
 
@@ -300,7 +304,7 @@ func (d *Downloader) queueDownloaderLocal() {
 	case p := <-panicChan:
 		// 遇到内部的 panic，向外抛出
 		panic(p)
-	case <-d.ctx.Done():
+	case <-jobCtx.Done():
 		{
 			// 取消这个 context
 			d.log.Warningln("cancel Downloader.QueueDownloader()")

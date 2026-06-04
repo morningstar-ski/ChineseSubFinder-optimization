@@ -149,6 +149,9 @@ func (ch *CronHelper) Start(runImmediately bool) {
 	ch.cronHelperRunning = true
 	ch.stopping = false
 	ch.cronLock.Unlock()
+	if ch.Downloader != nil {
+		ch.Downloader.ResetContext()
+	}
 	// ----------------------------------------------
 	// 判断扫描任务的时间间隔是否符合要求，不符合则重写默认值
 	_, err := cron.ParseStandard(settings.Get().CommonSettings.ScanInterval)

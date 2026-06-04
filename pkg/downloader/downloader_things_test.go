@@ -92,3 +92,37 @@ func TestOneVideoSelectBestSubPrefersSubhdAndWritesSubtitle(t *testing.T) {
 		t.Fatalf("saved subtitle content did not come from subhd candidate")
 	}
 }
+
+func TestDownloaderResetContextAfterCancel(t *testing.T) {
+	d := &Downloader{
+		log: logrus.New(),
+	}
+	d.ResetContext()
+
+	oldCtx := d.currentContext()
+	select {
+	case <-oldCtx.Done():
+		t.Fatal("old context should be active before cancel")
+	default:
+	}
+
+	d.Cancel()
+
+	select {
+	case <-oldCtx.Done():
+	default:
+		t.Fatal("old context should be canceled after Cancel")
+	}
+
+	d.ResetContext()
+	newCtx := d.currentContext()
+	if newCtx == oldCtx {
+		t.Fatal("ResetContext should create a new context")
+	}
+
+	select {
+	case <-newCtx.Done():
+		t.Fatal("new context should be active after ResetContext")
+	default:
+	}
+}

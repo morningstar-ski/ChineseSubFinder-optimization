@@ -93,8 +93,10 @@ npm run build
 
 ## Docker 说明
 
-- 根目录 `Dockerfile` 是当前仓库推荐的可部署构建链路
-- 根目录 `compose.yaml` 是默认启动入口
+- 根目录 `Dockerfile` 是当前仓库推荐的可部署构建链路，默认构建 **非 Lite** 标准版，并安装 Chromium
+- 根目录 `compose.yaml` 是默认启动入口，默认会得到可直接使用浏览器型字幕源的镜像
+- 运行时会自动探测 `/usr/bin/chromium` 等常见路径，一般不需要再到实验室里手填本地 Chrome 路径
+- 如需显式退回轻量模式，请自行传入 `LITE_MODE=true` 和 `INSTALL_BROWSER=false`
 - `docker/full-release.Dockerfile` 仍保留作历史文件，不适合本仓库源码直出部署
 
 ## 说明
