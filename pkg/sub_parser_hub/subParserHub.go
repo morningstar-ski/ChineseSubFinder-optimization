@@ -63,11 +63,26 @@ func (p SubParserHub) DetermineFileTypeFromFile(filePath string) (bool, *subpars
 func (p SubParserHub) DetermineFileTypeFromBytes(inBytes []byte, nowExt string) (bool, *subparser.FileInfo, error) {
 	normalizedBytes, err := language.ChangeFileCoding2UTF8(inBytes)
 	if err != nil {
-		return false, nil, err
+		return p.determineFileTypeFromBytesWithPayload(inBytes, nowExt)
 	}
 
+	found, subFileInfo, err := p.determineFileTypeFromBytesWithPayload(normalizedBytes, nowExt)
+	if err != nil {
+		return false, nil, err
+	}
+	if found == true {
+		return true, subFileInfo, nil
+	}
+	if string(normalizedBytes) == string(inBytes) {
+		return false, nil, nil
+	}
+
+	return p.determineFileTypeFromBytesWithPayload(inBytes, nowExt)
+}
+
+func (p SubParserHub) determineFileTypeFromBytesWithPayload(inBytes []byte, nowExt string) (bool, *subparser.FileInfo, error) {
 	for _, parser := range p.Parser {
-		bFind, subFileInfo, err := parser.DetermineFileTypeFromBytes(normalizedBytes, nowExt)
+		bFind, subFileInfo, err := parser.DetermineFileTypeFromBytes(inBytes, nowExt)
 		if err != nil {
 			return false, nil, err
 		}
@@ -76,7 +91,6 @@ func (p SubParserHub) DetermineFileTypeFromBytes(inBytes []byte, nowExt string) 
 		}
 		return true, subFileInfo, nil
 	}
-	// 如果返回 nil ，那么就说明都没有字幕的格式匹配上
 	return false, nil, nil
 }
 

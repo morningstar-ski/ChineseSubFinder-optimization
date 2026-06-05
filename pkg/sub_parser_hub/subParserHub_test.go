@@ -10,6 +10,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/ass"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/srt"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/unit_test_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/subparser"
 )
 
 func TestSubParserHubIsSubHasChinese(t *testing.T) {
@@ -140,6 +141,20 @@ func TestDetermineFileTypeFromBytesSupportsUTF16LEASS(t *testing.T) {
 	}
 }
 
+func TestDetermineFileTypeFromBytesFallsBackToOriginalBytes(t *testing.T) {
+	test4Log := log_helper.GetLogger4Tester()
+	original := encodeUTF16LEWithBOM("fallback bytes should be inspected as-is")
+	subParserHub := NewSubParserHub(test4Log, fallbackBytesOnlyParser{expected: original})
+
+	bFind, subFileInfo, err := subParserHub.DetermineFileTypeFromBytes(original, ".srt")
+	if err != nil {
+		t.Fatalf("DetermineFileTypeFromBytes returned error: %v", err)
+	}
+	if bFind == false || subFileInfo == nil {
+		t.Fatal("expected fallback parser to match original bytes")
+	}
+}
+
 func encodeUTF16LEWithBOM(text string) []byte {
 	encoded := utf16.Encode([]rune(text))
 	out := bytes.NewBuffer(make([]byte, 0, 2+len(encoded)*2))
@@ -149,4 +164,23 @@ func encodeUTF16LEWithBOM(text string) []byte {
 		out.WriteByte(byte(r >> 8))
 	}
 	return out.Bytes()
+}
+
+type fallbackBytesOnlyParser struct {
+	expected []byte
+}
+
+func (p fallbackBytesOnlyParser) GetParserName() string {
+	return "fallback-bytes-only"
+}
+
+func (p fallbackBytesOnlyParser) DetermineFileTypeFromFile(filePath string) (bool, *subparser.FileInfo, error) {
+	return false, nil, nil
+}
+
+func (p fallbackBytesOnlyParser) DetermineFileTypeFromBytes(inBytes []byte, nowExt string) (bool, *subparser.FileInfo, error) {
+	if bytes.Equal(inBytes, p.expected) == false {
+		return false, nil, nil
+	}
+	return true, &subparser.FileInfo{Ext: nowExt, Data: inBytes}, nil
 }
