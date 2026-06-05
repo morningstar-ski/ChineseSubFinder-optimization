@@ -106,27 +106,29 @@ func (s *Supplier) IsAlive() bool {
 }
 
 func (s *Supplier) OverDailyDownloadLimit() bool {
-	if settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit == 0 {
+	limit := settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit
+	if limit == 0 {
 		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit is 0, will Skip Download")
 		return true
 	}
+	if limit < 0 {
+		s.log.Infoln(s.GetSupplierName(), "DailyDownloadLimit is unlimited")
+		return false
+	}
 
-	// 需要查询今天的限额
 	count, err := s.fileDownloader.CacheCenter.DailyDownloadCountGet(s.GetSupplierName(),
 		pkg.GetPublicIP(s.log, settings.Get().AdvancedSettings.TaskQueue))
 	if err != nil {
 		s.log.Errorln(s.GetSupplierName(), "DailyDownloadCountGet", err)
 		return true
 	}
-	if count >= settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit {
-		// 超限了
-		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit:", settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit, "Now Is:", count)
+	if count >= limit {
+		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit:", limit, "Now Is:", count)
 		return true
-	} else {
-		// 没有超限
-		s.log.Infoln(s.GetSupplierName(), "DailyDownloadLimit:", settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit, "Now Is:", count)
-		return false
 	}
+
+	s.log.Infoln(s.GetSupplierName(), "DailyDownloadLimit:", limit, "Now Is:", count)
+	return false
 }
 
 func (s *Supplier) GetLogger() *logrus.Logger {

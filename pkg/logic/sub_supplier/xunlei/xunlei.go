@@ -128,7 +128,6 @@ func (s *Supplier) getSubListFromFile(filePath string) ([]supplier.SubInfo, erro
 
 	cid, err := s.getCid(filePath)
 	var jsonList SublistSliceXunLei
-	var tmpXunLeiSubListChinese = make([]SublistXunLei, 0)
 	var outSubList []supplier.SubInfo
 	if len(cid) == 0 {
 		return nil, common.XunLeiCIdIsEmpty
@@ -139,35 +138,9 @@ func (s *Supplier) getSubListFromFile(filePath string) ([]supplier.SubInfo, erro
 		return nil, err
 	}
 
-	// 剔除空的
-	for _, v := range jsonList.Sublist {
-		if len(v.Scid) > 0 && v.Scid != "" {
-			// 符合中文语言的先加入列表
-			tmpLang := language.LangConverter4Sub_Supplier(v.Language)
-			if language.HasChineseLang(tmpLang) == true && sub_parser_hub.IsSubTypeWanted(v.Sname) == true {
-				tmpXunLeiSubListChinese = append(tmpXunLeiSubListChinese, v)
-			}
-		}
-	}
-	// TODO 这里需要考虑，可以设置为高级选项，不够就用 unknow 来补充
-	// 如果不够，再补 unknow
-	if len(tmpXunLeiSubListChinese) < s.topic {
-		for _, v := range jsonList.Sublist {
-			if len(tmpXunLeiSubListChinese) >= s.topic {
-				break
-			}
-			if len(v.Scid) > 0 && v.Scid != "" {
-				tmpLang := language.LangConverter4Sub_Supplier(v.Language)
-				if language.HasChineseLang(tmpLang) == false {
-					tmpXunLeiSubListChinese = append(tmpXunLeiSubListChinese, v)
-				}
-			}
-		}
-	}
-
 	videoFileName := filepath.Base(filePath)
 	// 再开始下载字幕
-	for i, v := range tmpXunLeiSubListChinese {
+	for i, v := range s.buildDownloadCandidates(jsonList.Sublist) {
 
 		// 解析 xunlei 列表中的这个字幕类型转换到内部的字幕类型
 		//tmpLang := language.LangConverter4Sub_Supplier(v.Language)
@@ -176,11 +149,60 @@ func (s *Supplier) getSubListFromFile(filePath string) ([]supplier.SubInfo, erro
 			s.log.Error("FileDownloader.Get", err)
 			continue
 		}
+		if s.isChineseSubtitlePayload(subInfo) == false {
+			s.log.Warningln(s.GetSupplierName(), "Skip non-Chinese payload despite metadata match", v.Sname, v.Surl)
+			continue
+		}
 
 		outSubList = append(outSubList, *subInfo)
+		if len(outSubList) >= s.topic {
+			break
+		}
 	}
 
 	return outSubList, nil
+}
+
+func (s *Supplier) buildDownloadCandidates(subtitles []SublistXunLei) []SublistXunLei {
+	chineseFirst := make([]SublistXunLei, 0, len(subtitles))
+	fallback := make([]SublistXunLei, 0, len(subtitles))
+	seen := make(map[string]struct{}, len(subtitles))
+
+	for _, candidate := range subtitles {
+		if len(candidate.Scid) == 0 || candidate.Surl == "" || sub_parser_hub.IsSubTypeWanted(candidate.Sname) == false {
+			continue
+		}
+		if _, ok := seen[candidate.Scid]; ok {
+			continue
+		}
+		seen[candidate.Scid] = struct{}{}
+
+		tmpLang := language.LangConverter4Sub_Supplier(candidate.Language)
+		if language.HasChineseLang(tmpLang) {
+			chineseFirst = append(chineseFirst, candidate)
+			continue
+		}
+		fallback = append(fallback, candidate)
+	}
+
+	return append(chineseFirst, fallback...)
+}
+
+func (s *Supplier) isChineseSubtitlePayload(subInfo *supplier.SubInfo) bool {
+	if subInfo == nil || s.fileDownloader == nil || s.fileDownloader.SubParserHub == nil {
+		return false
+	}
+
+	found, fileInfo, err := s.fileDownloader.SubParserHub.DetermineFileTypeFromBytes(subInfo.Data, subInfo.Ext)
+	if err != nil {
+		s.log.Warningln(s.GetSupplierName(), "DetermineFileTypeFromBytes", subInfo.Name, err)
+		return false
+	}
+	if found == false || fileInfo == nil {
+		return false
+	}
+
+	return language.HasChineseLang(fileInfo.Lang)
 }
 
 func (s *Supplier) getSubInfos(filePath, cid string) (SublistSliceXunLei, error) {
