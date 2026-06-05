@@ -106,21 +106,7 @@
         <q-item-section>
           <q-item-label>本地Chrome</q-item-label>
           <q-item-label caption>
-            只有在你明确启用了依赖 Chrome 的实验性抓取链路时，才需要填写这里。如果本程序能够自动下载 Chrome，
-            就不建议手动指定版本；程序升级后，自动下载的 Chrome 会一起更新，而手动指定的版本需要你自己维护。下载动作由
-            go-rod 负责，遇到兼容性问题通常也需要回到 go-rod 侧排查。注意以下几点：
-            <div>
-              <ol>
-                <li>
-                  如果是 Docker 用户，推荐把你解压后的 /volume1/docker/chinesesubfinder/Chrome 文件夹映射到
-                  /app/cache/Plugin/Chrome 文件夹中，那么这里填写的就应该是 Chrome
-                  在容器内的完整路径（举例，按你自己下载的 Chrome 来改）: /app/cache/Plugin/Chrome/chrome
-                </li>
-                <li>如果是 Windows 用户，那么就是你 Chrome.exe 的完整路径</li>
-                <li>Chrome 版本不要太低</li>
-                <li>请确认指定的 Chrome 与目标平台、CPU 架构一致</li>
-              </ol>
-            </div>
+            开启后程序会优先使用内置自动探测到的本机 Chrome，可执行文件路径不再需要手动填写。
           </q-item-label>
         </q-item-section>
         <q-item-section avatar top>
@@ -131,14 +117,7 @@
       <template v-if="form.local_chrome_settings.enabled">
         <q-item>
           <q-item-section>
-            <q-input
-              v-model="form.local_chrome_settings.local_chrome_exe_f_path"
-              label="Chrome(.exe) 的完整路径"
-              placeholder="/your/chrome/path/chrome.exe"
-              standout
-              dense
-              :rules="[(val) => !!val || '不能为空']"
-            />
+            <q-item-label caption>当前模式下将自动探测本机 Chrome，无需额外配置路径。</q-item-label>
           </q-item-section>
         </q-item>
       </template>

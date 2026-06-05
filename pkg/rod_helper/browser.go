@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -151,12 +152,7 @@ func resolveChromePath(cfg *settings.Settings) string {
 		return cfg.ExperimentalFunction.LocalChromeSettings.LocalChromeExeFPath
 	}
 
-	candidates := []string{
-		"/usr/bin/chromium",
-		"/usr/bin/chromium-browser",
-		"/usr/bin/google-chrome",
-		"/usr/bin/chrome",
-	}
+	candidates := chromePathCandidates()
 
 	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {
@@ -164,4 +160,33 @@ func resolveChromePath(cfg *settings.Settings) string {
 		}
 	}
 	return ""
+}
+
+func chromePathCandidates() []string {
+	candidates := []string{
+		"/usr/bin/chromium",
+		"/usr/bin/chromium-browser",
+		"/usr/bin/google-chrome",
+		"/usr/bin/chrome",
+	}
+
+	if runtime.GOOS == "windows" {
+		programFiles := []string{
+			os.Getenv("ProgramFiles"),
+			os.Getenv("ProgramFiles(x86)"),
+			os.Getenv("LocalAppData"),
+		}
+		for _, root := range programFiles {
+			if root == "" {
+				continue
+			}
+			candidates = append(candidates, filepath.Join(root, "Google", "Chrome", "Application", "chrome.exe"))
+		}
+	}
+
+	if runtime.GOOS == "darwin" {
+		candidates = append(candidates, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+	}
+
+	return candidates
 }

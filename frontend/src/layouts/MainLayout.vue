@@ -51,8 +51,6 @@
 
     <q-page-container>
       <router-view />
-
-      <notice-dialog />
     </q-page-container>
   </q-layout>
 </template>
@@ -68,7 +66,6 @@ import { LocalStorage } from 'quasar';
 import AccessApi from 'src/api/AccessApi';
 import BugReportItem from 'layouts/BugReportItem';
 import VersionUpdateItem from 'components/VersionUpdateItem';
-import NoticeDialog from 'components/NoticeDialog';
 import { PROJECT_HELP_URL } from 'src/constants/ProjectLinks';
 import { normalizeDisplayVersion } from 'src/utils/version';
 
