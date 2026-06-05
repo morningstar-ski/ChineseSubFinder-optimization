@@ -28,6 +28,7 @@ func (a *Api) SearchSubtitles(client *resty.Client, queryParams map[string]strin
 	if err = json.Unmarshal(resp.Body(), &searchResponse); err != nil {
 		return nil, err
 	}
+	searchResponse.populateLegacyResults()
 	if searchResponse.Status == false {
 		return nil, fmt.Errorf("subdl search returned status=false")
 	}

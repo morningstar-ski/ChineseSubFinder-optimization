@@ -117,6 +117,16 @@ func TestGetSeasonAndEpisodeFromFileName(t *testing.T) {
 	t.Logf("\n\n%t\t S%dE%d\n", b, s, e)
 }
 
+func TestGetSeasonAndEpisodeFromSubFileName1xPattern(t *testing.T) {
+	isFullSeason, season, episode, err := GetSeasonAndEpisodeFromSubFileName("Game of Thrones - 1x01 - Winter is Coming.720p HDTV.cn.srt")
+	if err != nil {
+		t.Fatalf("GetSeasonAndEpisodeFromSubFileName() error = %v", err)
+	}
+	if isFullSeason != false || season != 1 || episode != 1 {
+		t.Fatalf("GetSeasonAndEpisodeFromSubFileName() = (%t, %d, %d), want (false, 1, 1)", isFullSeason, season, episode)
+	}
+}
+
 func TestGetNumber2Float(t *testing.T) {
 	testString := "asd&^%1998.2jh aweo "
 	outNumber, err := GetNumber2Float(testString)

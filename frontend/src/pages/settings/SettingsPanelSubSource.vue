@@ -135,6 +135,9 @@
         <q-item tag="label">
           <q-item-section>
             <q-item-label>Moviesubtitles</q-item-label>
+            <q-item-label caption>
+              暂时默认关闭：上游站点当前未发现可用中文字幕库存，已影响真实下载验证。
+            </q-item-label>
           </q-item-section>
           <q-item-section avatar top>
             <q-toggle v-model="form.moviesubtitles_settings.enabled" />

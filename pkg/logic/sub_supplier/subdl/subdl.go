@@ -206,7 +206,7 @@ func (s *Supplier) searchCandidatesWithFallback(mediaInfo *models.MediaInfo, vid
 			return nil, err
 		}
 
-		candidates := selectCandidates(searchResponse.Results, videoFPath, isMovie, season, episode, s.topic)
+		candidates := selectCandidates(searchResponse.SubtitleHits(), videoFPath, isMovie, season, episode, s.topic)
 		if len(candidates) == 0 {
 			continue
 		}
@@ -303,7 +303,7 @@ func selectCandidates(results []SubtitleHit, videoFPath string, isMovie bool, se
 					Season:      season,
 					Episode:     episode,
 					Hi:          unpack.Hi,
-					Releases:    append([]string{}, result.Releases...),
+					Releases:    result.ReleaseNames(),
 				})
 			}
 		}
@@ -317,12 +317,12 @@ func selectCandidates(results []SubtitleHit, videoFPath string, isMovie bool, se
 		}
 		seen[url] = struct{}{}
 		out = append(out, subtitleCandidate{
-			Name:        result.Name,
+			Name:        firstNonEmpty(result.ReleaseName, result.Name),
 			DownloadURL: url,
 			Season:      result.Season,
 			Episode:     result.Episode,
 			Hi:          result.Hi,
-			Releases:    append([]string{}, result.Releases...),
+			Releases:    result.ReleaseNames(),
 		})
 	}
 
@@ -418,4 +418,14 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func firstNonEmpty(items ...string) string {
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			return item
+		}
+	}
+	return ""
 }

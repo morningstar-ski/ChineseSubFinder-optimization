@@ -112,8 +112,13 @@ func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []sup
 				if isMovie == false {
 					// 连续剧的情况
 					// 从解压的文件名称推断 Season 和 Episode 信息
-					_, nowSeason, nowEps, err := decode.GetSeasonAndEpisodeFromSubFileName(filepath.Base(fileFullPath))
+					isFullSeasonSub, nowSeason, nowEps, err := decode.GetSeasonAndEpisodeFromSubFileName(filepath.Base(fileFullPath))
 					if err != nil {
+						log.Debugln("OrganizeDlSubFiles.GetSeasonAndEpisodeFromSubFileName", filepath.Base(fileFullPath), err)
+						continue
+					}
+					if nowSeason <= 0 || isFullSeasonSub == true || nowEps <= 0 {
+						log.Debugln("OrganizeDlSubFiles.SkipUnmatchedSeriesSub", filepath.Base(fileFullPath), "Season:", nowSeason, "Episode:", nowEps, "IsFullSeason:", isFullSeasonSub)
 						continue
 					}
 					newSubName := AddFrontName(subInfos[i], filepath.Base(fileFullPath))

@@ -490,23 +490,15 @@ func GetSeasonAndEpisodeFromSubFileName(videoFileName string) (bool, int, int, e
 	upperName := strings.ToUpper(videoFileName)
 	// 先进行单个 Episode 的匹配
 	// Killing.Eve.S02E01.Do.You.Know.How
-	var re = regexp.MustCompile(`(?m)[\.\s]S(\d+).*?E(\d+)[\.\s]`)
-	matched := re.FindAllStringSubmatch(upperName, -1)
-	if matched == nil || len(matched) < 1 {
-		// Killing.Eve.S02.Do.You.Know.How
-		// 看看是不是季度字幕打包
-		re = regexp.MustCompile(`(?m)[\.\s]S(\d+)[\.\s]`)
-		matched = re.FindAllStringSubmatch(upperName, -1)
+	for _, pattern := range []string{
+		`(?m)(?:^|[\.\s\[\(\-])S(\d+).*?E(\d+)(?:$|[\.\s\]\)\-])`,
+		`(?m)(?:^|[\.\s\[\(\-])(\d+)X(\d+)(?:$|[\.\s\]\)\-])`,
+	} {
+		re := regexp.MustCompile(pattern)
+		matched := re.FindAllStringSubmatch(upperName, -1)
 		if matched == nil || len(matched) < 1 {
-			return false, 0, 0, nil
+			continue
 		}
-		season, err := GetNumber2int(matched[0][1])
-		if err != nil {
-			return false, 0, 0, err
-		}
-		return true, season, 0, nil
-	} else {
-		// 一集的字幕
 		season, err := GetNumber2int(matched[0][1])
 		if err != nil {
 			return false, 0, 0, err
@@ -518,6 +510,17 @@ func GetSeasonAndEpisodeFromSubFileName(videoFileName string) (bool, int, int, e
 
 		return false, season, episode, nil
 	}
+
+	re := regexp.MustCompile(`(?m)(?:^|[\.\s\[\(\-])S(\d+)(?:$|[\.\s\]\)\-])`)
+	matched := re.FindAllStringSubmatch(upperName, -1)
+	if matched == nil || len(matched) < 1 {
+		return false, 0, 0, nil
+	}
+	season, err := GetNumber2int(matched[0][1])
+	if err != nil {
+		return false, 0, 0, err
+	}
+	return true, season, 0, nil
 }
 
 func GetNumber2Float(input string) (float32, error) {

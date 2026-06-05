@@ -1,6 +1,7 @@
 package tvsubtitles
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -38,6 +39,12 @@ type showSearchResult struct {
 type seasonPlan struct {
 	EpisodeSubtitlePages map[int]string
 	AllEpisodesPage      string
+}
+
+type finalDownloadTarget struct {
+	URL              string
+	DirectData       []byte
+	DownloadFileName string
 }
 
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
@@ -157,21 +164,36 @@ func (s *Supplier) getEpisodeSubtitle(videoFPath string, season, episode int) ([
 		return nil, err
 	}
 
-	finalDownloadURL, err := s.fetchFinalDownloadURL(client, downloadPageURL)
+	finalDownloadTarget, err := s.fetchFinalDownloadTarget(client, downloadPageURL)
 	if err != nil {
 		return nil, err
 	}
 
-	cacheKey := fmt.Sprintf("%s-%s", s.GetSupplierName(), finalDownloadURL)
-	subInfo, err := s.fileDownloader.Get(
-		s.GetSupplierName(),
-		0,
-		filepath.Base(videoFPath),
-		finalDownloadURL,
-		0,
-		0,
-		cacheKey,
-	)
+	cacheKey := fmt.Sprintf("%s-%s", s.GetSupplierName(), finalDownloadTarget.URL)
+	var subInfo *supplier.SubInfo
+	if len(finalDownloadTarget.DirectData) > 0 {
+		subInfo, err = s.fileDownloader.GetByData(
+			s.GetSupplierName(),
+			0,
+			filepath.Base(videoFPath),
+			finalDownloadTarget.URL,
+			0,
+			0,
+			finalDownloadTarget.DirectData,
+			finalDownloadTarget.DownloadFileName,
+			cacheKey,
+		)
+	} else {
+		subInfo, err = s.fileDownloader.Get(
+			s.GetSupplierName(),
+			0,
+			filepath.Base(videoFPath),
+			finalDownloadTarget.URL,
+			0,
+			0,
+			cacheKey,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -245,17 +267,31 @@ func (s *Supplier) fetchDownloadPageURL(client *resty.Client, subtitlePageURL st
 	return absoluteURL(settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl, href), nil
 }
 
-func (s *Supplier) fetchFinalDownloadURL(client *resty.Client, downloadPageURL string) (string, error) {
+func (s *Supplier) fetchFinalDownloadTarget(client *resty.Client, downloadPageURL string) (*finalDownloadTarget, error) {
 	resp, err := client.R().Get(downloadPageURL)
 	if err != nil {
-		return "", err
+		return nil, err
+	}
+
+	if isDirectDownloadResponse(resp.Body(), resp.Header().Get("Content-Type"), resp.Header().Get("Content-Disposition")) {
+		downloadFileName := ""
+		if resp.RawResponse != nil {
+			downloadFileName = pkg.GetFileName(s.log, resp.RawResponse)
+		}
+		return &finalDownloadTarget{
+			URL:              downloadPageURL,
+			DirectData:       append([]byte(nil), resp.Body()...),
+			DownloadFileName: downloadFileName,
+		}, nil
 	}
 
 	path, err := parseDownloadPage(resp.String())
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return absoluteURL(settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl, path), nil
+	return &finalDownloadTarget{
+		URL: absoluteURL(settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl, path),
+	}, nil
 }
 
 func parseSearchResults(html string) ([]showSearchResult, error) {
@@ -364,6 +400,28 @@ func parseDownloadPage(html string) (string, error) {
 	}
 
 	return "", errors.New("tvsubtitles final download path not found")
+}
+
+func isDirectDownloadResponse(body []byte, contentType string, contentDisposition string) bool {
+	if len(body) == 0 {
+		return false
+	}
+
+	lowerContentType := strings.ToLower(contentType)
+	lowerContentDisposition := strings.ToLower(contentDisposition)
+	if strings.Contains(lowerContentDisposition, "attachment") {
+		return true
+	}
+	if strings.Contains(lowerContentType, "application/zip") ||
+		strings.Contains(lowerContentType, "application/octet-stream") ||
+		strings.Contains(lowerContentType, "application/x-rar-compressed") ||
+		strings.Contains(lowerContentType, "application/vnd.rar") {
+		return true
+	}
+
+	return bytes.HasPrefix(body, []byte("PK\x03\x04")) ||
+		bytes.HasPrefix(body, []byte("PK\x05\x06")) ||
+		bytes.HasPrefix(body, []byte("Rar!\x1a\x07"))
 }
 
 func selectBestShow(results []showSearchResult, mediaInfo *models.MediaInfo, keyword string) *showSearchResult {

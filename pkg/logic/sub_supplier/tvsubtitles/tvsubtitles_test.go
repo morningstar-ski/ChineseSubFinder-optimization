@@ -1,6 +1,14 @@
 package tvsubtitles
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"github.com/go-resty/resty/v2"
+)
 
 func TestParseSearchResults(t *testing.T) {
 	html := `
@@ -88,6 +96,71 @@ document.location = s1+s2+s3+s4;
 	}
 	if path != "files/From_1x10_WEB.AMZN.cn.zip" {
 		t.Fatalf("path = %q", path)
+	}
+}
+
+func TestIsDirectDownloadResponseZipBody(t *testing.T) {
+	body := append([]byte("PK\x03\x04"), []byte("fake zip bytes")...)
+	if isDirectDownloadResponse(body, "application/octet-stream", "") == false {
+		t.Fatal("expected zip payload to be treated as direct download response")
+	}
+}
+
+func TestIsDirectDownloadResponseRejectsCookieWarning(t *testing.T) {
+	body := []byte("Your request could not be served because you have browser cookies disabled.")
+	if isDirectDownloadResponse(body, "text/html; charset=utf-8", "") == true {
+		t.Fatal("cookie warning page should not be treated as direct download response")
+	}
+}
+
+func TestFetchFinalDownloadTargetDirectPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="episode.zip"`)
+		_, _ = w.Write(append([]byte("PK\x03\x04"), []byte("fake zip payload")...))
+	}))
+	defer server.Close()
+
+	supplier := &Supplier{}
+	target, err := supplier.fetchFinalDownloadTarget(resty.New(), server.URL)
+	if err != nil {
+		t.Fatalf("fetchFinalDownloadTarget() error = %v", err)
+	}
+	if target.URL != server.URL {
+		t.Fatalf("target.URL = %q", target.URL)
+	}
+	if target.DownloadFileName != "episode.zip" {
+		t.Fatalf("target.DownloadFileName = %q", target.DownloadFileName)
+	}
+	if len(target.DirectData) == 0 {
+		t.Fatal("expected direct payload bytes")
+	}
+}
+
+func TestFetchFinalDownloadTargetHTMLRedirect(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`
+<script>
+var s1= 'files/';
+var s2= 'show.cn.zip';
+document.location = s1+s2;
+</script>`))
+	}))
+	defer server.Close()
+
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl = server.URL
+
+	supplier := &Supplier{}
+	target, err := supplier.fetchFinalDownloadTarget(resty.New(), server.URL)
+	if err != nil {
+		t.Fatalf("fetchFinalDownloadTarget() error = %v", err)
+	}
+	if target.URL != server.URL+"/files/show.cn.zip" {
+		t.Fatalf("target.URL = %q", target.URL)
+	}
+	if len(target.DirectData) != 0 {
+		t.Fatal("expected html redirect path, not direct bytes")
 	}
 }
 

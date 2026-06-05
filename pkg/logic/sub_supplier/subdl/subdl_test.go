@@ -1,6 +1,7 @@
 package subdl
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -109,5 +110,66 @@ func TestSubdlCandidateMetadata(t *testing.T) {
 	}
 	if len(metadata.ReleaseNames) != 2 || metadata.ReleaseNames[0] != "Release.A" || metadata.ReleaseNames[1] != "Release.B" {
 		t.Fatalf("unexpected release names %#v", metadata.ReleaseNames)
+	}
+}
+
+func TestSearchResponseUsesCurrentSubtitlesField(t *testing.T) {
+	payload := []byte(`{
+		"status": true,
+		"results": [
+			{
+				"sd_id": 21581,
+				"name": "The Matrix"
+			}
+		],
+		"subtitles": [
+			{
+				"release_name": "The.Matrix.1999.WEBRip.iTunes",
+				"name": "the-matrix_chinese-bg-code-2873685.zip",
+				"lang": "chinese bg code",
+				"url": "/subtitle/3367071-2873685.zip",
+				"season": 0,
+				"episode": null,
+				"language": "ZH",
+				"hi": false
+			}
+		]
+	}`)
+
+	var response SearchResponse
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	response.populateLegacyResults()
+
+	hits := response.SubtitleHits()
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 subtitle hit, got %#v", hits)
+	}
+	if hits[0].ReleaseName != "The.Matrix.1999.WEBRip.iTunes" {
+		t.Fatalf("unexpected release name %#v", hits[0])
+	}
+}
+
+func TestSelectCandidatesUsesReleaseNameFallback(t *testing.T) {
+	results := []SubtitleHit{
+		{
+			Name:        "the-matrix_chinese-bg-code.zip",
+			URL:         "/subtitle/matrix.zip",
+			Season:      0,
+			Episode:     0,
+			ReleaseName: "The.Matrix.1999.WEBRip.iTunes",
+		},
+	}
+
+	candidates := selectCandidates(results, filepath.Join("C:\\", "Media", "The.Matrix.1999.WEBRip.iTunes.mkv"), true, 0, 0, 5)
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %#v", candidates)
+	}
+	if candidates[0].Name != "The.Matrix.1999.WEBRip.iTunes" {
+		t.Fatalf("expected release name as candidate name, got %#v", candidates[0])
+	}
+	if len(candidates[0].Releases) != 1 || candidates[0].Releases[0] != "The.Matrix.1999.WEBRip.iTunes" {
+		t.Fatalf("expected release fallback, got %#v", candidates[0])
 	}
 }

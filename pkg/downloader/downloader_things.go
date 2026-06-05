@@ -151,9 +151,14 @@ func (d *Downloader) saveFullSeasonSub(seriesInfo *series.SeriesInfo, organizeSu
 				continue
 			}
 			// 从字幕的文件名推断是 哪一季 的 那一集
-			_, gusSeason, gusEpisode, err := decode.GetSeasonAndEpisodeFromSubFileName(subFileName)
+			isFullSeasonSub, gusSeason, gusEpisode, err := decode.GetSeasonAndEpisodeFromSubFileName(subFileName)
 			if err != nil {
-				return nil
+				d.log.Debugln("saveFullSeasonSub.GetSeasonAndEpisodeFromSubFileName", subFileName, err)
+				continue
+			}
+			if gusSeason <= 0 || isFullSeasonSub == true || gusEpisode <= 0 {
+				d.log.Debugln("saveFullSeasonSub.SkipUnmatchedSeriesSub", subFileName, "Season:", gusSeason, "Episode:", gusEpisode, "IsFullSeason:", isFullSeasonSub)
+				continue
 			}
 			// 把整季的字幕缓存位置也提供出去，如果之前没有下载到的，这里返回出来的可以补上
 			seasonEpsKey := pkg.GetEpisodeKeyName(gusSeason, gusEpisode)

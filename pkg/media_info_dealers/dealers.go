@@ -26,14 +26,14 @@ func (d *Dealers) SetTmdbHelperInstance(tmdbHelper *tmdb_api.TmdbApi) {
 	d.tmdbHelper = tmdbHelper
 }
 
-// ConvertId 目前仅仅支持 TMDB ID 转 IMDB ID， iD：TMDB ID，idType：tmdb
+// ConvertId currently only supports converting a TMDB ID into an IMDb ID.
 func (d *Dealers) ConvertId(iD string, idType string, isMovieOrSeries bool) (convertIdResult *tmdb_api.ConvertIdResult, err error) {
 
 	if d.tmdbHelper != nil && settings.Get().AdvancedSettings.TmdbApiSettings.Enable == true && settings.Get().AdvancedSettings.TmdbApiSettings.ApiKey != "" {
-		// 优先使用用户自己的 tmdb api
+		// Prefer the user's configured TMDB API.
 		return d.tmdbHelper.ConvertId(iD, idType, isMovieOrSeries)
 	} else {
-		// 使用默认的公用服务器 tmdb api
+		// Fall back to the shared subtitle.best-backed conversion service.
 		videoType := ""
 		if isMovieOrSeries == true {
 			videoType = "movie"
@@ -56,15 +56,26 @@ func (d *Dealers) ConvertId(iD string, idType string, isMovieOrSeries bool) (con
 func (d *Dealers) GetMediaInfo(id, source, videoType string) (*models.MediaInfo, error) {
 
 	if d.tmdbHelper != nil && settings.Get().AdvancedSettings.TmdbApiSettings.Enable == true && settings.Get().AdvancedSettings.TmdbApiSettings.ApiKey != "" {
-		// 优先使用用户自己的 tmdb api
-		return d.getMediaInfoFromSelfApi(id, source, videoType)
-	} else {
-		// 使用默认的公用服务器 tmdb api
-		return d.getMediaInfoFromSubtitleBestApi(id, source, videoType)
+		mediaInfo, err := d.getMediaInfoFromSelfApi(id, source, videoType)
+		if err == nil {
+			return mediaInfo, nil
+		}
+		if d.SubtitleBestApi == nil {
+			return nil, err
+		}
+
+		d.Logger.Warningln("GetMediaInfo", "fallback to subtitle.best", "source:", source, "videoType:", videoType, "id:", id, "reason:", err)
+		fallbackMediaInfo, fallbackErr := d.getMediaInfoFromSubtitleBestApi(id, source, videoType)
+		if fallbackErr != nil {
+			return nil, fmt.Errorf("tmdb self api failed: %v; subtitle.best fallback failed: %w", err, fallbackErr)
+		}
+		return fallbackMediaInfo, nil
 	}
+
+	return d.getMediaInfoFromSubtitleBestApi(id, source, videoType)
 }
 
-// getMediaInfoFromSelfApi 通过用户自己的 tmdb api 查询媒体信息 "source"=imdb|tmdb  "video_type"=movie|series
+// getMediaInfoFromSelfApi queries media info through the user's configured TMDB API.
 func (d *Dealers) getMediaInfoFromSelfApi(id, source, videoType string) (*models.MediaInfo, error) {
 
 	imdbId := ""
@@ -95,7 +106,7 @@ func (d *Dealers) getMediaInfoFromSelfApi(id, source, videoType string) (*models
 	} else {
 		return nil, errors.New("source is not support")
 	}
-	// 先查询英文信息，然后再查询中文信息
+	// Fetch English metadata first, then fetch the Chinese localized title.
 	findByIDEn, err := d.tmdbHelper.GetInfo(id, idType, isMovieOrSeries, true)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting info from TMDB: %v", err)
@@ -111,7 +122,7 @@ func (d *Dealers) getMediaInfoFromSelfApi(id, source, videoType string) (*models
 	TitleCn := ""
 	Year := ""
 	if isMovieOrSeries == true {
-		// 电影
+		// Movie
 		if len(findByIDEn.MovieResults) < 1 {
 			return nil, errors.New("not found movie info from tmdb")
 		}
@@ -123,7 +134,7 @@ func (d *Dealers) getMediaInfoFromSelfApi(id, source, videoType string) (*models
 		Year = findByIDEn.MovieResults[0].ReleaseDate
 
 	} else {
-		// 电视剧
+		// Series
 		if len(findByIDEn.TvResults) < 1 {
 			return nil, errors.New("not found series info from tmdb")
 		}
@@ -148,7 +159,7 @@ func (d *Dealers) getMediaInfoFromSelfApi(id, source, videoType string) (*models
 	return mediaInfo, nil
 }
 
-// getMediaInfoFromSubtitleBestApi 通过 subtitle.best api 查询媒体信息 "source"=imdb|tmdb  "video_type"=movie|series
+// getMediaInfoFromSubtitleBestApi queries media info through subtitle.best.
 func (d *Dealers) getMediaInfoFromSubtitleBestApi(id, source, videoType string) (*models.MediaInfo, error) {
 
 	var mediaInfo *models.MediaInfo
@@ -160,7 +171,7 @@ func (d *Dealers) getMediaInfoFromSubtitleBestApi(id, source, videoType string) 
 			return nil, err
 		}
 		if mediaInfoReply.Status == 2 {
-			// 说明进入了查询队列，可以等 30s 以上再次查询
+			// The request entered the remote queue; wait before polling again.
 			d.Logger.Infoln("query queue, sleep 30s")
 			time.Sleep(30 * time.Second)
 
@@ -173,7 +184,7 @@ func (d *Dealers) getMediaInfoFromSubtitleBestApi(id, source, videoType string) 
 				imdbId = ""
 			}
 
-			// 说明查询成功
+			// Query succeeded.
 			mediaInfo = &models.MediaInfo{
 				TmdbId:           mediaInfoReply.TMDBId,
 				ImdbId:           imdbId,
@@ -184,7 +195,7 @@ func (d *Dealers) getMediaInfoFromSubtitleBestApi(id, source, videoType string) 
 				Year:             mediaInfoReply.Year,
 			}
 		} else {
-			// 说明查询失败
+			// Query failed.
 			return nil, errors.New("SubtitleBestApi.GetMediaInfo failed, Message: " + mediaInfoReply.Message)
 		}
 
