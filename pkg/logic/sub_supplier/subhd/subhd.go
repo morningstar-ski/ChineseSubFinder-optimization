@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,8 +25,10 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/ranking"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/rod_helper"
 
+	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/mix_media_info"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
@@ -106,29 +109,27 @@ func (s *Supplier) IsAlive() bool {
 }
 
 func (s *Supplier) OverDailyDownloadLimit() bool {
-	limit := settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit
-	if limit == 0 {
+	if settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit == 0 {
 		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit is 0, will Skip Download")
 		return true
 	}
-	if limit < 0 {
-		s.log.Infoln(s.GetSupplierName(), "DailyDownloadLimit is unlimited")
-		return false
-	}
 
+	// 需要查询今天的限额
 	count, err := s.fileDownloader.CacheCenter.DailyDownloadCountGet(s.GetSupplierName(),
 		pkg.GetPublicIP(s.log, settings.Get().AdvancedSettings.TaskQueue))
 	if err != nil {
 		s.log.Errorln(s.GetSupplierName(), "DailyDownloadCountGet", err)
 		return true
 	}
-	if count >= limit {
-		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit:", limit, "Now Is:", count)
+	if count >= settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit {
+		// 超限了
+		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit:", settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit, "Now Is:", count)
 		return true
+	} else {
+		// 没有超限
+		s.log.Infoln(s.GetSupplierName(), "DailyDownloadLimit:", settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit, "Now Is:", count)
+		return false
 	}
-
-	s.log.Infoln(s.GetSupplierName(), "DailyDownloadLimit:", limit, "Now Is:", count)
-	return false
 }
 
 func (s *Supplier) GetLogger() *logrus.Logger {
@@ -182,39 +183,41 @@ func (s *Supplier) GetSubListFromFile4Series(seriesInfo *series.SeriesInfo) ([]s
 		//keyword := seriesInfo.Name + " 第" + zh.Uint64(value).String() + "季"
 		keyword := keyWord + " 第" + zh.Uint64(value).String() + "季"
 		s.log.Infoln("Search Keyword:", keyword)
-		detailPageUrl, err := s.step0(browser, keyword)
+		detailPageURLs, err := s.step0(browser, keyword)
 		if err != nil {
 			s.log.Errorln("subhd step0", keyword)
 			return nil, err
 		}
-		if detailPageUrl == "" {
+		if len(detailPageURLs) == 0 {
 			// 如果只是搜索不到，则继续换关键词
 			s.log.Warning("subhd first search keyword", keyword, "not found")
 			keyword = seriesInfo.Name
 			s.log.Warning("subhd Retry", keyword)
 			s.log.Infoln("Search Keyword:", keyword)
-			detailPageUrl, err = s.step0(browser, keyword)
+			detailPageURLs, err = s.step0(browser, keyword)
 			if err != nil {
 				s.log.Errorln("subhd step0", keyword)
 				return nil, err
 			}
 		}
-		if detailPageUrl == "" {
+		if len(detailPageURLs) == 0 {
 			s.log.Warning("subhd search keyword", keyword, "not found")
 			continue
 		}
 		// 列举字幕
-		oneSubList, err := s.step1(browser, detailPageUrl, false)
-		if err != nil {
-			s.log.Errorln("subhd step1", keyword)
-			return nil, err
-		}
+		for _, detailPageURL := range detailPageURLs {
+			oneSubList, err := s.step1(browser, detailPageURL, false)
+			if err != nil {
+				s.log.Errorln("subhd step1", keyword, detailPageURL)
+				return nil, err
+			}
 
-		subList = append(subList, oneSubList...)
+			subList = append(subList, oneSubList...)
+		}
 	}
 	// 与剧集需要下载的集 List 进行比较，找到需要下载的列表
 	// 找到那些 Eps 需要下载字幕的
-	subInfoNeedDownload := s.whichEpisodeNeedDownloadSub(seriesInfo, subList)
+	subInfoNeedDownload := s.whichEpisodeNeedDownloadSub(seriesInfo, mediaInfo, subList)
 	// 下载字幕
 	for i, item := range subInfoNeedDownload {
 
@@ -320,17 +323,21 @@ func (s *Supplier) getSubListFromKeyword4Movie(keyword string) ([]supplier.SubIn
 		_ = browser.Close()
 	}()
 	var subInfos []supplier.SubInfo
-	detailPageUrl, err := s.step0(browser, keyword)
+	detailPageURLs, err := s.step0(browser, keyword)
 	if err != nil {
 		return nil, err
 	}
 	// 没有搜索到字幕
-	if detailPageUrl == "" {
+	if len(detailPageURLs) == 0 {
 		return nil, nil
 	}
-	subList, err := s.step1(browser, detailPageUrl, true)
-	if err != nil {
-		return nil, err
+	subList := make([]HdListItem, 0)
+	for _, detailPageURL := range detailPageURLs {
+		oneSubList, err := s.step1(browser, detailPageURL, true)
+		if err != nil {
+			return nil, err
+		}
+		subList = append(subList, oneSubList...)
 	}
 
 	for i, item := range subList {
@@ -347,7 +354,59 @@ func (s *Supplier) getSubListFromKeyword4Movie(keyword string) ([]supplier.SubIn
 	return subInfos, nil
 }
 
-func (s *Supplier) whichEpisodeNeedDownloadSub(seriesInfo *series.SeriesInfo, allSubList []HdListItem) []HdListItem {
+func (s *Supplier) whichEpisodeNeedDownloadSub(seriesInfo *series.SeriesInfo, mediaInfo *models.MediaInfo, allSubList []HdListItem) []HdListItem {
+	{
+		titleCandidates := buildSubHDSeriesTitleCandidates(seriesInfo, mediaInfo)
+		episodeCandidates := make(map[string][]HdListItem)
+		seasonPackCandidates := make(map[int][]HdListItem)
+		for _, subInfo := range allSubList {
+			_, season, episode, err := decode.GetSeasonAndEpisodeFromSubFileName(subInfo.Title)
+			if err != nil {
+				s.log.Errorln("whichEpisodeNeedDownloadSub.GetVideoInfoFromFileFullPath", subInfo.Title, err)
+				continue
+			}
+			if season == 0 {
+				continue
+			}
+			if matchSeriesTitle(subInfo.Title, titleCandidates) == false {
+				s.log.Debugln("subhd skip title mismatch", subInfo.Title)
+				continue
+			}
+			subInfo.Season = season
+			subInfo.Episode = episode
+			if episode == 0 {
+				seasonPackCandidates[season] = append(seasonPackCandidates[season], subInfo)
+				continue
+			}
+			epsKey := pkg.GetEpisodeKeyName(season, episode)
+			episodeCandidates[epsKey] = append(episodeCandidates[epsKey], subInfo)
+		}
+
+		selected := make([]HdListItem, 0)
+		seasonPackAdded := make(map[int]bool)
+		for epsKey, epsInfo := range seriesInfo.NeedDlEpsKeyList {
+			candidates := episodeCandidates[epsKey]
+			if len(candidates) > 0 {
+				best := selectBestSubHDCandidate(candidates, epsInfo.FileFullPath, epsInfo.Season, epsInfo.Episode)
+				best.Season = epsInfo.Season
+				best.Episode = epsInfo.Episode
+				selected = append(selected, best)
+				continue
+			}
+
+			packs := seasonPackCandidates[epsInfo.Season]
+			if len(packs) == 0 || seasonPackAdded[epsInfo.Season] {
+				continue
+			}
+			bestPack := selectBestSubHDCandidate(packs, epsInfo.FileFullPath, epsInfo.Season, 0)
+			bestPack.Season = epsInfo.Season
+			bestPack.Episode = 0
+			selected = append(selected, bestPack)
+			seasonPackAdded[epsInfo.Season] = true
+		}
+
+		return selected
+	}
 	// 字幕很多，考虑效率，需要做成字典
 	// key SxEx - SubInfos
 	var allSubDict = make(map[string][]HdListItem)
@@ -404,7 +463,7 @@ func (s *Supplier) whichEpisodeNeedDownloadSub(seriesInfo *series.SeriesInfo, al
 }
 
 // step0 找到这个影片的详情列表
-func (s *Supplier) step0(browser *rod.Browser, keyword string) (string, error) {
+func (s *Supplier) step0(browser *rod.Browser, keyword string) ([]string, error) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -412,20 +471,51 @@ func (s *Supplier) step0(browser *rod.Browser, keyword string) (string, error) {
 		}
 	}()
 
+	{
+		rootURL := s.rootURL()
+		_ = browser
+		result, err := s.httpGetPage(fmt.Sprintf(rootURL+common.SubSubHDSearchUrl, url.QueryEscape(keyword)))
+		if err != nil {
+			return nil, wrapReason(ReasonProbeFailed, err)
+		}
+		searchResults, subCount, err := parseSearchResults(result)
+		if err != nil {
+			return nil, wrapReason(ReasonSearchLayoutChanged, err)
+		}
+		if subCount < 1 {
+			return nil, nil
+		}
+		detailPageURLs := make([]string, 0, len(searchResults))
+		for _, item := range searchResults {
+			if strings.TrimSpace(item.URL) == "" {
+				continue
+			}
+			detailPageURLs = append(detailPageURLs, item.URL)
+		}
+		return detailPageURLs, nil
+	}
+
 	rootURL := s.rootURL()
 	_ = browser
 	result, err := s.httpGetPage(fmt.Sprintf(rootURL+common.SubSubHDSearchUrl, url.QueryEscape(keyword)))
 	if err != nil {
-		return "", wrapReason(ReasonProbeFailed, err)
+		return nil, wrapReason(ReasonProbeFailed, err)
 	}
-	step1URL, subCount, err := parseSearchResult(result)
+	searchResults, subCount, err := parseSearchResults(result)
 	if err != nil {
-		return "", wrapReason(ReasonSearchLayoutChanged, err)
+		return nil, wrapReason(ReasonSearchLayoutChanged, err)
 	}
 	if subCount < 1 {
-		return "", nil
+		return nil, nil
 	}
-	return step1URL, nil
+	detailPageURLs := make([]string, 0, len(searchResults))
+	for _, item := range searchResults {
+		if strings.TrimSpace(item.URL) == "" {
+			continue
+		}
+		detailPageURLs = append(detailPageURLs, item.URL)
+	}
+	return detailPageURLs, nil
 }
 
 // step1 获取影片的详情字幕列表
@@ -712,6 +802,125 @@ search:
 	}
 
 	return nil
+}
+
+func buildSubHDSeriesTitleCandidates(seriesInfo *series.SeriesInfo, mediaInfo *models.MediaInfo) []string {
+	items := make([]string, 0, 4)
+	if seriesInfo != nil {
+		items = append(items, seriesInfo.Name)
+	}
+	if mediaInfo != nil {
+		items = append(items, mediaInfo.TitleCn, mediaInfo.TitleEn, mediaInfo.OriginalTitle)
+	}
+	return compactStrings(items...)
+}
+
+func selectBestSubHDCandidate(candidates []HdListItem, videoFPath string, targetSeason, targetEpisode int) HdListItem {
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	matcher := ranking.NewTargetMatcher(videoFPath, false)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		left := scoreSubHDCandidate(candidates[i], matcher, targetSeason, targetEpisode)
+		right := scoreSubHDCandidate(candidates[j], matcher, targetSeason, targetEpisode)
+		if left != right {
+			return left > right
+		}
+		if candidates[i].DownCount != candidates[j].DownCount {
+			return candidates[i].DownCount > candidates[j].DownCount
+		}
+		return candidates[i].Title < candidates[j].Title
+	})
+	return candidates[0]
+}
+
+func scoreSubHDCandidate(candidate HdListItem, matcher ranking.TargetMatcher, targetSeason, targetEpisode int) int {
+	return ranking.ScoreCandidate(matcher, ranking.CandidateMetadata{
+		Name:           candidate.Title,
+		ReleaseNames:   []string{candidate.Title},
+		Season:         candidate.Season,
+		Episode:        candidate.Episode,
+		AuthorityScore: minInt(candidate.DownCount, 50),
+	}, ranking.CandidateScoreSpec{
+		IsMovie:       false,
+		TargetSeason:  targetSeason,
+		TargetEpisode: targetEpisode,
+		EpisodeMatchWeights: &ranking.EpisodeMatchWeights{
+			ExactMatch:   120,
+			SeasonPack:   15,
+			WrongEpisode: -120,
+		},
+		ReleaseMatchWeights: ranking.StandardReleaseMatchWeights,
+	})
+}
+
+func matchSeriesTitle(candidateTitle string, titleCandidates []string) bool {
+	normalizedCandidate := normalizeComparableSeriesTitle(candidateTitle)
+	if normalizedCandidate == "" {
+		return false
+	}
+	for _, titleCandidate := range titleCandidates {
+		if scoreSeriesTitle(normalizedCandidate, titleCandidate) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func scoreSeriesTitle(candidateTitle string, titleCandidate string) int {
+	normalizedTarget := normalizeComparableSeriesTitle(titleCandidate)
+	if candidateTitle == "" || normalizedTarget == "" {
+		return 0
+	}
+	switch {
+	case candidateTitle == normalizedTarget:
+		return 100
+	case strings.Contains(candidateTitle, normalizedTarget):
+		return 60
+	case strings.Contains(normalizedTarget, candidateTitle):
+		return 40
+	default:
+		return 0
+	}
+}
+
+func normalizeComparableSeriesTitle(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+	if parsed, err := decode.GetVideoInfoFromFileName(title); err == nil && parsed != nil && parsed.Title != "" {
+		title = parsed.Title
+	}
+	title = pkg.ReplaceSpecString(title, " ")
+	title = strings.ToLower(strings.Join(strings.Fields(title), " "))
+	return title
+}
+
+func compactStrings(items ...string) []string {
+	out := make([]string, 0, len(items))
+	seen := make(map[string]struct{})
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 type HdListItem struct {

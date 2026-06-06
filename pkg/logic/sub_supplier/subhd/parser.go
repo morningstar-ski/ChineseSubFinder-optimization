@@ -2,7 +2,7 @@ package subhd
 
 import (
 	"fmt"
-	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -26,54 +26,56 @@ const (
 	ReasonDisabled               = "disabled"
 )
 
-func parseSearchResult(pageHTML string) (string, int, error) {
-	re := regexp.MustCompile(`共\s*(\d+)\s*条`)
-	matched := re.FindAllStringSubmatch(pageHTML, -1)
-	if matched == nil || len(matched) < 1 {
-		return "", 0, common2.SubHDStep0SubCountElementNotFound
-	}
+type searchResultItem struct {
+	Title string
+	URL   string
+}
 
-	subCount, err := decode.GetNumber2int(matched[0][0])
-	if err != nil {
-		return "", 0, err
-	}
-	if subCount < 1 {
-		return "", 0, nil
-	}
-
+func parseSearchResults(pageHTML string) ([]searchResultItem, int, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(pageHTML))
 	if err != nil {
-		return "", 0, err
+		return nil, 0, err
 	}
+
 	imgSelection := doc.Find("img.rounded-start")
-	if _, ok := imgSelection.Attr("src"); ok == false {
-		return "", 0, common2.SubHDStep0HrefIsNull
-	}
 	if len(imgSelection.Nodes) < 1 {
-		return "", 0, common2.SubHDStep0ImgParentLessThan1
+		return nil, 0, common2.SubHDStep0ImgParentLessThan1
 	}
 
-	step1URL := ""
-	if imgSelection.Nodes[0].Parent.Data == "a" {
-		for _, attribute := range imgSelection.Nodes[0].Parent.Attr {
-			if attribute.Key == "href" {
-				step1URL = attribute.Val
-				break
-			}
+	results := make([]searchResultItem, 0, len(imgSelection.Nodes))
+	seen := make(map[string]struct{})
+	imgSelection.Each(func(_ int, selection *goquery.Selection) {
+		link := selection.ParentsFiltered("a").First()
+		if link.Length() == 0 {
+			link = selection.ParentFiltered("a")
 		}
-	} else if imgSelection.Nodes[0].Parent.Parent != nil && imgSelection.Nodes[0].Parent.Parent.Data == "a" {
-		for _, attribute := range imgSelection.Nodes[0].Parent.Parent.Attr {
-			if attribute.Key == "href" {
-				step1URL = attribute.Val
-				break
-			}
+		if link.Length() == 0 {
+			return
 		}
-	}
-	if step1URL == "" {
-		return "", 0, common2.SubHDStep0HrefIsNull
+
+		href, ok := link.Attr("href")
+		if ok == false || strings.TrimSpace(href) == "" {
+			return
+		}
+		href = strings.TrimSpace(href)
+		if _, ok = seen[href]; ok {
+			return
+		}
+		seen[href] = struct{}{}
+
+		results = append(results, searchResultItem{
+			Title: normalizeSearchResultTitle(link.Text()),
+			URL:   href,
+		})
+	})
+	if len(results) == 0 {
+		return nil, 0, common2.SubHDStep0HrefIsNull
 	}
 
-	return step1URL, subCount, nil
+	sort.SliceStable(results, func(i, j int) bool {
+		return results[i].URL < results[j].URL
+	})
+	return results, len(results), nil
 }
 
 func parseSubtitleRows(pageHTML string, siteRoot string, isMovie bool, topic int) ([]HdListItem, error) {
@@ -137,4 +139,12 @@ func parseDownloadPage(pageHTML string, siteRoot string) (string, error) {
 	}
 
 	return pkg.AddBaseUrl(siteRoot, strings.TrimSpace(downloadURL)), nil
+}
+
+func normalizeSearchResultTitle(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(title), " ")
 }
