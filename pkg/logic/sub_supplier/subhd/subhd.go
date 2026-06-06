@@ -84,24 +84,60 @@ func (s *Supplier) rootURL() string {
 	}
 }
 
+func (s *Supplier) probeRootURLs() []string {
+	urls := []string{s.rootURL()}
+	for _, candidate := range []string{"https://subhd.me", "https://subhd.one"} {
+		if strings.EqualFold(candidate, urls[0]) {
+			continue
+		}
+		urls = append(urls, candidate)
+	}
+	return urls
+}
+
 func (s *Supplier) CheckAlive() (bool, int64) {
 
-	proxyStatus, proxySpeed, err := url_connectedness_helper.UrlConnectednessTest(
-		s.rootURL(),
-		local_http_proxy_server.GetProxyUrl())
-	if err != nil {
-		s.log.Errorln(s.GetSupplierName(), "CheckAlive", "Error", err)
-		s.isAlive = false
-		return false, 0
-	}
-	if proxyStatus == false {
-		s.log.Errorln(s.GetSupplierName(), "CheckAlive", "Status != 200")
-		s.isAlive = false
-		return false, proxySpeed
+	var lastErr error
+	var lastSpeed int64
+	for _, probeURL := range s.probeRootURLs() {
+		proxyStatus, proxySpeed, err := url_connectedness_helper.UrlConnectednessTest(
+			probeURL,
+			local_http_proxy_server.GetProxyUrl())
+		if err == nil && proxyStatus {
+			s.isAlive = true
+			return true, proxySpeed
+		}
+		lastErr = err
+		lastSpeed = proxySpeed
+		if err != nil {
+			s.log.Warnln(s.GetSupplierName(), "CheckAlive", probeURL, err)
+			continue
+		}
+		s.log.Warnln(s.GetSupplierName(), "CheckAlive", probeURL, "Status != 200")
 	}
 
-	s.isAlive = true
-	return true, proxySpeed
+	if s.isAlive && shouldKeepAliveOnProbeError(lastErr) {
+		s.log.Warnln(s.GetSupplierName(), "CheckAlive transient error, keep previous alive state")
+		return true, lastSpeed
+	}
+
+	if lastErr != nil {
+		s.log.Errorln(s.GetSupplierName(), "CheckAlive", "Error", lastErr)
+	} else {
+		s.log.Errorln(s.GetSupplierName(), "CheckAlive", "Status != 200")
+	}
+	s.isAlive = false
+	return false, lastSpeed
+}
+
+func shouldKeepAliveOnProbeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errText := strings.ToLower(err.Error())
+	return strings.Contains(errText, "timeout") ||
+		strings.Contains(errText, "deadline exceeded") ||
+		strings.Contains(errText, "connection reset")
 }
 
 func (s *Supplier) IsAlive() bool {

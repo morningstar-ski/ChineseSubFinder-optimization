@@ -1,6 +1,7 @@
 package subhd
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -19,6 +20,36 @@ func TestOverDailyDownloadLimitTreatsNegativeLimitAsUnlimited(t *testing.T) {
 	supplier := &Supplier{log: logrus.New()}
 	if supplier.OverDailyDownloadLimit() {
 		t.Fatal("OverDailyDownloadLimit() = true; want false for unlimited limit")
+	}
+}
+
+func TestProbeRootURLsAddsStableFallbacks(t *testing.T) {
+	settings.SetConfigRootPath(t.TempDir())
+	cfg := settings.Get()
+	cfg.AdvancedSettings.SuppliersSettings.SubHD.RootUrl = "https://subhd.tv"
+
+	supplier := &Supplier{log: logrus.New()}
+	got := supplier.probeRootURLs()
+	if len(got) < 2 {
+		t.Fatalf("probeRootURLs() len = %d; want at least 2", len(got))
+	}
+	if got[0] != "https://subhd.me" {
+		t.Fatalf("probeRootURLs()[0] = %q; want %q", got[0], "https://subhd.me")
+	}
+	if got[1] != "https://subhd.one" {
+		t.Fatalf("probeRootURLs()[1] = %q; want %q", got[1], "https://subhd.one")
+	}
+}
+
+func TestShouldKeepAliveOnProbeErrorTreatsTimeoutAsTransient(t *testing.T) {
+	if shouldKeepAliveOnProbeError(errors.New("context deadline exceeded")) == false {
+		t.Fatal("shouldKeepAliveOnProbeError() = false; want true for timeout")
+	}
+	if shouldKeepAliveOnProbeError(errors.New("connection reset by peer")) == false {
+		t.Fatal("shouldKeepAliveOnProbeError() = false; want true for connection reset")
+	}
+	if shouldKeepAliveOnProbeError(errors.New("unexpected status")) == true {
+		t.Fatal("shouldKeepAliveOnProbeError() = true; want false for non-transient error")
 	}
 }
 
