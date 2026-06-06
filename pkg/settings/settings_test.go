@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -155,5 +156,44 @@ func TestSettingsSaveNormalizesTimelineFixerSettings(t *testing.T) {
 	}
 	if reloaded.TimelineFixerSettings.MinOffset != 0.2 {
 		t.Fatalf("timeline min_offset = %v", reloaded.TimelineFixerSettings.MinOffset)
+	}
+}
+
+func TestSettingsSaveAndReadPreservesChineseMediaPaths(t *testing.T) {
+	configDir := t.TempDir()
+	cfg := NewSettings(configDir)
+	cfg.EmbySettings.AddressUrl = "http://127.0.0.1:8096/"
+	cfg.CommonSettings.MoviePaths = []string{"/media/电影"}
+	cfg.CommonSettings.SeriesPaths = []string{"/media/电视剧"}
+
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	configPath := filepath.Join(configDir, configName)
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("??")) {
+		t.Fatalf("config contains unexpected placeholder bytes: %s", string(raw))
+	}
+	if !bytes.Contains(raw, []byte(`"/media/电影"`)) {
+		t.Fatalf("movie path missing from saved config: %s", string(raw))
+	}
+	if !bytes.Contains(raw, []byte(`"/media/电视剧"`)) {
+		t.Fatalf("series path missing from saved config: %s", string(raw))
+	}
+
+	reloaded := NewSettings(configDir)
+	if err := reloaded.read(); err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(cfg.CommonSettings.MoviePaths, reloaded.CommonSettings.MoviePaths) {
+		t.Fatalf("movie paths mismatch, want %#v got %#v", cfg.CommonSettings.MoviePaths, reloaded.CommonSettings.MoviePaths)
+	}
+	if !reflect.DeepEqual(cfg.CommonSettings.SeriesPaths, reloaded.CommonSettings.SeriesPaths) {
+		t.Fatalf("series paths mismatch, want %#v got %#v", cfg.CommonSettings.SeriesPaths, reloaded.CommonSettings.SeriesPaths)
 	}
 }
