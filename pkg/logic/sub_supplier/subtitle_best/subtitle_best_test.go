@@ -145,6 +145,32 @@ func TestSortSubtitleBestSubtitlesPrefersExactEpisode(t *testing.T) {
 	}
 }
 
+func TestSortSubtitleBestSubtitlesPenalizesWrongEpisodeDespiteBetterRelease(t *testing.T) {
+	subtitles := []Subtitle{
+		{
+			SubSha256: "a",
+			Title:     "My Show S01E04 1080p WEB-DL-GROUP",
+			Ext:       ".srt",
+			IsMovie:   false,
+			Season:    1,
+			Episode:   4,
+		},
+		{
+			SubSha256: "b",
+			Title:     "My Show S01E03 720p HDTV-OTHER",
+			Ext:       ".srt",
+			IsMovie:   false,
+			Season:    1,
+			Episode:   3,
+		},
+	}
+
+	sortSubtitleBestSubtitles(subtitles, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3)
+	if subtitles[0].SubSha256 != "b" {
+		t.Fatalf("expected exact episode subtitle first, got %#v", subtitles[0])
+	}
+}
+
 func TestSubtitleBestCandidateMetadata(t *testing.T) {
 	sub := Subtitle{
 		Title:   "My Show S01E03 1080p WEB-DL-GROUP",

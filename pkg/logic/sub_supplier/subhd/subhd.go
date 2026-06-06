@@ -176,6 +176,7 @@ func (s *Supplier) GetSubListFromFile4Series(seriesInfo *series.SeriesInfo) ([]s
 			return nil, err
 		}
 	}
+	titleCandidates := buildSubHDSeriesTitleCandidates(seriesInfo, mediaInfo)
 	var subInfos = make([]supplier.SubInfo, 0)
 	var subList = make([]HdListItem, 0)
 	for value := range seriesInfo.NeedDlSeasonDict {
@@ -183,7 +184,7 @@ func (s *Supplier) GetSubListFromFile4Series(seriesInfo *series.SeriesInfo) ([]s
 		//keyword := seriesInfo.Name + " 第" + zh.Uint64(value).String() + "季"
 		keyword := keyWord + " 第" + zh.Uint64(value).String() + "季"
 		s.log.Infoln("Search Keyword:", keyword)
-		detailPageURLs, err := s.step0(browser, keyword)
+		detailPageURLs, err := s.step0(browser, keyword, titleCandidates)
 		if err != nil {
 			s.log.Errorln("subhd step0", keyword)
 			return nil, err
@@ -194,7 +195,7 @@ func (s *Supplier) GetSubListFromFile4Series(seriesInfo *series.SeriesInfo) ([]s
 			keyword = seriesInfo.Name
 			s.log.Warning("subhd Retry", keyword)
 			s.log.Infoln("Search Keyword:", keyword)
-			detailPageURLs, err = s.step0(browser, keyword)
+			detailPageURLs, err = s.step0(browser, keyword, titleCandidates)
 			if err != nil {
 				s.log.Errorln("subhd step0", keyword)
 				return nil, err
@@ -323,7 +324,7 @@ func (s *Supplier) getSubListFromKeyword4Movie(keyword string) ([]supplier.SubIn
 		_ = browser.Close()
 	}()
 	var subInfos []supplier.SubInfo
-	detailPageURLs, err := s.step0(browser, keyword)
+	detailPageURLs, err := s.step0(browser, keyword, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -463,37 +464,13 @@ func (s *Supplier) whichEpisodeNeedDownloadSub(seriesInfo *series.SeriesInfo, me
 }
 
 // step0 找到这个影片的详情列表
-func (s *Supplier) step0(browser *rod.Browser, keyword string) ([]string, error) {
+func (s *Supplier) step0(browser *rod.Browser, keyword string, titleCandidates []string) ([]string, error) {
 	var err error
 	defer func() {
 		if err != nil {
 			notify_center.Notify.Add("subhd_step0", err.Error())
 		}
 	}()
-
-	{
-		rootURL := s.rootURL()
-		_ = browser
-		result, err := s.httpGetPage(fmt.Sprintf(rootURL+common.SubSubHDSearchUrl, url.QueryEscape(keyword)))
-		if err != nil {
-			return nil, wrapReason(ReasonProbeFailed, err)
-		}
-		searchResults, subCount, err := parseSearchResults(result)
-		if err != nil {
-			return nil, wrapReason(ReasonSearchLayoutChanged, err)
-		}
-		if subCount < 1 {
-			return nil, nil
-		}
-		detailPageURLs := make([]string, 0, len(searchResults))
-		for _, item := range searchResults {
-			if strings.TrimSpace(item.URL) == "" {
-				continue
-			}
-			detailPageURLs = append(detailPageURLs, item.URL)
-		}
-		return detailPageURLs, nil
-	}
 
 	rootURL := s.rootURL()
 	_ = browser
@@ -508,13 +485,7 @@ func (s *Supplier) step0(browser *rod.Browser, keyword string) ([]string, error)
 	if subCount < 1 {
 		return nil, nil
 	}
-	detailPageURLs := make([]string, 0, len(searchResults))
-	for _, item := range searchResults {
-		if strings.TrimSpace(item.URL) == "" {
-			continue
-		}
-		detailPageURLs = append(detailPageURLs, item.URL)
-	}
+	detailPageURLs := selectSearchResultURLs(searchResults, titleCandidates)
 	return detailPageURLs, nil
 }
 
@@ -853,6 +824,29 @@ func scoreSubHDCandidate(candidate HdListItem, matcher ranking.TargetMatcher, ta
 		},
 		ReleaseMatchWeights: ranking.StandardReleaseMatchWeights,
 	})
+}
+
+func selectSearchResultURLs(searchResults []searchResultItem, titleCandidates []string) []string {
+	items := searchResults
+	if len(titleCandidates) > 0 {
+		filtered := make([]searchResultItem, 0, len(searchResults))
+		for _, item := range searchResults {
+			if matchSeriesTitle(item.Title, titleCandidates) == false {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		items = filtered
+	}
+
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item.URL) == "" {
+			continue
+		}
+		out = append(out, item.URL)
+	}
+	return out
 }
 
 func matchSeriesTitle(candidateTitle string, titleCandidates []string) bool {

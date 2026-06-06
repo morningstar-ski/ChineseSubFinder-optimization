@@ -2,7 +2,6 @@ package subhd
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -72,9 +71,6 @@ func parseSearchResults(pageHTML string) ([]searchResultItem, int, error) {
 		return nil, 0, common2.SubHDStep0HrefIsNull
 	}
 
-	sort.SliceStable(results, func(i, j int) bool {
-		return results[i].URL < results[j].URL
-	})
 	return results, len(results), nil
 }
 

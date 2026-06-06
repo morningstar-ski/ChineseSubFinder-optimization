@@ -1,17 +1,20 @@
 package xunlei
 
 import (
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"crypto/sha1"
+	"fmt"
+	"math"
+	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
-
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
-
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/cache_center"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/random_auth_key"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/unit_test_helper"
 )
 
@@ -68,4 +71,58 @@ func defInstance() {
 
 	xunleiInstance = NewSupplier(file_downloader.NewFileDownloader(
 		cache_center.NewCacheCenter("test", log_helper.GetLogger4Tester()), authKey))
+}
+
+func TestFilterAndSelectSubtitlesPrioritizesChineseWantedTypes(t *testing.T) {
+	subtitles := []SublistXunLei{
+		{Scid: "", Sname: "ignored.ass", Language: "简体", Surl: "https://example.com/empty"},
+		{Scid: "cn-srt", Sname: "episode.zh.srt", Language: "简体", Surl: "https://example.com/cn-srt"},
+		{Scid: "cn-ass", Sname: "episode.zh.ass", Language: "简体", Surl: "https://example.com/cn-ass"},
+		{Scid: "en-srt", Sname: "episode.en.srt", Language: "英语", Surl: "https://example.com/en-srt"},
+		{Scid: "cn-bad", Sname: "episode.zh.exe", Language: "简体", Surl: "https://example.com/cn-bad"},
+	}
+
+	got := filterAndSelectSubtitles(subtitles, 3)
+	want := []SublistXunLei{
+		{Scid: "cn-srt", Sname: "episode.zh.srt", Language: "简体", Surl: "https://example.com/cn-srt"},
+		{Scid: "cn-ass", Sname: "episode.zh.ass", Language: "简体", Surl: "https://example.com/cn-ass"},
+		{Scid: "en-srt", Sname: "episode.en.srt", Language: "英语", Surl: "https://example.com/en-srt"},
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected subtitles\nwant: %#v\ngot:  %#v", want, got)
+	}
+}
+
+func TestGetCidReturnsExpectedHash(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "sample-video.mkv")
+	content := make([]byte, 0x14000)
+	for i := range content {
+		content[i] = byte((i*31 + 7) % 253)
+	}
+	if err := os.WriteFile(filePath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	supplier := &Supplier{}
+	got, err := supplier.getCid(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := expectedXunleiCID(content)
+	if got != want {
+		t.Fatalf("unexpected cid\nwant: %s\ngot:  %s", want, got)
+	}
+}
+
+func expectedXunleiCID(content []byte) string {
+	sha1Ctx := sha1.New()
+	fileLength := int64(len(content))
+	bufferSize := int64(0x5000)
+	positions := []int64{0, int64(math.Floor(float64(fileLength) / 3)), fileLength - bufferSize}
+	for _, position := range positions {
+		sha1Ctx.Write(content[position : position+bufferSize])
+	}
+	return fmt.Sprintf("%X", sha1Ctx.Sum(nil))
 }

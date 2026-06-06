@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 
 	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
@@ -353,16 +354,54 @@ func sortAssrtSearchSubs(subs []SearchSubItem, videoFPath string, isMovie bool) 
 
 func scoreAssrtSearchSub(sub SearchSubItem, matcher ranking.TargetMatcher) int {
 	return ranking.ScoreCandidate(matcher, assrtCandidateMetadata(sub), ranking.CandidateScoreSpec{
+		IsMovie:       false,
+		TargetSeason:  parseAssrtTargetSeason(matcher),
+		TargetEpisode: parseAssrtTargetEpisode(matcher),
+		EpisodeMatchWeights: &ranking.EpisodeMatchWeights{
+			ExactMatch:   120,
+			SeasonPack:   15,
+			WrongEpisode: -120,
+		},
 		ReleaseMatchWeights: ranking.StandardReleaseMatchWeights,
 	})
 }
 
 func assrtCandidateMetadata(sub SearchSubItem) ranking.CandidateMetadata {
+	season, episode := parseAssrtSeasonEpisode(sub)
 	return ranking.CandidateMetadata{
 		ReleaseNames:   []string{sub.Videoname, sub.NativeName},
+		Season:         season,
+		Episode:        episode,
 		Subtype:        sub.Subtype,
 		AuthorityScore: int(sub.VoteScore)*10 + int(sub.Revision)*2,
 	}
+}
+
+func parseAssrtSeasonEpisode(sub SearchSubItem) (int, int) {
+	for _, name := range []string{sub.Videoname, sub.NativeName} {
+		if _, season, episode, err := decode.GetSeasonAndEpisodeFromSubFileName(name); err == nil {
+			if season != 0 || episode != 0 {
+				return season, episode
+			}
+		}
+	}
+	return 0, 0
+}
+
+func parseAssrtTargetSeason(matcher ranking.TargetMatcher) int {
+	_, season, _, err := decode.GetSeasonAndEpisodeFromSubFileName(matcher.TargetName())
+	if err != nil {
+		return 0
+	}
+	return season
+}
+
+func parseAssrtTargetEpisode(matcher ranking.TargetMatcher) int {
+	_, _, episode, err := decode.GetSeasonAndEpisodeFromSubFileName(matcher.TargetName())
+	if err != nil {
+		return 0
+	}
+	return episode
 }
 
 func (s *Supplier) getSubDetail(subID int) (OneSubDetail, error) {

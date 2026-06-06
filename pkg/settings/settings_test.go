@@ -135,6 +135,27 @@ func TestSettingsReadResetsNewSupplierSearchURLs(t *testing.T) {
 	}
 }
 
+func TestNewSuppliersSettingsDoesNotIncludeRemovedA4KProvider(t *testing.T) {
+	suppliers := NewSuppliersSettings()
+
+	got := map[string]*OneSupplierSettings{
+		suppliers.Xunlei.Name:         suppliers.Xunlei,
+		suppliers.Shooter.Name:        suppliers.Shooter,
+		suppliers.Assrt.Name:          suppliers.Assrt,
+		suppliers.SubDL.Name:          suppliers.SubDL,
+		suppliers.SubtitleBest.Name:   suppliers.SubtitleBest,
+		suppliers.OpenSubtitles.Name:  suppliers.OpenSubtitles,
+		suppliers.TVSubtitles.Name:    suppliers.TVSubtitles,
+		suppliers.MovieSubtitles.Name: suppliers.MovieSubtitles,
+		suppliers.SubHD.Name:          suppliers.SubHD,
+		suppliers.Zimuku.Name:         suppliers.Zimuku,
+	}
+
+	if _, ok := got["a4k"]; ok {
+		t.Fatal("unexpected removed provider a4k in suppliers settings")
+	}
+}
+
 func TestSettingsSaveNormalizesTimelineFixerSettings(t *testing.T) {
 	configDir := t.TempDir()
 	cfg := NewSettings(configDir)

@@ -50,6 +50,23 @@ func TestSelectBestMovie(t *testing.T) {
 	}
 }
 
+func TestSelectBestMovieRejectsWrongTitle(t *testing.T) {
+	results := []movieSearchResult{
+		{ID: 1, Title: "Inferno", Year: "2016", URL: "/movie-1.html"},
+		{ID: 2, Title: "Dark Matter", Year: "2024", URL: "/movie-2.html"},
+	}
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "Lopez vs Lopez",
+		OriginalTitle: "Lopez vs Lopez",
+		Year:          "2024-01-01",
+	}
+
+	result := selectBestMovie(results, mediaInfo, "Lopez vs Lopez")
+	if result != nil {
+		t.Fatalf("selectBestMovie() = %#v; want nil", result)
+	}
+}
+
 func TestParseMoviePageChineseOnly(t *testing.T) {
 	html := `
 <table>

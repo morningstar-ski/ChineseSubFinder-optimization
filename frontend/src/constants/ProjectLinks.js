@@ -12,8 +12,8 @@ export const PROJECT_UPDATE_MARKDOWN = `
 
 ## 当前版本已对齐的内容
 
-- 新增并接通 \`OpenSubtitles\`、\`TVsubtitles\`、\`Moviesubtitles\`、\`SubHD\`。
+- 新增并接入 \`OpenSubtitles\`、\`TVsubtitles\`、\`Moviesubtitles\`、\`SubHD\`。
 - 修复预任务初始化完成信号，避免前端长时间停在初始化状态。
-- 设置页已对齐当前可用字幕源，并移除 \`a4k\`、\`zimuku\` 的前端展示入口。
+- 设置页已对齐当前可用字幕源，并隐藏未启用的前端展示入口。
 - 帮助文档和问题反馈统一跳转到本仓库。
 `;

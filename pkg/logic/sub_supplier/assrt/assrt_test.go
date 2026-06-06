@@ -118,6 +118,30 @@ func TestSortAssrtSearchSubsBreaksVoteTieWithEpisodeMetadata(t *testing.T) {
 	}
 }
 
+func TestSortAssrtSearchSubsPrefersExactEpisodeOverHigherVote(t *testing.T) {
+	subs := []SearchSubItem{
+		{
+			Id:         20,
+			VoteScore:  20,
+			Videoname:  "My Show S01E04 1080p WEB-DL-GROUP",
+			NativeName: "My Show S01E04 1080p WEB-DL-GROUP",
+			Revision:   3,
+		},
+		{
+			Id:         21,
+			VoteScore:  8,
+			Videoname:  "My Show S01E03 1080p WEB-DL-GROUP",
+			NativeName: "My Show S01E03 1080p WEB-DL-GROUP",
+			Revision:   1,
+		},
+	}
+
+	sortAssrtSearchSubs(subs, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false)
+	if subs[0].Id != 21 {
+		t.Fatalf("expected exact episode match to outrank higher-vote wrong episode, got %#v", subs[0])
+	}
+}
+
 func TestScoreAssrtSearchSubIncludesAuthorityScore(t *testing.T) {
 	matcher := ranking.NewTargetMatcher(filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false)
 	sub := SearchSubItem{
@@ -129,10 +153,15 @@ func TestScoreAssrtSearchSubIncludesAuthorityScore(t *testing.T) {
 	}
 
 	got := scoreAssrtSearchSub(sub, matcher)
-	want := ranking.BaseScore(matcher, ranking.BaseScoreOptions{
-		AuthorityScore:      84,
-		Subtype:             sub.Subtype,
-		ReleaseNames:        []string{sub.Videoname, sub.NativeName},
+	want := ranking.ScoreCandidate(matcher, assrtCandidateMetadata(sub), ranking.CandidateScoreSpec{
+		IsMovie:       false,
+		TargetSeason:  1,
+		TargetEpisode: 3,
+		EpisodeMatchWeights: &ranking.EpisodeMatchWeights{
+			ExactMatch:   120,
+			SeasonPack:   15,
+			WrongEpisode: -120,
+		},
 		ReleaseMatchWeights: ranking.StandardReleaseMatchWeights,
 	})
 	if got != want {
@@ -155,6 +184,21 @@ func TestAssrtCandidateMetadata(t *testing.T) {
 	}
 	if len(metadata.ReleaseNames) != 2 || metadata.ReleaseNames[0] != sub.Videoname || metadata.ReleaseNames[1] != sub.NativeName {
 		t.Fatalf("unexpected release names %#v", metadata.ReleaseNames)
+	}
+	if metadata.Season != 0 || metadata.Episode != 0 {
+		t.Fatalf("unexpected parsed season/episode %#v", metadata)
+	}
+}
+
+func TestAssrtCandidateMetadataParsesSeasonEpisode(t *testing.T) {
+	sub := SearchSubItem{
+		Videoname:  "My Show S01E03 1080p WEB-DL-GROUP",
+		NativeName: "My Show S01E03 1080p WEB-DL-GROUP",
+	}
+
+	metadata := assrtCandidateMetadata(sub)
+	if metadata.Season != 1 || metadata.Episode != 3 {
+		t.Fatalf("unexpected parsed season/episode %#v", metadata)
 	}
 }
 

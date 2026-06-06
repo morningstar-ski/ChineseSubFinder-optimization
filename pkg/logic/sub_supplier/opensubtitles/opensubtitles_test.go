@@ -217,6 +217,43 @@ func TestSelectCandidatesPrefersExactEpisode(t *testing.T) {
 	}
 }
 
+func TestSelectCandidatesRejectsWrongEpisodeDespiteCloserRelease(t *testing.T) {
+	items := []SearchItem{
+		{
+			ID: "1",
+			Attributes: SearchItemAttribute{
+				Language:  "zh-cn",
+				Release:   "My.Show.S01E04.1080p.WEB-DL-GROUP",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 10, FileName: "My.Show.S01E04.1080p.WEB-DL-GROUP.srt"},
+				},
+				FeatureDetails: FeatureDetails{SeasonNumber: 1, EpisodeNumber: 4},
+			},
+		},
+		{
+			ID: "2",
+			Attributes: SearchItemAttribute{
+				Language:  "zh-cn",
+				Release:   "My.Show.S01E03.720p.HDTV-OTHER",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 11, FileName: "My.Show.S01E03.720p.HDTV-OTHER.srt"},
+				},
+				FeatureDetails: FeatureDetails{SeasonNumber: 1, EpisodeNumber: 3},
+			},
+		},
+	}
+
+	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0)
+	if len(candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %#v", candidates)
+	}
+	if candidates[0].FileID != 11 {
+		t.Fatalf("expected exact episode first, got %#v", candidates[0])
+	}
+}
+
 func newTestHTTPClient(t *testing.T) *resty.Client {
 	t.Helper()
 

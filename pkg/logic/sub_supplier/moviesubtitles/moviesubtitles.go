@@ -412,15 +412,17 @@ func selectBestMovie(results []movieSearchResult, mediaInfo *models.MediaInfo, k
 	targetYear := normalizeYear(mediaInfo.Year)
 	candidates := compactStrings(mediaInfo.TitleEn, mediaInfo.OriginalTitle, keyword)
 	type scoredMovie struct {
-		movie movieSearchResult
-		score int
+		movie      movieSearchResult
+		titleScore int
+		score      int
 	}
 	scored := make([]scoredMovie, 0, len(results))
 	for _, result := range results {
-		score := 0
+		titleScore := 0
 		for _, candidate := range candidates {
-			score = maxInt(score, scoreMovieTitle(result.Title, candidate))
+			titleScore = maxInt(titleScore, scoreMovieTitle(result.Title, candidate))
 		}
+		score := titleScore
 		if targetYear != "" && result.Year != "" {
 			if targetYear == result.Year {
 				score += 15
@@ -428,7 +430,7 @@ func selectBestMovie(results []movieSearchResult, mediaInfo *models.MediaInfo, k
 				score -= 5
 			}
 		}
-		scored = append(scored, scoredMovie{movie: result, score: score})
+		scored = append(scored, scoredMovie{movie: result, titleScore: titleScore, score: score})
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -437,7 +439,7 @@ func selectBestMovie(results []movieSearchResult, mediaInfo *models.MediaInfo, k
 		}
 		return scored[i].movie.ID < scored[j].movie.ID
 	})
-	if scored[0].score <= 0 {
+	if scored[0].titleScore <= 0 || scored[0].score <= 0 {
 		return nil
 	}
 	return &scored[0].movie

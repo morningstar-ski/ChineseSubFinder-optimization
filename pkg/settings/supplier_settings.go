@@ -8,7 +8,6 @@ type SuppliersSettings struct {
 	Xunlei         *OneSupplierSettings `json:"xunlei"`
 	Shooter        *OneSupplierSettings `json:"shooter"`
 	Assrt          *OneSupplierSettings `json:"assrt"`
-	A4k            *OneSupplierSettings `json:"a4k"`
 	SubDL          *OneSupplierSettings `json:"subdl"`
 	SubtitleBest   *OneSupplierSettings `json:"subtitle_best"`
 	OpenSubtitles  *OneSupplierSettings `json:"opensubtitles"`
@@ -23,7 +22,6 @@ func NewSuppliersSettings() *SuppliersSettings {
 		Xunlei:         NewOneSupplierSettings(common.SubSiteXunLei, common.SubXunLeiRootUrlDef, "", -1),
 		Shooter:        NewOneSupplierSettings(common.SubSiteShooter, common.SubShooterRootUrlDef, "", -1),
 		Assrt:          NewOneSupplierSettings(common.SubSiteAssrt, common.SubAssrtRootUrlDef, "", -1),
-		A4k:            NewOneSupplierSettings(common.SubSiteA4K, common.SubA4kRootUrlDef, common.SubA4kSearchUrl, -1),
 		SubDL:          NewOneSupplierSettings(common.SubSiteSubDL, common.SubSubDLRootUrlDef, common.SubSubDLSearchUrl, -1),
 		SubtitleBest:   NewOneSupplierSettings(common.SubSiteSubtitleBest, common.SubSubtitleBestRootUrlDef, common.SubSubtitleBestSearchMovieUrl, -1),
 		OpenSubtitles:  NewOneSupplierSettings(common.SubSiteOpenSubtitles, common.SubOpenSubtitlesRootUrlDef, common.SubOpenSubtitlesSearchUrl, -1),
@@ -37,7 +35,6 @@ func NewSuppliersSettings() *SuppliersSettings {
 // ReSetSearchUrl keeps built-in provider search paths aligned with code defaults.
 func (s *SuppliersSettings) ReSetSearchUrl() {
 	s.ensureDefaults()
-	s.A4k.SearchUrl = common.SubA4kSearchUrl
 	s.SubDL.SearchUrl = common.SubSubDLSearchUrl
 	s.SubtitleBest.SearchUrl = common.SubSubtitleBestSearchMovieUrl
 	s.OpenSubtitles.SearchUrl = common.SubOpenSubtitlesSearchUrl
@@ -73,9 +70,6 @@ func (s *SuppliersSettings) ensureDefaults() {
 	}
 	if s.Assrt == nil {
 		s.Assrt = defaults.Assrt
-	}
-	if s.A4k == nil {
-		s.A4k = defaults.A4k
 	}
 	if s.SubDL == nil {
 		s.SubDL = defaults.SubDL
