@@ -2,6 +2,7 @@ package subhd
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -30,25 +31,24 @@ type searchResultItem struct {
 	URL   string
 }
 
+var searchResultCountPattern = regexp.MustCompile(`共\s*(\d+)\s*条`)
+
 func parseSearchResults(pageHTML string) ([]searchResultItem, int, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(pageHTML))
 	if err != nil {
 		return nil, 0, err
 	}
 
-	imgSelection := doc.Find("img.rounded-start")
-	if len(imgSelection.Nodes) < 1 {
-		return nil, 0, common2.SubHDStep0ImgParentLessThan1
+	resultCount := parseSearchResultCount(pageHTML)
+	if resultCount == 0 {
+		return []searchResultItem{}, 0, nil
 	}
 
-	results := make([]searchResultItem, 0, len(imgSelection.Nodes))
+	results := make([]searchResultItem, 0, resultCount)
 	seen := make(map[string]struct{})
-	imgSelection.Each(func(_ int, selection *goquery.Selection) {
-		link := selection.ParentsFiltered("a").First()
-		if link.Length() == 0 {
-			link = selection.ParentFiltered("a")
-		}
-		if link.Length() == 0 {
+
+	appendResult := func(link *goquery.Selection) {
+		if link == nil || link.Length() == 0 {
 			return
 		}
 
@@ -62,16 +62,52 @@ func parseSearchResults(pageHTML string) ([]searchResultItem, int, error) {
 		}
 		seen[href] = struct{}{}
 
+		title := normalizeSearchResultTitle(link.Text())
+		if title == "" {
+			return
+		}
+
 		results = append(results, searchResultItem{
-			Title: normalizeSearchResultTitle(link.Text()),
+			Title: title,
 			URL:   href,
 		})
+	}
+
+	doc.Find("img.rounded-start").Each(func(_ int, selection *goquery.Selection) {
+		link := selection.ParentsFiltered("a").First()
+		if link.Length() == 0 {
+			link = selection.ParentFiltered("a")
+		}
+		appendResult(link)
+	})
+
+	doc.Find("a.link-dark.align-middle[href], a[href^='/a/']").Each(func(_ int, selection *goquery.Selection) {
+		link := selection
+		if strings.EqualFold(goquery.NodeName(selection), "a") == false {
+			link = selection.Closest("a")
+		}
+		appendResult(link)
 	})
 	if len(results) == 0 {
-		return nil, 0, common2.SubHDStep0HrefIsNull
+		if resultCount > 0 {
+			return nil, resultCount, common2.SubHDStep0HrefIsNull
+		}
+		return []searchResultItem{}, 0, nil
 	}
 
 	return results, len(results), nil
+}
+
+func parseSearchResultCount(pageHTML string) int {
+	matches := searchResultCountPattern.FindStringSubmatch(pageHTML)
+	if len(matches) != 2 {
+		return -1
+	}
+	count, err := decode.GetNumber2int(matches[1])
+	if err != nil {
+		return -1
+	}
+	return count
 }
 
 func parseSubtitleRows(pageHTML string, siteRoot string, isMovie bool, topic int) ([]HdListItem, error) {

@@ -222,6 +222,7 @@ func TestSelectSearchResultURLsKeepsAllResultsWithoutTitleCandidates(t *testing.
 func TestParseSearchResultsKeepsPageOrderAndDeduplicatesURL(t *testing.T) {
 	html := `
 <html><body>
+  <h4>Lopez vs Lopez 的搜索结果 <span>共 2 条 当前第 1 页</span></h4>
   <a href="/detail-b"><img class="rounded-start" src="b.jpg" />Lopez vs Lopez (2022)</a>
   <div><a href="/detail-a"><img class="rounded-start" src="a.jpg" />Lopez vs Lopez Season 1</a></div>
   <a href="/detail-b"><img class="rounded-start" src="b2.jpg" />Lopez vs Lopez Duplicate</a>
@@ -239,5 +240,47 @@ func TestParseSearchResultsKeepsPageOrderAndDeduplicatesURL(t *testing.T) {
 	}
 	if got[0].URL != "/detail-b" || got[1].URL != "/detail-a" {
 		t.Fatalf("parseSearchResults() urls = %v; want [/detail-b /detail-a]", []string{got[0].URL, got[1].URL})
+	}
+}
+
+func TestParseSearchResultsTreatsZeroCountAsNoResults(t *testing.T) {
+	html := `
+<html><body>
+  <h4>Lopez vs Lopez 的搜索结果 <span>共 0 条 当前第 1 页</span></h4>
+  <a class="link-dark" target="_blank" href="/d/123">热门条目</a>
+</body></html>`
+
+	got, count, err := parseSearchResults(html)
+	if err != nil {
+		t.Fatalf("parseSearchResults() error = %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("parseSearchResults() count = %d; want 0", count)
+	}
+	if len(got) != 0 {
+		t.Fatalf("parseSearchResults() len = %d; want 0", len(got))
+	}
+}
+
+func TestParseSearchResultsSupportsAnchorResultsWithoutImage(t *testing.T) {
+	html := `
+<html><body>
+  <h4>tt35522483 的搜索结果 <span>共 2 条 当前第 1 页</span></h4>
+  <a class="link-dark align-middle" href="/a/right-a">尼瓦那乐队秀：电影版</a>
+  <a class="link-dark align-middle" href="/a/right-b">尼瓦那乐队秀：电影版 第二条</a>
+</body></html>`
+
+	got, count, err := parseSearchResults(html)
+	if err != nil {
+		t.Fatalf("parseSearchResults() error = %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("parseSearchResults() count = %d; want 2", count)
+	}
+	if len(got) != 2 {
+		t.Fatalf("parseSearchResults() len = %d; want 2", len(got))
+	}
+	if got[0].URL != "/a/right-a" || got[1].URL != "/a/right-b" {
+		t.Fatalf("parseSearchResults() urls = %v; want [/a/right-a /a/right-b]", []string{got[0].URL, got[1].URL})
 	}
 }
