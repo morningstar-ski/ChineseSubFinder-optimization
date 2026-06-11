@@ -87,6 +87,8 @@ RUN apt-get update \
        libstdc++6 \
        libxss1 \
        libxtst6 \
+       python3 \
+       python3-pip \
        tesseract-ocr \
        tesseract-ocr-chi-sim \
        tesseract-ocr-eng \
@@ -105,6 +107,7 @@ RUN apt-get update \
        yasm \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python \
     && case "${TARGETARCH}" in \
          amd64) s6_arch=x86_64 ;; \
          arm64) s6_arch=aarch64 ;; \
@@ -120,6 +123,8 @@ RUN apt-get update \
     && tar -C / -Jxpf /tmp/s6-overlay-symlinks-arch.tar.xz \
     && rm -f /tmp/s6-overlay-*.tar.xz \
     && rm -rf /var/lib/apt/lists/*
+COPY third_party/subflow/ /opt/subflow/
+RUN python3 -m pip install --no-cache-dir --break-system-packages -r /opt/subflow/requirements-translate.txt
 COPY --from=backend-builder /out/chinesesubfinder /usr/bin/chinesesubfinder
 COPY docker/full-rootfs/ /
 RUN sed -i 's/\r$//' /etc/cont-init.d/10-fixuser /etc/services.d/chinesesubfinder/run /etc/services.d/xvfb/run \
