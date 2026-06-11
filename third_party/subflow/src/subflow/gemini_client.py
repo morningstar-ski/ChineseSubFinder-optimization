@@ -29,7 +29,7 @@ def create_client(config: SubflowConfig | None = None):
     settings = config or load_subflow_config()
     if not settings.api_key:
         raise GeminiUnavailableError(
-            "Set GEMINI_API_KEY or configure api_key in subflow config before running a Gemini-backed subflow command.",
+            "Set SUBFLOW_TRANSLATE_API_KEY or GEMINI_API_KEY, or configure api_key in subflow config before running a Gemini-backed subflow command.",
         )
     return genai.Client(api_key=settings.api_key)
 

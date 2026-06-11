@@ -111,7 +111,7 @@ func TestParseMoviePageChineseOnly(t *testing.T) {
   </div></a></td></tr>
 </table>`
 
-	candidates, err := parseMoviePage(html)
+	candidates, err := parseMoviePage(html, movieSubtitlesChinese)
 	if err != nil {
 		t.Fatalf("parseMoviePage() error = %v", err)
 	}
@@ -123,6 +123,33 @@ func TestParseMoviePageChineseOnly(t *testing.T) {
 	}
 	if candidates[0].AuthorityScore == 0 {
 		t.Fatalf("expected authority score for %#v", candidates[0])
+	}
+}
+
+func TestParseMoviePageEnglishOnly(t *testing.T) {
+	html := `
+<table>
+  <tr><th><div><span><b>English subtitles:</b></span></div></th></tr>
+  <tr><td><a href="/subtitle-1.html"><div class="subtitle">
+    <div><a href="/subtitle-1.html"><b>Movie english subtitles (WEB-DL)</b></a></div>
+    <table><tr><td title="release">GROUP-EN</td><td title="rip">WEB-DL</td><td title="downloaded">100</td></tr></table>
+  </div></a></td></tr>
+  <tr><th><div><span><b>Chinese subtitles:</b></span></div></th></tr>
+  <tr><td><a href="/subtitle-2.html"><div class="subtitle">
+    <div><a href="/subtitle-2.html"><b>Movie chinese subtitles (BluRay-GROUP)</b></a></div>
+    <table><tr><td title="release">BluRay-GROUP</td><td title="rip">BluRay</td><td title="downloaded">5600</td></tr></table>
+  </div></a></td></tr>
+</table>`
+
+	candidates, err := parseMoviePage(html, movieSubtitlesEnglish)
+	if err != nil {
+		t.Fatalf("parseMoviePage() error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 english candidate, got %#v", candidates)
+	}
+	if candidates[0].SubtitlePageURL != "/subtitle-1.html" {
+		t.Fatalf("unexpected english subtitle page %q", candidates[0].SubtitlePageURL)
 	}
 }
 

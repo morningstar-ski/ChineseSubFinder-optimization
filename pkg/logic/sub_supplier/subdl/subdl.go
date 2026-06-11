@@ -24,6 +24,7 @@ import (
 
 const (
 	subdlDefaultLanguage = "ZH"
+	subdlEnglishLanguage = "EN"
 	subdlCheckIMDbID     = "tt1375666"
 )
 
@@ -33,15 +34,25 @@ type Supplier struct {
 	topic          int
 	isAlive        bool
 	api            *Api
+	queryLanguage  string
 }
 
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
+	return newSupplier(fileDownloader, subdlDefaultLanguage)
+}
+
+func NewEnglishSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
+	return newSupplier(fileDownloader, subdlEnglishLanguage)
+}
+
+func newSupplier(fileDownloader *file_downloader.FileDownloader, queryLanguage string) *Supplier {
 	sup := Supplier{}
 	sup.log = fileDownloader.Log
 	sup.fileDownloader = fileDownloader
 	sup.topic = common2.DownloadSubsPerSite
 	sup.isAlive = true
 	sup.api = NewApi(settings.Get().SubtitleSources.SubDLSettings.Key)
+	sup.queryLanguage = queryLanguage
 
 	if settings.Get().AdvancedSettings.Topic > 0 && settings.Get().AdvancedSettings.Topic != sup.topic {
 		sup.topic = settings.Get().AdvancedSettings.Topic
@@ -68,7 +79,7 @@ func (s *Supplier) CheckAlive() (bool, int64) {
 		"api_key":       settings.Get().SubtitleSources.SubDLSettings.Key,
 		"type":          "movie",
 		"imdb_id":       subdlCheckIMDbID,
-		"languages":     subdlDefaultLanguage,
+		"languages":     s.queryLanguage,
 		"subs_per_page": "1",
 	})
 	if shouldTreatCheckAliveProbeAsHealthy(err) {
@@ -237,7 +248,7 @@ func (s *Supplier) searchCandidatesWithFallback(mediaInfo *models.MediaInfo, vid
 func (s *Supplier) buildSearchQueries(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, season, episode int) []map[string]string {
 	base := map[string]string{
 		"api_key":       s.api.apiKey,
-		"languages":     subdlDefaultLanguage,
+		"languages":     s.queryLanguage,
 		"subs_per_page": strconv.Itoa(maxInt(3, s.topic)),
 		"type":          "movie",
 	}

@@ -30,6 +30,8 @@ type TranslateRequest struct {
 	InputPath        string
 	OutputPath       string
 	Provider         string
+	BaseURL          string
+	APIKey           string
 	Model            string
 	SourceLanguage   string
 	TargetLanguage   string
@@ -101,6 +103,8 @@ func (m *Manager) BuildChineseSubtitleFromEnglish(videoPath string, englishCandi
 		InputPath:        sourcePath,
 		OutputPath:       outputPath,
 		Provider:         m.settings.Provider,
+		BaseURL:          m.settings.BaseURL,
+		APIKey:           m.settings.APIKey,
 		Model:            m.settings.Model,
 		SourceLanguage:   m.settings.SourceLanguage,
 		TargetLanguage:   m.settings.TargetLanguage,

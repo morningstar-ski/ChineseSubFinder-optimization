@@ -5,232 +5,197 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
-
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
-
-	taskQueue2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/task_queue"
-
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/series_helper"
-
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/task_queue"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
+	taskQueue2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/task_queue"
 	"golang.org/x/net/context"
 )
 
 func (d *Downloader) movieDlFunc(ctx context.Context, job taskQueue2.OneJob, downloadIndex int64) error {
-
 	nowSubSupplierHub := d.subSupplierHub
 	if nowSubSupplierHub.Suppliers == nil || len(nowSubSupplierHub.Suppliers) < 1 {
 		d.log.Infoln("Wait SupplierCheck Update *subSupplierHub, movieDlFunc Skip this time")
 		return nil
 	}
 
-	// 字幕都下载缓存好了，需要抉择存哪一个，优先选择中文双语的，然后到中文
 	organizeSubFiles, err := nowSubSupplierHub.DownloadSub4Movie(job.VideoFPath, downloadIndex)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("subSupplierHub.DownloadSub4Movie: %v, %v", job.VideoFPath, err))
 		d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
 		return err
 	}
-	// 返回的两个值都是 nil 的时候，就是没有下载到字幕
-	if organizeSubFiles == nil || len(organizeSubFiles) < 1 {
-		d.log.Infoln(task_queue.ErrNoSubFound.Error(), filepath.Base(job.VideoFPath))
-		d.downloadQueue.AutoDetectUpdateJobStatus(job, task_queue.ErrNoSubFound)
-		return nil
+
+	var primaryErr error
+	if len(organizeSubFiles) > 0 {
+		primaryErr = d.oneVideoSelectBestSub(job.VideoFPath, organizeSubFiles)
+		if primaryErr == nil {
+			d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
+			return d.refreshEmbyMovieSubtitle(job)
+		}
 	}
 
-	err = d.oneVideoSelectBestSub(job.VideoFPath, organizeSubFiles)
-	if err != nil {
-		d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
-		return err
-	}
-
-	d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
-
-	// TODO 刷新字幕，这里是 Emby 的，如果是其他的，需要再对接对应的媒体服务器
-	if settings.Get().EmbySettings.Enable == true && d.embyHelper != nil && job.MediaServerInsideVideoID != "" {
-
-		d.log.Infoln("字幕下载完毕，尝试刷新 Emby 中对应字幕", job.VideoFPath, job.MediaServerInsideVideoID)
-		err = d.embyHelper.EmbyApi.UpdateVideoSubList(settings.Get().EmbySettings, job.MediaServerInsideVideoID)
-		if err != nil {
-			d.log.Errorln("UpdateVideoSubList", job.VideoFPath, job.MediaServerInsideVideoID, "Error:", err)
+	if d.canTryLLMStageFallback() && nowSubSupplierHub.HasEnglishFallbackMovieSuppliers() {
+		fallbackSubFiles, fallbackErr := nowSubSupplierHub.DownloadEnglishFallbackSub4Movie(job.VideoFPath, downloadIndex)
+		if fallbackErr != nil {
+			err = errors.New(fmt.Sprintf("subSupplierHub.DownloadEnglishFallbackSub4Movie: %v, %v", job.VideoFPath, fallbackErr))
+			d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
 			return err
 		}
-	} else {
+		if err = d.tryWriteLLMSubtitleFallback(job.VideoFPath, fallbackSubFiles); err == nil {
+			d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
+			return d.refreshEmbyMovieSubtitle(job)
+		}
+	}
+
+	if primaryErr != nil {
+		d.downloadQueue.AutoDetectUpdateJobStatus(job, primaryErr)
+		return primaryErr
+	}
+
+	d.log.Infoln(task_queue.ErrNoSubFound.Error(), filepath.Base(job.VideoFPath))
+	d.downloadQueue.AutoDetectUpdateJobStatus(job, task_queue.ErrNoSubFound)
+	return nil
+}
+
+func (d *Downloader) refreshEmbyMovieSubtitle(job taskQueue2.OneJob) error {
+	if settings.Get().EmbySettings.Enable == false || d.embyHelper == nil || job.MediaServerInsideVideoID == "" {
 		if settings.Get().EmbySettings.Enable == false {
 			d.log.Infoln("字幕下载完毕，尝试刷新 Emby 中对应字幕", job.VideoFPath, "Skip, because Emby enable is false")
 		} else if d.embyHelper == nil {
 			d.log.Infoln("字幕下载完毕，尝试刷新 Emby 中对应字幕", job.VideoFPath, "Skip, because EmbyHelper is nil")
-		} else if job.MediaServerInsideVideoID == "" {
+		} else {
 			d.log.Infoln("字幕下载完毕，尝试刷新 Emby 中对应字幕", job.VideoFPath, "Skip, because MediaServerInsideVideoID is empty")
 		}
+		return nil
 	}
 
+	d.log.Infoln("字幕下载完毕，尝试刷新 Emby 中对应字幕", job.VideoFPath, job.MediaServerInsideVideoID)
+	if err := d.embyHelper.EmbyApi.UpdateVideoSubList(settings.Get().EmbySettings, job.MediaServerInsideVideoID); err != nil {
+		d.log.Errorln("UpdateVideoSubList", job.VideoFPath, job.MediaServerInsideVideoID, "Error:", err)
+		return err
+	}
 	return nil
 }
 
 func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, downloadIndex int64) error {
-
 	nowSubSupplierHub := d.subSupplierHub
 	if nowSubSupplierHub == nil || nowSubSupplierHub.Suppliers == nil || len(nowSubSupplierHub.Suppliers) < 1 {
 		d.log.Infoln("Wait SupplierCheck Update *subSupplierHub, movieDlFunc Skip this time")
 		return nil
 	}
-	var err error
-	// 设置只有一集需要下载
+
 	epsMap := make(map[int][]int, 0)
 	epsMap[job.Season] = []int{job.Episode}
-	// 这里拿到了这一部连续剧的所有的剧集信息，以及所有下载到的字幕信息
+
 	seriesInfo, err := series_helper.ReadSeriesInfoFromDir(
-		d.fileDownloader.MediaInfoDealers, job.SeriesRootDirPath,
+		d.fileDownloader.MediaInfoDealers,
+		job.SeriesRootDirPath,
 		settings.Get().AdvancedSettings.TaskQueue.ExpirationTime,
 		false,
 		false,
-		epsMap)
+		epsMap,
+	)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("seriesDlFunc.ReadSeriesInfoFromDir, Error: %v", err))
 		d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
 		return err
 	}
-	// 下载好的字幕文件
-	var organizeSubFiles map[string][]string
-	// 下载的接口是统一的
-	organizeSubFiles, err = nowSubSupplierHub.DownloadSub4Series(job.SeriesRootDirPath,
-		seriesInfo,
-		downloadIndex)
+
+	organizeSubFiles, err := nowSubSupplierHub.DownloadSub4Series(job.SeriesRootDirPath, seriesInfo, downloadIndex)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("seriesDlFunc.DownloadSub4Series %v S%vE%v %v", filepath.Base(job.SeriesRootDirPath), job.Season, job.Episode, err))
 		d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
 		return err
 	}
-	// 是否下载到字幕了
-	if organizeSubFiles == nil || len(organizeSubFiles) < 1 {
-		d.log.Infoln(task_queue.ErrNoSubFound.Error(), filepath.Base(job.VideoFPath), job.Season, job.Episode)
-		d.downloadQueue.AutoDetectUpdateJobStatus(job, task_queue.ErrNoSubFound)
-		return nil
+	if organizeSubFiles == nil {
+		organizeSubFiles = make(map[string][]string)
 	}
 
 	var errSave2Local error
 	save2LocalSubCount := 0
-	// 只针对需要下载字幕的视频进行字幕的选择保存
-	subVideoCount := 0
+	pendingEnglishFallback := make(map[string]series.EpisodeInfo)
+
 	for epsKey, episodeInfo := range seriesInfo.NeedDlEpsKeyList {
-
-		// 创建一个 chan 用于任务的中断和超时
-		done := make(chan interface{}, 1)
-		// 接收内部任务的 panic
-		panicChan := make(chan interface{}, 1)
-
-		go func() {
-			defer func() {
-				if p := recover(); p != nil {
-					panicChan <- p
-				}
-
-				close(done)
-				close(panicChan)
-			}()
-			// 匹配对应的 Eps 去处理
-			done <- d.oneVideoSelectBestSub(episodeInfo.FileFullPath, organizeSubFiles[epsKey])
-		}()
-
-		select {
-		case errInterface := <-done:
-			if errInterface != nil {
-				errSave2Local = errInterface.(error)
-				d.log.Errorln(errInterface.(error))
-			} else {
-				save2LocalSubCount++
-			}
-			break
-		case p := <-panicChan:
-			// 遇到内部的 panic，向外抛出
-			d.log.Errorln("seriesDlFunc.oneVideoSelectBestSub panicChan", p)
-			break
-		case <-ctx.Done():
-			{
-				err = errors.New(fmt.Sprintf("cancel at NeedDlEpsKeyList.oneVideoSelectBestSub, %v S%dE%d", seriesInfo.Name, episodeInfo.Season, episodeInfo.Episode))
-				d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
-				return err
-			}
+		err = d.selectSeriesEpisodeSubtitle(ctx, episodeInfo.FileFullPath, organizeSubFiles[epsKey])
+		if err == nil {
+			save2LocalSubCount++
+			continue
 		}
-
-		subVideoCount++
+		if d.canTryLLMStageFallback() && nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() && errors.Is(err, errNoUsableChineseSubtitle) {
+			pendingEnglishFallback[epsKey] = episodeInfo
+			continue
+		}
+		if d.canTryLLMStageFallback() && nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() && errors.Is(err, common.AllSiteDownloadSubNotFound) {
+			pendingEnglishFallback[epsKey] = episodeInfo
+			continue
+		}
+		errSave2Local = err
+		d.log.Errorln(err)
 	}
-	// 这里会拿到一份季度字幕的列表比如，Key 是 S1E0 S2E0 S3E0，value 是新的存储位置
-	fullSeasonSubDict := d.saveFullSeasonSub(seriesInfo, organizeSubFiles)
-	// TODO 季度的字幕包，应该优先于零散的字幕吧，暂定就这样了，注意是全部都替换
-	// 需要与有下载需求的季交叉
-	for _, episodeInfo := range seriesInfo.EpList {
 
-		_, ok := seriesInfo.NeedDlSeasonDict[episodeInfo.Season]
-		if ok == false {
+	fullSeasonSubDict := d.saveFullSeasonSub(seriesInfo, organizeSubFiles)
+	for _, episodeInfo := range seriesInfo.EpList {
+		if _, ok := seriesInfo.NeedDlSeasonDict[episodeInfo.Season]; ok == false {
 			continue
 		}
 
-		// 创建一个 chan 用于任务的中断和超时
-		done := make(chan interface{}, 1)
-		// 接收内部任务的 panic
-		panicChan := make(chan interface{}, 1)
-		go func() {
-			defer func() {
-				if p := recover(); p != nil {
-					panicChan <- p
-				}
-				close(done)
-				close(panicChan)
-			}()
-			// 匹配对应的 Eps 去处理
-			seasonEpsKey := pkg.GetEpisodeKeyName(episodeInfo.Season, episodeInfo.Episode)
-			if fullSeasonSubDict[seasonEpsKey] == nil || len(fullSeasonSubDict[seasonEpsKey]) < 1 {
-				d.log.Infoln("seriesDlFunc.saveFullSeasonSub, no sub found, Skip", seasonEpsKey)
-				done <- nil
-			}
+		seasonEpsKey := pkg.GetEpisodeKeyName(episodeInfo.Season, episodeInfo.Episode)
+		subs := fullSeasonSubDict[seasonEpsKey]
+		if len(subs) < 1 {
+			d.log.Infoln("seriesDlFunc.saveFullSeasonSub, no sub found, Skip", seasonEpsKey)
+			continue
+		}
 
-			done <- d.oneVideoSelectBestSub(episodeInfo.FileFullPath, fullSeasonSubDict[seasonEpsKey])
-		}()
+		err = d.selectSeriesEpisodeSubtitle(ctx, episodeInfo.FileFullPath, subs)
+		if err != nil {
+			errSave2Local = err
+			d.log.Errorln(err)
+			continue
+		}
+		save2LocalSubCount++
+		delete(pendingEnglishFallback, seasonEpsKey)
+	}
 
-		select {
-		case errInterface := <-done:
-			if errInterface != nil {
-				errSave2Local = errInterface.(error)
-				d.log.Errorln(errInterface.(error))
-			} else {
-				save2LocalSubCount++
+	if len(pendingEnglishFallback) > 0 && d.canTryLLMStageFallback() && nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() {
+		fallbackSeriesInfo := buildSeriesFallbackInfo(seriesInfo, pendingEnglishFallback)
+		englishSubFiles, fallbackErr := nowSubSupplierHub.DownloadEnglishFallbackSub4Series(job.SeriesRootDirPath, fallbackSeriesInfo, downloadIndex)
+		if fallbackErr != nil {
+			err = errors.New(fmt.Sprintf("seriesDlFunc.DownloadEnglishFallbackSub4Series %v S%vE%v %v", filepath.Base(job.SeriesRootDirPath), job.Season, job.Episode, fallbackErr))
+			d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
+			return err
+		}
+		for epsKey, episodeInfo := range pendingEnglishFallback {
+			err = d.tryLLMSeriesFallback(ctx, episodeInfo.FileFullPath, englishSubFiles[epsKey])
+			if err != nil {
+				errSave2Local = err
+				d.log.Errorln(err)
+				continue
 			}
-
-			break
-		case p := <-panicChan:
-			// 遇到内部的 panic，向外抛出
-			d.log.Errorln("seriesDlFunc.oneVideoSelectBestSub panicChan", p)
-			break
-		case <-ctx.Done():
-			{
-				err = errors.New(fmt.Sprintf("cancel at NeedDlEpsKeyList.oneVideoSelectBestSub, %v S%dE%d", seriesInfo.Name, episodeInfo.Season, episodeInfo.Episode))
-				d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
-				return err
-			}
+			save2LocalSubCount++
 		}
 	}
-	// 是否清理全季的缓存字幕文件夹
+
 	if settings.Get().AdvancedSettings.SaveFullSeasonTmpSubtitles == false {
-		err = sub_helper.DeleteOneSeasonSubCacheFolder(seriesInfo.DirPath)
-		if err != nil {
+		if err = sub_helper.DeleteOneSeasonSubCacheFolder(seriesInfo.DirPath); err != nil {
 			d.log.Errorln("seriesDlFunc.DeleteOneSeasonSubCacheFolder", err)
 		}
 	}
 
 	if save2LocalSubCount < 1 {
-		// 下载的字幕都没有一个能够写入到本地的，那么就有问题了
+		if errSave2Local == nil {
+			errSave2Local = task_queue.ErrNoSubFound
+		}
 		d.downloadQueue.AutoDetectUpdateJobStatus(job, errSave2Local)
 		return errSave2Local
 	}
-	// 哪怕有一个写入到本地成功了，也无需对本次任务报错
-	d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
-	// TODO 刷新字幕，这里是 Emby 的，如果是其他的，需要再对接对应的媒体服务器
-	if settings.Get().EmbySettings.Enable == true && d.embyHelper != nil {
 
+	d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
+	if settings.Get().EmbySettings.Enable == true && d.embyHelper != nil {
 		if job.MediaServerInsideVideoID != "" {
 			d.log.Infoln("字幕下载完毕，尝试刷新 Emby 中对应字幕", job.SeriesRootDirPath, job.MediaServerInsideVideoID, job.Season, job.Episode)
 			err = d.embyHelper.EmbyApi.UpdateVideoSubList(settings.Get().EmbySettings, job.MediaServerInsideVideoID)
@@ -244,4 +209,88 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 	}
 
 	return nil
+}
+
+func (d *Downloader) selectSeriesEpisodeSubtitle(ctx context.Context, videoPath string, organizeSubFiles []string) error {
+	done := make(chan interface{}, 1)
+	panicChan := make(chan interface{}, 1)
+
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				panicChan <- p
+			}
+			close(done)
+			close(panicChan)
+		}()
+		done <- d.oneVideoSelectBestSub(videoPath, organizeSubFiles)
+	}()
+
+	select {
+	case errInterface := <-done:
+		if errInterface == nil {
+			return nil
+		}
+		return errInterface.(error)
+	case p := <-panicChan:
+		d.log.Errorln("seriesDlFunc.oneVideoSelectBestSub panicChan", p)
+		return errors.New("seriesDlFunc.oneVideoSelectBestSub panic")
+	case <-ctx.Done():
+		return errors.New(fmt.Sprintf("cancel at NeedDlEpsKeyList.oneVideoSelectBestSub, %s", filepath.Base(videoPath)))
+	}
+}
+
+func (d *Downloader) tryLLMSeriesFallback(ctx context.Context, videoPath string, organizeSubFiles []string) error {
+	done := make(chan interface{}, 1)
+	panicChan := make(chan interface{}, 1)
+
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				panicChan <- p
+			}
+			close(done)
+			close(panicChan)
+		}()
+		done <- d.tryWriteLLMSubtitleFallback(videoPath, organizeSubFiles)
+	}()
+
+	select {
+	case errInterface := <-done:
+		if errInterface == nil {
+			return nil
+		}
+		return errInterface.(error)
+	case p := <-panicChan:
+		d.log.Errorln("seriesDlFunc.tryWriteLLMSubtitleFallback panicChan", p)
+		return errors.New("seriesDlFunc.tryWriteLLMSubtitleFallback panic")
+	case <-ctx.Done():
+		return errors.New(fmt.Sprintf("cancel at NeedDlEpsKeyList.tryWriteLLMSubtitleFallback, %s", filepath.Base(videoPath)))
+	}
+}
+
+func buildSeriesFallbackInfo(seriesInfo *series.SeriesInfo, pending map[string]series.EpisodeInfo) *series.SeriesInfo {
+	seasonDict := make(map[int]int)
+	needDlSeasonDict := make(map[int]int)
+	epList := make([]series.EpisodeInfo, 0, len(pending))
+	needDlEpsKeyList := make(map[string]series.EpisodeInfo, len(pending))
+
+	for epsKey, episodeInfo := range pending {
+		epList = append(epList, episodeInfo)
+		needDlEpsKeyList[epsKey] = episodeInfo
+		seasonDict[episodeInfo.Season] = episodeInfo.Season
+		needDlSeasonDict[episodeInfo.Season] = episodeInfo.Season
+	}
+
+	return &series.SeriesInfo{
+		ImdbId:           seriesInfo.ImdbId,
+		Name:             seriesInfo.Name,
+		Year:             seriesInfo.Year,
+		ReleaseDate:      seriesInfo.ReleaseDate,
+		EpList:           epList,
+		DirPath:          seriesInfo.DirPath,
+		SeasonDict:       seasonDict,
+		NeedDlSeasonDict: needDlSeasonDict,
+		NeedDlEpsKeyList: needDlEpsKeyList,
+	}
 }

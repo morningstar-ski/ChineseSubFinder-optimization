@@ -228,6 +228,12 @@ func TestExperimentalFunctionEnsureDefaultsFillsLLMSubtitleFallback(t *testing.T
 	if cfg.ExperimentalFunction.LLMSubtitleFallback.Provider != defaultLLMSubtitleFallbackProvider {
 		t.Fatalf("provider = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.Provider)
 	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.BaseURL != "" {
+		t.Fatalf("base_url = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.BaseURL)
+	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.APIKey != "" {
+		t.Fatalf("api_key = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.APIKey)
+	}
 	if cfg.ExperimentalFunction.LLMSubtitleFallback.Model != defaultLLMSubtitleFallbackModel {
 		t.Fatalf("model = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.Model)
 	}

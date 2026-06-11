@@ -104,6 +104,7 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 		if settings.Get().SubtitleSources.SubDLSettings.Enabled &&
 			settings.Get().SubtitleSources.SubDLSettings.Key != "" {
 			p.SubSupplierHub.AddSubSupplier(subdl.NewSupplier(p.fileDownloader))
+			p.SubSupplierHub.AddEnglishFallbackSupplier(subdl.NewEnglishSupplier(p.fileDownloader), true, true)
 		}
 
 		if settings.Get().SubtitleSources.SubtitleBestSettings.Enabled &&
@@ -116,6 +117,7 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 			settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
 			settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
 			p.SubSupplierHub.AddSubSupplier(opensubtitles.NewSupplier(p.fileDownloader))
+			p.SubSupplierHub.AddEnglishFallbackSupplier(opensubtitles.NewEnglishSupplier(p.fileDownloader), true, true)
 		}
 
 		if settings.Get().SubtitleSources.TVsubtitlesSettings.Enabled {
@@ -124,6 +126,7 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 
 		if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled {
 			p.SubSupplierHub.AddSubSupplier(moviesubtitles.NewSupplier(p.fileDownloader))
+			p.SubSupplierHub.AddEnglishFallbackSupplier(moviesubtitles.NewEnglishSupplier(p.fileDownloader), true, false)
 		}
 
 		if pkg.LiteMode() == false && settings.Get().SubtitleSources.SubHDSettings.Enabled {

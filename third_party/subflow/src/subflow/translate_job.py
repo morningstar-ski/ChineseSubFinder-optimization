@@ -11,10 +11,10 @@ from typing import Any
 
 from .config import load_subflow_config
 from .gemini_client import GeminiUnavailableError, create_client, generate_json_response
+from .openai_compatible_client import OpenAICompatibleError, generate_json_response as generate_openai_json_response
 from .subtitle_io import SubtitleCue, display_width, read_srt, write_srt
 
 
-SUPPORTED_TRANSLATE_PROVIDERS = {"gemini"}
 MAX_SUBTITLE_LINES = 2
 TARGET_LINE_WIDTH = 22
 IRRELEVANT_FILE_EXTENSIONS = ("srt", "ass", "ssa", "sub", "idx", "sup", "vtt")
@@ -25,6 +25,8 @@ class TranslateJobRequest:
     input_path: Path
     output_path: Path | None = None
     provider: str = "gemini"
+    base_url: str | None = None
+    api_key: str | None = None
     model: str | None = None
     source_language: str | None = None
     target_language: str = "zh"
@@ -39,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--provider", default="gemini")
+    parser.add_argument("--base-url")
+    parser.add_argument("--api-key")
     parser.add_argument("--model")
     parser.add_argument("--source-language")
     parser.add_argument("--target-language", default="zh")
@@ -369,17 +373,41 @@ def _apply_default_style(request: TranslateJobRequest) -> TranslateJobRequest:
     return replace(request, style=settings.translate_style)
 
 
+def _normalize_provider(provider: str | None) -> str:
+    return (provider or "gemini").strip().lower() or "gemini"
+
+
+def _resolve_translate_api_key(request: TranslateJobRequest) -> str | None:
+    if request.api_key and request.api_key.strip():
+        return request.api_key.strip()
+    return load_subflow_config().api_key
+
+
+def _resolve_translate_base_url(request: TranslateJobRequest) -> str | None:
+    if request.base_url and request.base_url.strip():
+        return request.base_url.strip()
+    return load_subflow_config().base_url
+
+
+def _use_openai_compatible_transport(provider: str, request: TranslateJobRequest) -> bool:
+    return bool(_resolve_translate_base_url(request)) or provider != "gemini"
+
+
 def _dry_run_payload(request: TranslateJobRequest) -> dict[str, Any]:
+    provider = _normalize_provider(request.provider)
+    use_openai_compatible = _use_openai_compatible_transport(provider, request)
     return {
         "status": "planned",
-        "provider": request.provider,
+        "provider": provider,
+        "transport": "openai-compatible" if use_openai_compatible else "gemini-native",
+        "base_url": _resolve_translate_base_url(request),
         "model": request.model,
         "input": str(request.input_path),
         "output": str(request.output_path) if request.output_path else None,
         "source_language": request.source_language,
         "target_language": request.target_language,
         "style": request.style,
-        "requires": ["GEMINI_API_KEY"],
+        "requires": ["api_key", "base_url"] if use_openai_compatible else ["api_key"],
     }
 
 
@@ -393,12 +421,32 @@ def _load_replay_payload(path: Path) -> dict[str, Any]:
 def _request_translation_payload(
     client: Any | None,
     *,
+    provider: str,
     model: str,
     prompt: str,
+    request: TranslateJobRequest,
 ) -> dict[str, Any]:
+    if _use_openai_compatible_transport(provider, request):
+        api_key = _resolve_translate_api_key(request)
+        base_url = _resolve_translate_base_url(request)
+        if not api_key:
+            raise OpenAICompatibleError(
+                "Set SUBFLOW_TRANSLATE_API_KEY or OPENAI_API_KEY, or configure translate_api_key/api_key in subflow config before running translate.",
+            )
+        if not base_url:
+            raise OpenAICompatibleError(
+                "Set SUBFLOW_TRANSLATE_BASE_URL or OPENAI_BASE_URL, or configure translate_base_url/base_url in subflow config before running translate.",
+            )
+        return generate_openai_json_response(
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            schema=_schema(),
+        )
     if client is None:
         raise GeminiUnavailableError(
-            "Set GEMINI_API_KEY or configure api_key in subflow config before running subflow translate.",
+            "Set SUBFLOW_TRANSLATE_API_KEY or GEMINI_API_KEY, or configure api_key in subflow config before running subflow translate.",
         )
     return generate_json_response(
         client,
@@ -440,7 +488,13 @@ def _translate_chunks(
         payload: dict[str, Any] | None = None
         for _attempt in range(3):
             try:
-                payload = _request_translation_payload(client, model=model, prompt=prompt)
+                payload = _request_translation_payload(
+                    client,
+                    provider=_normalize_provider(request.provider),
+                    model=model,
+                    prompt=prompt,
+                    request=request,
+                )
                 break
             except Exception as exc:
                 last_error = exc
@@ -463,10 +517,9 @@ def _translate_chunks(
 
 def run_translate_job(request: TranslateJobRequest) -> dict[str, Any]:
     request = _apply_default_style(request)
+    request = replace(request, provider=_normalize_provider(request.provider))
     if request.dry_run:
         return _dry_run_payload(request)
-    if request.provider.lower() not in SUPPORTED_TRANSLATE_PROVIDERS:
-        raise ValueError(f"Unsupported translation provider {request.provider!r}. Use gemini.")
 
     source = _resolve_input_path(request.input_path)
     output_path = request.output_path or source.with_suffix(".zh.srt")
@@ -523,11 +576,13 @@ def run_translate_job(request: TranslateJobRequest) -> dict[str, Any]:
 
     settings = load_subflow_config()
     model = request.model or settings.translate_model
-    if not settings.api_key:
-        raise GeminiUnavailableError(
-            "Set GEMINI_API_KEY or configure api_key in subflow config before running subflow translate.",
-        )
-    client = create_client(settings)
+    client = None
+    if _use_openai_compatible_transport(request.provider, request) is False:
+        if not _resolve_translate_api_key(request):
+            raise GeminiUnavailableError(
+                "Set SUBFLOW_TRANSLATE_API_KEY or GEMINI_API_KEY, or configure api_key in subflow config before running subflow translate.",
+            )
+        client = create_client(settings)
     translations = _translate_chunks(client, model=model, request=request, chunks=_chunk_cues(cues))
 
     output_cues: list[SubtitleCue] = []
@@ -571,6 +626,8 @@ def main(argv: list[str] | None = None) -> int:
         input_path=args.input,
         output_path=args.output,
         provider=args.provider,
+        base_url=args.base_url,
+        api_key=args.api_key,
         model=args.model,
         source_language=args.source_language,
         target_language=args.target_language,
@@ -581,7 +638,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         result = run_translate_job(request)
-    except GeminiUnavailableError as exc:
+    except (GeminiUnavailableError, OpenAICompatibleError) as exc:
         if args.json:
             print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False, indent=2))
         else:
@@ -598,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         if result.get("status") == "planned":
-            print(f"Planned Gemini translation job for {args.input}")
+            print(f"Planned translation job for {args.input}")
         else:
             print(f"Wrote {result['cue_count']} translated cues to {result['output']}")
     return 0

@@ -46,6 +46,18 @@ func TestBuildSearchQueriesWithoutMediaInfoFallsBackToFilmName(t *testing.T) {
 	}
 }
 
+func TestBuildSearchQueriesUsesEnglishLanguageForEnglishSupplier(t *testing.T) {
+	supplier := &Supplier{topic: 1, api: NewApi("test-key"), queryLanguage: subdlEnglishLanguage}
+
+	queries := supplier.buildSearchQueries(nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL.mkv"), false, 1, 3)
+	if len(queries) == 0 {
+		t.Fatal("expected fallback queries without media info")
+	}
+	if queries[0]["languages"] != subdlEnglishLanguage {
+		t.Fatalf("expected english language query, got %#v", queries[0])
+	}
+}
+
 func TestOrderedSearchTitlesAddsPunctuationStrippedVariant(t *testing.T) {
 	mediaInfo := &models.MediaInfo{
 		TitleEn: "Will & Harper",

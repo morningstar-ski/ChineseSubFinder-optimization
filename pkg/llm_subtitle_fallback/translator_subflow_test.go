@@ -3,6 +3,7 @@ package llm_subtitle_fallback
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -28,6 +29,27 @@ func TestResolveSubflowRootDirFallsBackToEnv(t *testing.T) {
 	}
 	if got != root {
 		t.Fatalf("resolveSubflowRootDir() = %q, want env fallback %q", got, root)
+	}
+}
+
+func TestBuildTranslateEnvIncludesFallbackCredentials(t *testing.T) {
+	root := makeFakeSubflowRoot(t)
+	t.Setenv("PYTHONPATH", "C:\\existing")
+
+	env := buildTranslateEnv(root, TranslateRequest{
+		BaseURL: "https://example.com/v1",
+		APIKey:  "secret-key",
+	})
+	joined := "\n" + strings.Join(env, "\n") + "\n"
+
+	if strings.Contains(joined, "\nSUBFLOW_TRANSLATE_BASE_URL=https://example.com/v1\n") == false {
+		t.Fatalf("missing SUBFLOW_TRANSLATE_BASE_URL in env: %s", joined)
+	}
+	if strings.Contains(joined, "\nSUBFLOW_TRANSLATE_API_KEY=secret-key\n") == false {
+		t.Fatalf("missing SUBFLOW_TRANSLATE_API_KEY in env: %s", joined)
+	}
+	if strings.Contains(joined, "\nPYTHONPATH="+filepath.Join(root, "src")+string(os.PathListSeparator)+"C:\\existing\n") == false {
+		t.Fatalf("missing merged PYTHONPATH in env: %s", joined)
 	}
 }
 

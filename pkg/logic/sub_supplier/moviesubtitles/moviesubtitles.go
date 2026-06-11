@@ -32,6 +32,7 @@ type Supplier struct {
 	fileDownloader *file_downloader.FileDownloader
 	topic          int
 	isAlive        bool
+	languageMode   subtitleLanguageMode
 }
 
 type movieSearchResult struct {
@@ -51,12 +52,28 @@ type subtitleCandidate struct {
 
 const movieSubtitlesSearchRetryCount = 2
 
+type subtitleLanguageMode string
+
+const (
+	movieSubtitlesChinese subtitleLanguageMode = "chinese"
+	movieSubtitlesEnglish subtitleLanguageMode = "english"
+)
+
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
+	return newSupplier(fileDownloader, movieSubtitlesChinese)
+}
+
+func NewEnglishSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
+	return newSupplier(fileDownloader, movieSubtitlesEnglish)
+}
+
+func newSupplier(fileDownloader *file_downloader.FileDownloader, languageMode subtitleLanguageMode) *Supplier {
 	sup := Supplier{}
 	sup.log = fileDownloader.Log
 	sup.fileDownloader = fileDownloader
 	sup.topic = subCommon.DownloadSubsPerSite
 	sup.isAlive = true
+	sup.languageMode = languageMode
 
 	if settings.Get().AdvancedSettings.Topic > 0 && settings.Get().AdvancedSettings.Topic != sup.topic {
 		sup.topic = settings.Get().AdvancedSettings.Topic
@@ -242,7 +259,7 @@ func (s *Supplier) fetchMovieCandidates(client *resty.Client, movieURL string, v
 		return nil, err
 	}
 
-	candidates, err := parseMoviePage(resp.String())
+	candidates, err := parseMoviePage(resp.String(), s.languageMode)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +357,7 @@ func parseSearchResults(html string) ([]movieSearchResult, error) {
 	return dedupeMovies(out), nil
 }
 
-func parseMoviePage(html string) ([]subtitleCandidate, error) {
+func parseMoviePage(html string, languageMode subtitleLanguageMode) ([]subtitleCandidate, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return nil, err
@@ -356,7 +373,7 @@ func parseMoviePage(html string) ([]subtitleCandidate, error) {
 			return
 		}
 
-		if isChineseLanguage(currentLanguage) == false {
+		if matchesMovieSubtitlesLanguage(currentLanguage, languageMode) == false {
 			return
 		}
 
@@ -543,6 +560,18 @@ func splitMovieTitleAndYear(title string) (string, string) {
 func isChineseLanguage(language string) bool {
 	language = strings.ToLower(normalizeWhitespace(language))
 	return strings.Contains(language, "chinese") || strings.Contains(language, "china")
+}
+
+func isEnglishLanguage(language string) bool {
+	language = strings.ToLower(normalizeWhitespace(language))
+	return strings.Contains(language, "english")
+}
+
+func matchesMovieSubtitlesLanguage(language string, languageMode subtitleLanguageMode) bool {
+	if languageMode == movieSubtitlesEnglish {
+		return isEnglishLanguage(language)
+	}
+	return isChineseLanguage(language)
 }
 
 func normalizeYear(year string) string {

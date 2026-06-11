@@ -104,6 +104,7 @@ export const getExportSettings = (includeSensitive = false) => {
     delete data.emby_settings.api_key;
     delete data.emby_settings.address_url;
     delete data.experimental_function.api_key_settings;
+    delete data.experimental_function.llm_subtitle_fallback.api_key;
   }
   return data;
 };

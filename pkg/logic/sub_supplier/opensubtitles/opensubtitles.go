@@ -33,14 +33,31 @@ type Supplier struct {
 	isAlive        bool
 	quotaExhausted bool
 	api            *Api
+	languageMode   subtitleLanguageMode
 }
 
+type subtitleLanguageMode string
+
+const (
+	subtitleLanguageChinese subtitleLanguageMode = "chinese"
+	subtitleLanguageEnglish subtitleLanguageMode = "english"
+)
+
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
+	return newSupplier(fileDownloader, subtitleLanguageChinese)
+}
+
+func NewEnglishSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
+	return newSupplier(fileDownloader, subtitleLanguageEnglish)
+}
+
+func newSupplier(fileDownloader *file_downloader.FileDownloader, languageMode subtitleLanguageMode) *Supplier {
 	sup := Supplier{}
 	sup.log = fileDownloader.Log
 	sup.fileDownloader = fileDownloader
 	sup.topic = subCommon.DownloadSubsPerSite
 	sup.isAlive = true
+	sup.languageMode = languageMode
 	sup.api = NewApi(
 		settings.Get().AdvancedSettings.SuppliersSettings.OpenSubtitles.RootUrl,
 		settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey,
@@ -240,6 +257,7 @@ func (s *Supplier) searchCandidatesWithFallback(client *resty.Client, mediaInfo 
 			episode,
 			s.topic,
 			settings.Get().AdvancedSettings.SubTypePriority,
+			s.languageMode,
 		)
 		candidates = filterMovieCandidatesByTitle(candidates, mediaInfo, videoFPath, isMovie, s.log, videoFileName, s.GetSupplierName())
 		if len(candidates) == 0 {
@@ -329,12 +347,12 @@ func buildSearchQueries(mediaInfo *models.MediaInfo, videoFPath string, isMovie 
 	return dedupeQueryMaps(out)
 }
 
-func selectCandidates(items []SearchItem, videoFPath string, isMovie bool, season, episode, limit, subTypePriority int) []subtitleCandidate {
+func selectCandidates(items []SearchItem, videoFPath string, isMovie bool, season, episode, limit, subTypePriority int, languageMode subtitleLanguageMode) []subtitleCandidate {
 	out := make([]subtitleCandidate, 0)
 	seen := make(map[int64]struct{})
 
 	for _, item := range items {
-		candidate, ok := searchItemToCandidate(item, isMovie)
+		candidate, ok := searchItemToCandidate(item, isMovie, languageMode)
 		if ok == false {
 			continue
 		}
@@ -352,10 +370,16 @@ func selectCandidates(items []SearchItem, videoFPath string, isMovie bool, seaso
 	return out
 }
 
-func searchItemToCandidate(item SearchItem, isMovie bool) (subtitleCandidate, bool) {
+func searchItemToCandidate(item SearchItem, isMovie bool, languageMode subtitleLanguageMode) (subtitleCandidate, bool) {
 	attrs := item.Attributes
-	if isChineseAttribute(attrs) == false {
-		return subtitleCandidate{}, false
+	if languageMode == subtitleLanguageEnglish {
+		if isEnglishAttribute(attrs) == false {
+			return subtitleCandidate{}, false
+		}
+	} else {
+		if languageMatches(attrs, languageMode) == false {
+			return subtitleCandidate{}, false
+		}
 	}
 
 	file, ok := firstValidFile(attrs.Files)
@@ -427,7 +451,7 @@ func openSubtitlesCandidateMetadata(candidate subtitleCandidate) ranking.Candida
 	}
 }
 
-func isChineseAttribute(attrs SearchItemAttribute) bool {
+func languageMatches(attrs SearchItemAttribute, languageMode subtitleLanguageMode) bool {
 	for _, item := range []string{attrs.Language, attrs.ISO639} {
 		lower := strings.ToLower(strings.TrimSpace(item))
 		if lower == "" {
@@ -437,6 +461,19 @@ func isChineseAttribute(attrs SearchItemAttribute) bool {
 			return true
 		}
 		if langutil.IsSupportISOChineseString(lower) {
+			return true
+		}
+	}
+	return false
+}
+
+func isEnglishAttribute(attrs SearchItemAttribute) bool {
+	for _, item := range []string{attrs.Language, attrs.ISO639} {
+		lower := strings.ToLower(strings.TrimSpace(item))
+		if lower == "" {
+			continue
+		}
+		if strings.HasPrefix(lower, "en") || strings.Contains(lower, "english") {
 			return true
 		}
 	}

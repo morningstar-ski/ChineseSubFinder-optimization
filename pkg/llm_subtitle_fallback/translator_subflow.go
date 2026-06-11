@@ -42,7 +42,7 @@ func (subflowTranslator) Translate(req TranslateRequest) error {
 
 	cmd := exec.Command(pythonExecutable, args...)
 	cmd.Dir = subflowRootDir
-	cmd.Env = buildPythonPathEnv(subflowRootDir)
+	cmd.Env = buildTranslateEnv(subflowRootDir, req)
 
 	output, err := cmd.CombinedOutput()
 	logPath := filepath.Join(req.TaskDir, "translate.stdout.log")
@@ -107,7 +107,7 @@ func isValidSubflowRootDir(root string) bool {
 	return err == nil && info.IsDir() == false
 }
 
-func buildPythonPathEnv(subflowRootDir string) []string {
+func buildTranslateEnv(subflowRootDir string, req TranslateRequest) []string {
 	env := os.Environ()
 	srcDir := filepath.Join(subflowRootDir, "src")
 
@@ -126,8 +126,27 @@ func buildPythonPathEnv(subflowRootDir string) []string {
 		} else {
 			env[pythonPathIndex] = "PYTHONPATH=" + srcDir + string(os.PathListSeparator) + current
 		}
-		return env
+	} else {
+		env = append(env, "PYTHONPATH="+srcDir)
 	}
 
-	return append(env, "PYTHONPATH="+srcDir)
+	env = appendEnvIfPresent(env, "SUBFLOW_TRANSLATE_API_KEY", req.APIKey)
+	env = appendEnvIfPresent(env, "SUBFLOW_TRANSLATE_BASE_URL", req.BaseURL)
+	return env
+}
+
+func appendEnvIfPresent(env []string, key string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return env
+	}
+	entry := key + "=" + value
+	prefix := strings.ToUpper(key) + "="
+	for i, item := range env {
+		if strings.HasPrefix(strings.ToUpper(item), prefix) {
+			env[i] = entry
+			return env
+		}
+	}
+	return append(env, entry)
 }

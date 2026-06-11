@@ -16,6 +16,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
 class SubflowConfig:
     api_key: str | None
     api_key_source: str | None
+    base_url: str | None
+    base_url_source: str | None
     google_credentials_path: Path | None
     google_project_id: str | None
     google_stt_bucket: str | None
@@ -71,21 +73,53 @@ def load_subflow_config(path: Path | None = None) -> SubflowConfig:
         data = _load_toml(config_path)
 
     gemini = data.get("gemini", {}) if isinstance(data.get("gemini", {}), dict) else {}
+    openai = data.get("openai", {}) if isinstance(data.get("openai", {}), dict) else {}
     subflow = data.get("subflow", {}) if isinstance(data.get("subflow", {}), dict) else {}
 
     api_key_source: str | None = None
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("SUBFLOW_TRANSLATE_API_KEY")
     if api_key:
-        api_key_source = "GEMINI_API_KEY"
+        api_key_source = "SUBFLOW_TRANSLATE_API_KEY"
     else:
-        api_key = _first_string(
-            gemini.get("api_key") if isinstance(gemini, dict) else None,
-            subflow.get("api_key") if isinstance(subflow, dict) else None,
-            data.get("api_key"),
-            default="",
-        ) or None
+        api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
-            api_key_source = "config"
+            api_key_source = "OPENAI_API_KEY"
+        else:
+            api_key = os.getenv("GEMINI_API_KEY")
+            if api_key:
+                api_key_source = "GEMINI_API_KEY"
+            else:
+                api_key = _first_string(
+                    subflow.get("translate_api_key") if isinstance(subflow, dict) else None,
+                    openai.get("api_key") if isinstance(openai, dict) else None,
+                    gemini.get("api_key") if isinstance(gemini, dict) else None,
+                    subflow.get("api_key") if isinstance(subflow, dict) else None,
+                    data.get("translate_api_key"),
+                    data.get("api_key"),
+                    default="",
+                ) or None
+                if api_key:
+                    api_key_source = "config"
+
+    base_url_source: str | None = None
+    base_url = os.getenv("SUBFLOW_TRANSLATE_BASE_URL")
+    if base_url:
+        base_url_source = "SUBFLOW_TRANSLATE_BASE_URL"
+    else:
+        base_url = os.getenv("OPENAI_BASE_URL")
+        if base_url:
+            base_url_source = "OPENAI_BASE_URL"
+        else:
+            base_url = _first_string(
+                subflow.get("translate_base_url") if isinstance(subflow, dict) else None,
+                openai.get("base_url") if isinstance(openai, dict) else None,
+                subflow.get("base_url") if isinstance(subflow, dict) else None,
+                data.get("translate_base_url"),
+                data.get("base_url"),
+                default="",
+            ) or None
+            if base_url:
+                base_url_source = "config"
 
     google_credentials_path: Path | None = None
     credentials_env = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
@@ -152,6 +186,7 @@ def load_subflow_config(path: Path | None = None) -> SubflowConfig:
             return value.strip()
         return _first_string(
             subflow.get(config_key) if isinstance(subflow, dict) else None,
+            openai.get(config_key) if isinstance(openai, dict) else None,
             gemini.get(config_key) if isinstance(gemini, dict) else None,
             data.get(config_key),
             default=default,
@@ -160,6 +195,8 @@ def load_subflow_config(path: Path | None = None) -> SubflowConfig:
     return SubflowConfig(
         api_key=api_key,
         api_key_source=api_key_source,
+        base_url=base_url,
+        base_url_source=base_url_source,
         google_credentials_path=google_credentials_path,
         google_project_id=google_project_id,
         google_stt_bucket=google_stt_bucket,
@@ -170,6 +207,7 @@ def load_subflow_config(path: Path | None = None) -> SubflowConfig:
         translate_style=_first_string(
             os.getenv("SUBFLOW_TRANSLATE_STYLE"),
             subflow.get("translate_style") if isinstance(subflow, dict) else None,
+            openai.get("translate_style") if isinstance(openai, dict) else None,
             gemini.get("translate_style") if isinstance(gemini, dict) else None,
             data.get("translate_style"),
             default="",

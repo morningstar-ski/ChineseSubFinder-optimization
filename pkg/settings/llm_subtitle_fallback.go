@@ -12,6 +12,8 @@ const (
 type LLMSubtitleFallbackSettings struct {
 	Enable                     bool   `json:"enable"`
 	Provider                   string `json:"provider"`
+	BaseURL                    string `json:"base_url"`
+	APIKey                     string `json:"api_key"`
 	Model                      string `json:"model"`
 	PythonExecutable           string `json:"python_executable"`
 	SubflowRootDir             string `json:"subflow_root_dir"`
@@ -27,6 +29,8 @@ func NewLLMSubtitleFallbackSettings() *LLMSubtitleFallbackSettings {
 	return &LLMSubtitleFallbackSettings{
 		Enable:                     false,
 		Provider:                   defaultLLMSubtitleFallbackProvider,
+		BaseURL:                    "",
+		APIKey:                     "",
 		Model:                      defaultLLMSubtitleFallbackModel,
 		PythonExecutable:           "",
 		SubflowRootDir:             defaultLLMSubtitleFallbackSubflowRoot,
@@ -60,7 +64,8 @@ func (s *LLMSubtitleFallbackSettings) ensureDefaults() {
 		s.TargetLanguage = defaults.TargetLanguage
 	}
 	if s.OnlyWhenNoChineseCandidate == false && s.KeepEnglishSourceCopy == false &&
-		s.Provider == defaults.Provider && s.Model == defaults.Model &&
+		s.Provider == defaults.Provider && s.BaseURL == defaults.BaseURL &&
+		s.APIKey == defaults.APIKey && s.Model == defaults.Model &&
 		s.PythonExecutable == "" && s.SubflowRootDir == defaults.SubflowRootDir &&
 		s.TranslateStyle == "" && s.LogDir == defaults.LogDir &&
 		s.SourceLanguage == defaults.SourceLanguage && s.TargetLanguage == defaults.TargetLanguage {

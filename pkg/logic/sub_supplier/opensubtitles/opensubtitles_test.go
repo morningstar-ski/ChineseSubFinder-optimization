@@ -335,7 +335,7 @@ func TestSelectCandidatesPrefersExactEpisode(t *testing.T) {
 		},
 	}
 
-	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0)
+	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0, subtitleLanguageChinese)
 	if len(candidates) != 2 {
 		t.Fatalf("expected 2 candidates, got %#v", candidates)
 	}
@@ -372,12 +372,49 @@ func TestSelectCandidatesRejectsWrongEpisodeDespiteCloserRelease(t *testing.T) {
 		},
 	}
 
-	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0)
+	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0, subtitleLanguageChinese)
 	if len(candidates) != 2 {
 		t.Fatalf("expected 2 candidates, got %#v", candidates)
 	}
 	if candidates[0].FileID != 11 {
 		t.Fatalf("expected exact episode first, got %#v", candidates[0])
+	}
+}
+
+func TestSelectCandidatesCanFilterEnglishFallback(t *testing.T) {
+	items := []SearchItem{
+		{
+			ID: "1",
+			Attributes: SearchItemAttribute{
+				Language:  "zh-cn",
+				Release:   "My.Show.S01E03.1080p.WEB-DL-GROUP",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 10, FileName: "My.Show.S01E03.1080p.WEB-DL-GROUP.zh.srt"},
+				},
+				FeatureDetails: FeatureDetails{SeasonNumber: 1, EpisodeNumber: 3},
+			},
+		},
+		{
+			ID: "2",
+			Attributes: SearchItemAttribute{
+				Language:  "en",
+				Release:   "My.Show.S01E03.1080p.WEB-DL-GROUP",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 11, FileName: "My.Show.S01E03.1080p.WEB-DL-GROUP.en.srt"},
+				},
+				FeatureDetails: FeatureDetails{SeasonNumber: 1, EpisodeNumber: 3},
+			},
+		},
+	}
+
+	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0, subtitleLanguageEnglish)
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 english candidate, got %#v", candidates)
+	}
+	if candidates[0].FileID != 11 {
+		t.Fatalf("expected english candidate first, got %#v", candidates[0])
 	}
 }
 

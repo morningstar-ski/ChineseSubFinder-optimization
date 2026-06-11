@@ -126,6 +126,147 @@
 
       <q-item>
         <q-item-section>
+          <q-item-label>英文字幕翻译保底</q-item-label>
+          <q-item-label caption>
+            只在中文字幕阶段失败后触发，改走英文字幕源并调用 LLM 翻译。当前仅对单字幕保存模式生效。
+          </q-item-label>
+        </q-item-section>
+        <q-item-section avatar top>
+          <q-toggle v-model="form.llm_subtitle_fallback.enable" />
+        </q-item-section>
+      </q-item>
+
+      <template v-if="form.llm_subtitle_fallback.enable">
+        <q-item>
+          <q-item-section>
+            <q-item-label>Provider</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.provider" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Base URL</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input
+              v-model="form.llm_subtitle_fallback.base_url"
+              placeholder="OpenAI-compatible base URL，可留空走 Gemini 原生"
+              standout
+              dense
+            />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>API key</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input
+              v-model="form.llm_subtitle_fallback.api_key"
+              type="password"
+              placeholder="留空则回退到 subflow 本地配置或环境变量"
+              standout
+              dense
+            />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Model</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.model" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Python executable</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input
+              v-model="form.llm_subtitle_fallback.python_executable"
+              placeholder="留空使用环境默认 python"
+              standout
+              dense
+            />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Subflow root</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.subflow_root_dir" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Log dir</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.log_dir" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Source language</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.source_language" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Target language</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.target_language" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Translate style</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.translate_style" placeholder="可留空" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>仅在无中文候选时触发</q-item-label>
+            <q-item-label caption>当前运行时就是这个语义，这里保留显式开关。</q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.llm_subtitle_fallback.only_when_no_chinese_candidate" />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>保留英文源字幕副本</q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.llm_subtitle_fallback.keep_english_source_copy" />
+          </q-item-section>
+        </q-item>
+      </template>
+
+      <q-separator spaced inset />
+
+      <q-item>
+        <q-item-section>
           <q-item-label>API key</q-item-label>
           <q-item-label caption>
             本程序提供了一些面向开发者的接口，通过 API key 鉴权。具体参见
