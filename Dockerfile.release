@@ -106,10 +106,12 @@ RUN apt-get update \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
     && ln -sf /usr/bin/python3 /usr/local/bin/python \
-    && case "${TARGETARCH}" in \
+    && arch="${TARGETARCH}" \
+    && if [ -z "${arch}" ]; then arch="$(dpkg --print-architecture)"; fi \
+    && case "${arch}" in \
          amd64) s6_arch=x86_64 ;; \
          arm64) s6_arch=aarch64 ;; \
-         *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+         *) echo "unsupported TARGETARCH: ${arch}" >&2; exit 1 ;; \
        esac \
     && wget -q -O /tmp/s6-overlay-noarch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
     && wget -q -O /tmp/s6-overlay-${s6_arch}.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${s6_arch}.tar.xz" \
