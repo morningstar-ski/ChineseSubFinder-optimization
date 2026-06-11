@@ -176,7 +176,11 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 	outSubInfoList := make([]supplier.SubInfo, 0)
 	for index, candidate := range candidates {
 		cacheKey := fmt.Sprintf("%s-%s-%d-%s", s.GetSupplierName(), mediaInfo.ImdbId, index, candidate.DownloadURL)
-		subInfo, err := s.fileDownloader.Get(s.GetSupplierName(), int64(index), videoFileName, candidate.DownloadURL, 0, 0, cacheKey)
+		subName := candidate.Name
+		if strings.TrimSpace(subName) == "" {
+			subName = videoFileName
+		}
+		subInfo, err := s.fileDownloader.Get(s.GetSupplierName(), int64(index), subName, candidate.DownloadURL, 0, 0, cacheKey)
 		if err != nil {
 			s.log.Errorln(s.GetSupplierName(), "FileDownloader.Get", err)
 			continue
@@ -231,11 +235,8 @@ func (s *Supplier) buildSearchQueries(mediaInfo *models.MediaInfo, videoFPath st
 		base["unpack"] = "1"
 	}
 
-	if year := normalizeYear(mediaInfo.Year); year != "" {
-		base["year"] = year
-	}
-
 	out := make([]map[string]string, 0)
+	year := normalizeYear(mediaInfo.Year)
 	if mediaInfo.ImdbId != "" {
 		out = append(out, cloneQueryMap(base, map[string]string{"imdb_id": mediaInfo.ImdbId}))
 	}
@@ -247,20 +248,28 @@ func (s *Supplier) buildSearchQueries(mediaInfo *models.MediaInfo, videoFPath st
 		if title == "" {
 			continue
 		}
-		out = append(out, cloneQueryMap(base, map[string]string{"film_name": title}))
+		query := map[string]string{"film_name": title}
+		if year != "" && titleLooksYearSpecific(title) {
+			query["year"] = year
+		}
+		out = append(out, cloneQueryMap(base, query))
 	}
 
 	return dedupeQueryMaps(out)
 }
 
 func orderedSearchTitles(mediaInfo *models.MediaInfo, videoFPath string) []string {
-	out := []string{
+	videoTitle := normalizeVideoTitle(videoFPath)
+	return mix_media_info.ExpandSearchKeywords(
 		mediaInfo.TitleEn,
 		mediaInfo.OriginalTitle,
 		mediaInfo.TitleCn,
-		normalizeVideoTitle(videoFPath),
-	}
-	return out
+		videoTitle,
+		stripTrailingYear(mediaInfo.TitleEn),
+		stripTrailingYear(mediaInfo.OriginalTitle),
+		stripTrailingYear(mediaInfo.TitleCn),
+		stripTrailingYear(videoTitle),
+	)
 }
 
 func normalizeVideoTitle(videoFPath string) string {
@@ -277,6 +286,54 @@ func normalizeYear(year string) string {
 		return year[:4]
 	}
 	return ""
+}
+
+func titleLooksYearSpecific(title string) bool {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return false
+	}
+	return title != stripTrailingYear(title)
+}
+
+func stripTrailingYear(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		"(", " ", ")", " ",
+		"[", " ", "]", " ",
+	)
+	parts := strings.Fields(replacer.Replace(title))
+	if len(parts) == 0 {
+		return ""
+	}
+	last := parts[len(parts)-1]
+	if len(last) == 4 {
+		if _, err := strconv.Atoi(last); err == nil {
+			return strings.TrimSpace(strings.Join(parts[:len(parts)-1], " "))
+		}
+	}
+	return title
+}
+
+func compactNonEmptyTitles(items ...string) []string {
+	out := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
 }
 
 func selectCandidates(results []SubtitleHit, videoFPath string, isMovie bool, season, episode, limit int) []subtitleCandidate {

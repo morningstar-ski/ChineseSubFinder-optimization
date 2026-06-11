@@ -10,11 +10,13 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"os/exec"
@@ -48,11 +50,16 @@ func NewHttpClient(referer ...string) (*resty.Client, error) {
 	// 随机的 Browser
 	UserAgent = browser.Random()
 	// ------------------------------------------------
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, err
+	}
 	httpClient := resty.New().SetTransport(&http.Transport{
 		DisableKeepAlives:   true,
 		MaxIdleConns:        1000,
 		MaxIdleConnsPerHost: 1000,
 	})
+	httpClient.GetClient().Jar = jar
 	httpClient.SetTimeout(common.HTMLTimeOut)
 	httpClient.SetRetryCount(1)
 	// ------------------------------------------------
@@ -465,7 +472,12 @@ func CopyDir(src string, dst string) error {
 
 // CloseChrome 强行结束没有关闭的 Chrome 进程
 func CloseChrome(l *logrus.Logger) {
+	closeChromeWithRunner(l, runtime.GOOS, func(command *exec.Cmd) ([]byte, error) {
+		return command.CombinedOutput()
+	})
+}
 
+func closeChromeWithRunner(l *logrus.Logger, sysType string, runner func(command *exec.Cmd) ([]byte, error)) {
 	defer func() {
 		l.Infoln("CloseChrome End")
 	}()
@@ -474,10 +486,9 @@ func CloseChrome(l *logrus.Logger) {
 
 	cmdString := ""
 	var command *exec.Cmd
-	sysType := runtime.GOOS
 	if sysType == "linux" {
 		// LINUX系统
-		cmdString = "pkill chrome"
+		cmdString = "pkill chrome >/dev/null 2>&1; code=$?; [ \"$code\" -eq 0 ] || [ \"$code\" -eq 1 ]"
 		command = exec.Command("/bin/sh", "-c", cmdString)
 	}
 	if sysType == "windows" {
@@ -495,13 +506,53 @@ func CloseChrome(l *logrus.Logger) {
 		l.Errorln("CloseChrome OS:", sysType)
 		return
 	}
-	err := command.Run()
+	output, err := runner(command)
 	if err != nil {
+		if isIgnorableCloseChromeError(err, output) == true {
+			l.Debugln("CloseChrome ignore:", err, strings.TrimSpace(string(output)))
+			return
+		}
+		if len(output) > 0 {
+			l.Warningln("CloseChrome", err, strings.TrimSpace(string(output)))
+			return
+		}
 		l.Warningln("CloseChrome", err)
 	}
 }
 
 // OSCheck 强制的系统支持检查
+func isIgnorableCloseChromeError(err error, output []byte) bool {
+	if err == nil {
+		return false
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) == true && exitErr.ExitCode() == 1 {
+		return true
+	}
+
+	msg := strings.ToLower(strings.TrimSpace(err.Error() + " " + string(output)))
+	if strings.Contains(msg, "exit status 1") == true {
+		return true
+	}
+
+	ignorableSigns := []string{
+		"no process found",
+		"no such process",
+		"already closed",
+		"already finished",
+		"already exited",
+		"not running",
+	}
+	for _, sign := range ignorableSigns {
+		if strings.Contains(msg, sign) == true {
+			return true
+		}
+	}
+
+	return false
+}
+
 func OSCheck() bool {
 	sysType := runtime.GOOS
 	if sysType == "linux" {

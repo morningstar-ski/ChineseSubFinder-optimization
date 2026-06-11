@@ -418,10 +418,14 @@ func findChineseSubtitlePage(cell *goquery.Selection) string {
 }
 
 func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string) []string {
-	return compactStrings(
+	videoTitle := normalizeVideoTitle(videoFPath)
+	return mix_media_info.ExpandSearchKeywords(
 		mediaInfo.TitleEn,
 		mediaInfo.OriginalTitle,
-		normalizeVideoTitle(videoFPath),
+		videoTitle,
+		stripTrailingYear(mediaInfo.TitleEn),
+		stripTrailingYear(mediaInfo.OriginalTitle),
+		stripTrailingYear(videoTitle),
 	)
 }
 
@@ -432,6 +436,28 @@ func normalizeVideoTitle(videoFPath string) string {
 	}
 	fileName = pkg.ReplaceSpecString(fileName, " ")
 	return strings.Join(strings.Fields(fileName), " ")
+}
+
+func stripTrailingYear(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		"(", " ", ")", " ",
+		"[", " ", "]", " ",
+	)
+	parts := strings.Fields(replacer.Replace(title))
+	if len(parts) == 0 {
+		return ""
+	}
+	last := parts[len(parts)-1]
+	if len(last) == 4 {
+		if _, err := strconv.Atoi(last); err == nil {
+			return strings.TrimSpace(strings.Join(parts[:len(parts)-1], " "))
+		}
+	}
+	return title
 }
 
 func absoluteURL(rootURL string, href string) string {
@@ -500,9 +526,7 @@ func scoreShowTitle(showTitle string, candidate string) int {
 
 func normalizeComparableTitle(title string) string {
 	title = stripShowYearSuffix(title)
-	title = pkg.ReplaceSpecString(title, " ")
-	title = strings.ToLower(strings.Join(strings.Fields(title), " "))
-	return title
+	return mix_media_info.NormalizeComparableTitle(title)
 }
 
 func dedupeShows(items []showSearchResult) []showSearchResult {

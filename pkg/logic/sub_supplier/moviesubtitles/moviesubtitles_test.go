@@ -50,6 +50,23 @@ func TestSelectBestMovie(t *testing.T) {
 	}
 }
 
+func TestSelectBestMovieRejectsWrongTitle(t *testing.T) {
+	results := []movieSearchResult{
+		{ID: 1, Title: "Inferno", Year: "2016", URL: "/movie-1.html"},
+		{ID: 2, Title: "Dark Matter", Year: "2024", URL: "/movie-2.html"},
+	}
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "Lopez vs Lopez",
+		OriginalTitle: "Lopez vs Lopez",
+		Year:          "2024-01-01",
+	}
+
+	result := selectBestMovie(results, mediaInfo, "Lopez vs Lopez")
+	if result != nil {
+		t.Fatalf("selectBestMovie() = %#v; want nil", result)
+	}
+}
+
 func TestParseMoviePageChineseOnly(t *testing.T) {
 	html := `
 <table>
@@ -149,6 +166,46 @@ func TestSeriesUnsupported(t *testing.T) {
 	}
 	if len(subInfos) != 0 {
 		t.Fatalf("expected empty result, got %#v", subInfos)
+	}
+}
+
+func TestBuildSearchKeywordsAddsYearlessFallback(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "The Gorge 2025",
+		OriginalTitle: "The Gorge (2025)",
+	}
+
+	got := buildSearchKeywords(mediaInfo, filepath.Join("C:\\", "Media", "The.Gorge.2025.1080p.WEB-DL.mkv"))
+	found := false
+	for _, item := range got {
+		if item == "The Gorge" {
+			found = true
+			break
+		}
+	}
+	if found == false {
+		t.Fatalf("buildSearchKeywords() = %#v; want yearless fallback", got)
+	}
+}
+
+func TestBuildSearchKeywordsAddsAmpersandVariant(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn: "Will & Harper",
+	}
+
+	got := buildSearchKeywords(mediaInfo, filepath.Join("C:\\", "Media", "Will.and.Harper.2024.1080p.WEB-DL.mkv"))
+	foundAmpersand := false
+	foundAnd := false
+	for _, item := range got {
+		if item == "Will & Harper" {
+			foundAmpersand = true
+		}
+		if item == "Will and Harper" {
+			foundAnd = true
+		}
+	}
+	if foundAmpersand == false || foundAnd == false {
+		t.Fatalf("buildSearchKeywords() = %#v; want both ampersand and and variants", got)
 	}
 }
 

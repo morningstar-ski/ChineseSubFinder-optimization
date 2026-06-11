@@ -1,6 +1,10 @@
 package tvsubtitles
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
+)
 
 func TestParseSearchResults(t *testing.T) {
 	html := `
@@ -99,5 +103,65 @@ func TestMovieUnsupported(t *testing.T) {
 	}
 	if len(subInfos) != 0 {
 		t.Fatalf("expected empty result, got %#v", subInfos)
+	}
+}
+
+func TestSelectBestShowRejectsWrongSeries(t *testing.T) {
+	results := []showSearchResult{
+		{ID: 1, Title: "Spiderwick Chronicles"},
+		{ID: 2, Title: "Dark Matter"},
+	}
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "Lopez vs Lopez",
+		OriginalTitle: "Lopez vs Lopez",
+	}
+
+	result := selectBestShow(results, mediaInfo, "Lopez vs Lopez")
+	if result != nil {
+		t.Fatalf("selectBestShow() = %#v; want nil", result)
+	}
+}
+
+func TestBuildSearchKeywordsAddsYearlessFallback(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "Lopez vs Lopez 2022",
+		OriginalTitle: "Lopez vs Lopez (2022)",
+	}
+
+	got := buildSearchKeywords(mediaInfo, "C:\\Media\\Lopez.vs.Lopez.2022.S01E01.1080p.WEB-DL.mkv")
+	want := map[string]bool{
+		"Lopez vs Lopez 2022": false,
+		"Lopez vs Lopez":      false,
+	}
+	for _, keyword := range got {
+		if _, ok := want[keyword]; ok {
+			want[keyword] = true
+		}
+	}
+	for keyword, seen := range want {
+		if seen == false {
+			t.Fatalf("buildSearchKeywords() missing %q in %#v", keyword, got)
+		}
+	}
+}
+
+func TestBuildSearchKeywordsAddsAmpersandVariant(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn: "Law & Order",
+	}
+
+	got := buildSearchKeywords(mediaInfo, "C:\\Media\\Law.and.Order.S01E01.1080p.WEB-DL.mkv")
+	foundAmpersand := false
+	foundAnd := false
+	for _, keyword := range got {
+		if keyword == "Law & Order" {
+			foundAmpersand = true
+		}
+		if keyword == "Law and Order" {
+			foundAnd = true
+		}
+	}
+	if foundAmpersand == false || foundAnd == false {
+		t.Fatalf("buildSearchKeywords() = %#v; want both ampersand and and variants", got)
 	}
 }

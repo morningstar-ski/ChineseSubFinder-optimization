@@ -1,6 +1,10 @@
 package shooter
 
 import (
+	"crypto/md5"
+	"fmt"
+	"math"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -10,8 +14,60 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/random_auth_key"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/unit_test_helper"
 )
+
+func TestComputeFileHashReturnsExpectedHash(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "sample-video.mkv")
+	content := make([]byte, 0x12000)
+	for i := range content {
+		content[i] = byte((i*17 + 29) % 251)
+	}
+	if err := os.WriteFile(filePath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	hash, err := ComputeFileHash(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := expectedShooterHash(content)
+	if hash != expected {
+		t.Fatalf("unexpected hash\nexpected: %s\nactual:   %s", expected, hash)
+	}
+}
+
+func TestComputeFileHashRejectsSmallFile(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "small-video.mkv")
+	if err := os.WriteFile(filePath, make([]byte, 0xEFFF), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ComputeFileHash(filePath)
+	if err != common.VideoFileIsTooSmall {
+		t.Fatalf("expected %v, got %v", common.VideoFileIsTooSmall, err)
+	}
+}
+
+func expectedShooterHash(content []byte) string {
+	size := float64(len(content))
+	samplePositions := []int{
+		4 * 1024,
+		int(math.Floor(size / 3 * 2)),
+		int(math.Floor(size / 3)),
+		len(content) - 8*1024,
+	}
+	hash := ""
+	for _, position := range samplePositions {
+		if hash != "" {
+			hash += ";"
+		}
+		hash += fmt.Sprintf("%x", md5.Sum(content[position:position+4*1024]))
+	}
+	return hash
+}
 
 func TestNewSupplier(t *testing.T) {
 	t.Skip("integration test depends on external test data and shooter availability")

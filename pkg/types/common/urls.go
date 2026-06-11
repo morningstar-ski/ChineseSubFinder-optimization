@@ -12,9 +12,6 @@ const (
 
 	SubAssrtRootUrlDef = "https://api.assrt.net/v1"
 
-	SubA4kRootUrlDef = "https://www.a4k.net"
-	SubA4kSearchUrl  = "/search?keyword="
-
 	SubSubDLRootUrlDef   = "https://api.subdl.com/api/v1"
 	SubSubDLSearchUrl    = "/subtitles"
 	SubSubDLDownloadRoot = "https://dl.subdl.com"

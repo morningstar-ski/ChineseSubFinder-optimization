@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	subSupplier "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/assrt"
@@ -79,44 +80,12 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 			assrt.NewSupplier(p.fileDownloader),
 		)
 	} else {
-		p.SubSupplierHub = subSupplier.NewSubSupplierHub(
-			xunlei.NewSupplier(p.fileDownloader),
-			shooter.NewSupplier(p.fileDownloader),
-		)
-
-		if settings.Get().SubtitleSources.AssrtSettings.Enabled &&
-			settings.Get().SubtitleSources.AssrtSettings.Token != "" {
-			p.SubSupplierHub.AddSubSupplier(assrt.NewSupplier(p.fileDownloader))
+		suppliers := p.buildEnabledSuppliers()
+		if len(suppliers) == 0 {
+			p.gError = errors.New("no subtitle suppliers enabled")
+			return p
 		}
-
-		if settings.Get().SubtitleSources.SubDLSettings.Enabled &&
-			settings.Get().SubtitleSources.SubDLSettings.Key != "" {
-			p.SubSupplierHub.AddSubSupplier(subdl.NewSupplier(p.fileDownloader))
-		}
-
-		if settings.Get().SubtitleSources.SubtitleBestSettings.Enabled &&
-			settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
-			p.SubSupplierHub.AddSubSupplier(subtitle_best.NewSupplier(p.fileDownloader))
-		}
-
-		if settings.Get().SubtitleSources.OpenSubtitlesSettings.Enabled &&
-			settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey != "" &&
-			settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
-			settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
-			p.SubSupplierHub.AddSubSupplier(opensubtitles.NewSupplier(p.fileDownloader))
-		}
-
-		if settings.Get().SubtitleSources.TVsubtitlesSettings.Enabled {
-			p.SubSupplierHub.AddSubSupplier(tvsubtitles.NewSupplier(p.fileDownloader))
-		}
-
-		if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled {
-			p.SubSupplierHub.AddSubSupplier(moviesubtitles.NewSupplier(p.fileDownloader))
-		}
-
-		if pkg.LiteMode() == false && settings.Get().SubtitleSources.SubHDSettings.Enabled {
-			p.SubSupplierHub.AddSubSupplier(subhd.NewSupplier(p.fileDownloader))
-		}
+		p.SubSupplierHub = subSupplier.NewSubSupplierHub(suppliers[0], suppliers[1:]...)
 	}
 
 	err := pkg.ClearRodTmpRootFolder()
@@ -127,6 +96,66 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 
 	p.log.Infoln("ClearRodTmpRootFolder Done")
 	return p
+}
+
+func (p *PreDownloadProcess) buildEnabledSuppliers() []ifaces.ISupplier {
+	suppliersByName := make(map[string]ifaces.ISupplier)
+
+	suppliersByName[common2.SubSiteXunLei] = xunlei.NewSupplier(p.fileDownloader)
+	suppliersByName[common2.SubSiteShooter] = shooter.NewSupplier(p.fileDownloader)
+
+	if settings.Get().SubtitleSources.AssrtSettings.Enabled &&
+		settings.Get().SubtitleSources.AssrtSettings.Token != "" {
+		suppliersByName[common2.SubSiteAssrt] = assrt.NewSupplier(p.fileDownloader)
+	}
+
+	if settings.Get().SubtitleSources.SubDLSettings.Enabled &&
+		settings.Get().SubtitleSources.SubDLSettings.Key != "" {
+		suppliersByName[common2.SubSiteSubDL] = subdl.NewSupplier(p.fileDownloader)
+	}
+
+	if settings.Get().SubtitleSources.SubtitleBestSettings.Enabled &&
+		settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
+		suppliersByName[common2.SubSiteSubtitleBest] = subtitle_best.NewSupplier(p.fileDownloader)
+	}
+
+	if settings.Get().SubtitleSources.OpenSubtitlesSettings.Enabled &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey != "" &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
+		suppliersByName[common2.SubSiteOpenSubtitles] = opensubtitles.NewSupplier(p.fileDownloader)
+	}
+
+	if settings.Get().SubtitleSources.TVsubtitlesSettings.Enabled {
+		suppliersByName[common2.SubSiteTVSubtitles] = tvsubtitles.NewSupplier(p.fileDownloader)
+	}
+
+	if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled {
+		suppliersByName[common2.SubSiteMovieSubtitles] = moviesubtitles.NewSupplier(p.fileDownloader)
+	}
+
+	if pkg.LiteMode() == false && settings.Get().SubtitleSources.SubHDSettings.Enabled {
+		suppliersByName[common2.SubSiteSubHd] = subhd.NewSupplier(p.fileDownloader)
+	}
+
+	orderedNames := common2.OrderSubSiteNames(mapKeys(suppliersByName), common2.DefaultSubSiteSequence())
+	out := make([]ifaces.ISupplier, 0, len(orderedNames))
+	for _, name := range orderedNames {
+		oneSupplier, ok := suppliersByName[name]
+		if ok == false {
+			continue
+		}
+		out = append(out, oneSupplier)
+	}
+	return out
+}
+
+func mapKeys(items map[string]ifaces.ISupplier) []string {
+	out := make([]string, 0, len(items))
+	for key := range items {
+		out = append(out, key)
+	}
+	return out
 }
 
 func (p *PreDownloadProcess) Check() *PreDownloadProcess {

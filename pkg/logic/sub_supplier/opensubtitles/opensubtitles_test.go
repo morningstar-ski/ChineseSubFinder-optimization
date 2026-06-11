@@ -1,6 +1,7 @@
 package opensubtitles
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -119,6 +121,42 @@ func TestAPIDownloadByFileID(t *testing.T) {
 	}
 }
 
+func TestFinalizeDownloadAttemptsReturnsLastDownloadError(t *testing.T) {
+	wantErr := errors.New("opensubtitles http 406: quota exceeded")
+
+	got, err := finalizeDownloadAttempts(nil, wantErr)
+	if err == nil {
+		t.Fatal("finalizeDownloadAttempts() error = nil, want quota error")
+	}
+	if err.Error() != wantErr.Error() {
+		t.Fatalf("finalizeDownloadAttempts() error = %q, want %q", err.Error(), wantErr.Error())
+	}
+	if got != nil {
+		t.Fatalf("finalizeDownloadAttempts() got %#v, want nil", got)
+	}
+}
+
+func TestFinalizeDownloadAttemptsPrefersDownloadedSubs(t *testing.T) {
+	want := []supplier.SubInfo{{Name: "subtitle.srt"}}
+
+	got, err := finalizeDownloadAttempts(want, errors.New("ignored"))
+	if err != nil {
+		t.Fatalf("finalizeDownloadAttempts() error = %v, want nil", err)
+	}
+	if len(got) != 1 || got[0].Name != want[0].Name {
+		t.Fatalf("finalizeDownloadAttempts() got %#v, want %#v", got, want)
+	}
+}
+
+func TestIsQuotaExceededOpenSubtitlesError(t *testing.T) {
+	if isQuotaExceededOpenSubtitlesError(errors.New("opensubtitles http 406: You have downloaded your allowed 20 subtitles for 24h")) == false {
+		t.Fatal("expected quota exceeded marker to be detected")
+	}
+	if isQuotaExceededOpenSubtitlesError(errors.New("opensubtitles login failed")) {
+		t.Fatal("unexpected quota exceeded marker for unrelated error")
+	}
+}
+
 func TestAPIReLoginAfterUnauthorized(t *testing.T) {
 	loginCalls := 0
 	searchCalls := 0
@@ -180,6 +218,115 @@ func TestBuildSearchQueriesOrder(t *testing.T) {
 	}
 }
 
+func TestOpenSubtitlesOrderedTitlesAddsYearlessFallback(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "Nirvana the Band the Show the Movie 2026",
+		OriginalTitle: "Nirvana the Band the Show the Movie (2026)",
+		TitleCn:       "电影版 2026",
+	}
+
+	got := openSubtitlesOrderedTitles(mediaInfo, filepath.Join("C:\\", "Media", "Nirvana.the.Band.the.Show.the.Movie.2026.1080p.WEB-DL.mkv"))
+	if len(got) < 5 {
+		t.Fatalf("openSubtitlesOrderedTitles() = %#v; want yearless fallbacks", got)
+	}
+
+	want := map[string]bool{
+		"Nirvana the Band the Show the Movie 2026": false,
+		"Nirvana the Band the Show the Movie":      false,
+		"电影版 2026":                                 false,
+		"电影版":                                      false,
+	}
+	for _, title := range got {
+		if _, ok := want[title]; ok {
+			want[title] = true
+		}
+	}
+	for title, seen := range want {
+		if seen == false {
+			t.Fatalf("openSubtitlesOrderedTitles() missing %q in %#v", title, got)
+		}
+	}
+}
+
+func TestBuildSearchQueriesDropsYearForYearlessMovieFallback(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "The Gorge 2025",
+		OriginalTitle: "The Gorge (2025)",
+		Year:          "2025-01-01",
+	}
+
+	queries := buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "The.Gorge.2025.1080p.WEB-DL.mkv"), true, 0, 0)
+	var foundWithYear bool
+	var foundWithoutYear bool
+	for _, query := range queries {
+		if query["query"] != "The Gorge" {
+			continue
+		}
+		if query["year"] == "2025" {
+			foundWithYear = true
+			continue
+		}
+		if query["year"] == "" {
+			foundWithoutYear = true
+		}
+	}
+	if foundWithYear {
+		t.Fatalf("buildSearchQueries() should not keep year filter on yearless fallback: %#v", queries)
+	}
+	if foundWithoutYear == false {
+		t.Fatalf("buildSearchQueries() missing yearless fallback query in %#v", queries)
+	}
+}
+
+func TestBuildSearchQueriesSkipsTooShortNonASCIIQuery(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn: "Euphoria",
+		TitleCn: "亢奋",
+		Year:    "2019-01-01",
+	}
+
+	queries := buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "Euphoria.S01E01.1080p.WEB-DL.mkv"), false, 1, 1)
+	for _, query := range queries {
+		if query["query"] == "亢奋" {
+			t.Fatalf("buildSearchQueries() should skip too-short non-ASCII query: %#v", queries)
+		}
+	}
+}
+
+func TestBuildSearchQueriesAddsAmpersandVariant(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn: "Will & Harper",
+		Year:    "2024-01-01",
+	}
+
+	queries := buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "Will.and.Harper.2024.1080p.WEB-DL.mkv"), true, 0, 0)
+	foundAndVariant := false
+	for _, query := range queries {
+		if query["query"] == "Will and Harper" {
+			foundAndVariant = true
+			break
+		}
+	}
+	if foundAndVariant == false {
+		t.Fatalf("buildSearchQueries() missing ampersand fallback in %#v", queries)
+	}
+}
+
+func TestTitlesRoughlyMatchTreatsAmpersandAsAnd(t *testing.T) {
+	if titlesRoughlyMatch("Will & Harper", "Will and Harper") == false {
+		t.Fatal("expected ampersand and and titles to match")
+	}
+}
+
+func TestIsIgnorableOpenSubtitlesSearchError(t *testing.T) {
+	if isIgnorableOpenSubtitlesSearchError(errors.New(`opensubtitles http 400: {"errors":["Query is too short"],"status":400}`)) == false {
+		t.Fatal("expected short-query error to be ignorable")
+	}
+	if isIgnorableOpenSubtitlesSearchError(errors.New("network timeout")) {
+		t.Fatal("did not expect generic error to be ignorable")
+	}
+}
+
 func TestSelectCandidatesPrefersExactEpisode(t *testing.T) {
 	items := []SearchItem{
 		{
@@ -208,12 +355,107 @@ func TestSelectCandidatesPrefersExactEpisode(t *testing.T) {
 		},
 	}
 
-	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0)
+	candidates := selectCandidates(items, nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0)
 	if len(candidates) != 2 {
 		t.Fatalf("expected 2 candidates, got %#v", candidates)
 	}
 	if candidates[0].FileID != 11 {
 		t.Fatalf("expected exact episode first, got %#v", candidates[0])
+	}
+}
+
+func TestSelectCandidatesRejectsWrongEpisodeDespiteCloserRelease(t *testing.T) {
+	items := []SearchItem{
+		{
+			ID: "1",
+			Attributes: SearchItemAttribute{
+				Language:  "zh-cn",
+				Release:   "My.Show.S01E04.1080p.WEB-DL-GROUP",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 10, FileName: "My.Show.S01E04.1080p.WEB-DL-GROUP.srt"},
+				},
+				FeatureDetails: FeatureDetails{SeasonNumber: 1, EpisodeNumber: 4},
+			},
+		},
+		{
+			ID: "2",
+			Attributes: SearchItemAttribute{
+				Language:  "zh-cn",
+				Release:   "My.Show.S01E03.720p.HDTV-OTHER",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 11, FileName: "My.Show.S01E03.720p.HDTV-OTHER.srt"},
+				},
+				FeatureDetails: FeatureDetails{SeasonNumber: 1, EpisodeNumber: 3},
+			},
+		},
+	}
+
+	candidates := selectCandidates(items, nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0)
+	if len(candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %#v", candidates)
+	}
+	if candidates[0].FileID != 11 {
+		t.Fatalf("expected exact episode first, got %#v", candidates[0])
+	}
+}
+
+func TestSelectCandidatesRejectsWrongMovieTitle(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "Nirvana the Band the Show the Movie",
+		OriginalTitle: "Nirvana the Band the Show the Movie",
+		Year:          "2026-01-01",
+	}
+
+	items := []SearchItem{
+		{
+			ID: "1",
+			Attributes: SearchItemAttribute{
+				Language:  "zh-cn",
+				Release:   "The.Muppet.Show.2026.1080p.WEB-DL-GROUP",
+				MovieName: "The Muppet Show",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 10, FileName: "The.Muppet.Show.2026.1080p.WEB-DL-GROUP.srt"},
+				},
+				FeatureDetails: FeatureDetails{Title: "The Muppet Show", Year: 2026},
+			},
+		},
+	}
+
+	candidates := selectCandidates(items, mediaInfo, filepath.Join("C:\\", "Media", "尼瓦那乐队秀：电影版 (2026).mkv"), true, 0, 0, 5, 0)
+	if len(candidates) != 0 {
+		t.Fatalf("expected wrong movie title to be rejected, got %#v", candidates)
+	}
+}
+
+func TestSelectCandidatesKeepsMatchingMovieTitle(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "Nirvana the Band the Show the Movie",
+		OriginalTitle: "Nirvana the Band the Show the Movie",
+		Year:          "2026-01-01",
+	}
+
+	items := []SearchItem{
+		{
+			ID: "1",
+			Attributes: SearchItemAttribute{
+				Language:  "zh-cn",
+				Release:   "Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL-GROUP",
+				MovieName: "Nirvana the Band the Show the Movie",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 11, FileName: "Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL-GROUP.srt"},
+				},
+				FeatureDetails: FeatureDetails{Title: "Nirvana the Band the Show the Movie", Year: 2026},
+			},
+		},
+	}
+
+	candidates := selectCandidates(items, mediaInfo, filepath.Join("C:\\", "Media", "尼瓦那乐队秀：电影版 (2026).mkv"), true, 0, 0, 5, 0)
+	if len(candidates) != 1 {
+		t.Fatalf("expected matching movie title to remain, got %#v", candidates)
 	}
 }
 

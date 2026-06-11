@@ -1,8 +1,10 @@
 package series_helper
 
 import (
+	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/media_info_dealers"
@@ -220,12 +222,61 @@ func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifa
 			sub_helper.ChangeVideoExt2SubExt(subInfos)
 
 			outSUbInfos = append(outSUbInfos, subInfos...)
+			if hasCoveredAllNeededEpisodes(logger, seriesInfo, i, oneSupplier.GetSupplierName(), outSUbInfos) {
+				logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "all needed episodes covered, stop fallback")
+				return
+			}
 		}
 
 		oneSupplierFunc()
+		if hasCoveredAllNeededEpisodes(logger, seriesInfo, i, oneSupplier.GetSupplierName(), outSUbInfos) {
+			break
+		}
 	}
 
 	return outSUbInfos
+}
+
+func hasCoveredAllNeededEpisodes(logger *logrus.Logger, seriesInfo *series.SeriesInfo, queueIndex int64, supplierName string, subInfos []supplier.SubInfo) bool {
+	if seriesInfo == nil || len(seriesInfo.NeedDlEpsKeyList) == 0 || len(subInfos) == 0 {
+		return false
+	}
+
+	tmpFolderName := sanitizeSeriesProbeFolderName(filepath.Base(seriesInfo.DirPath), queueIndex, supplierName)
+	_ = pkg.ClearTmpFolderByName(tmpFolderName)
+	defer func() {
+		_ = pkg.ClearTmpFolderByName(tmpFolderName)
+	}()
+
+	organized, err := sub_helper.OrganizeDlSubFiles(logger, tmpFolderName, subInfos, false)
+	if err != nil {
+		logger.Warningln(common.QueueName, queueIndex, supplierName, "probe organize failed", err)
+		return false
+	}
+
+	for epsKey := range seriesInfo.NeedDlEpsKeyList {
+		if len(organized[epsKey]) == 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func sanitizeSeriesProbeFolderName(base string, queueIndex int64, supplierName string) string {
+	replacer := strings.NewReplacer(
+		"\\", "_",
+		"/", "_",
+		":", "_",
+		"*", "_",
+		"?", "_",
+		"\"", "_",
+		"<", "_",
+		">", "_",
+		"|", "_",
+		" ", "_",
+	)
+	return replacer.Replace(fmt.Sprintf("provider_probe_%d_%s_%s", queueIndex, supplierName, base))
 }
 
 // GetSeriesListFromDirs 获取这个目录下的所有文件夹名称，默认为一个连续剧的目录的List

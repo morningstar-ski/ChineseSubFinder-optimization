@@ -57,6 +57,9 @@ func TestRunWithEvaluator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile csv returned error: %v", err)
 	}
+	if strings.HasPrefix(string(csvBytes), "\ufeff") == false {
+		t.Fatalf("csv missing utf-8 bom %q", string(csvBytes))
+	}
 	if strings.Contains(string(csvBytes), "movie-001,C:\\Media\\Movie.mkv,movie") == false {
 		t.Fatalf("unexpected csv content %s", string(csvBytes))
 	}

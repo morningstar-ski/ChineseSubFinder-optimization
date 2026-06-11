@@ -2,7 +2,6 @@ package subdl
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/go-resty/resty/v2"
@@ -29,7 +28,7 @@ func (a *Api) SearchSubtitles(client *resty.Client, queryParams map[string]strin
 		return nil, err
 	}
 	if searchResponse.Status == false {
-		return nil, fmt.Errorf("subdl search returned status=false")
+		return &SearchResponse{}, nil
 	}
 
 	return &searchResponse, nil

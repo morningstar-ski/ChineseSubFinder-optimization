@@ -25,6 +25,16 @@ func TestTargetMatcherHandlesEpisodeMismatch(t *testing.T) {
 	}
 }
 
+func TestTargetMatcherUsesParsedTargetTitle(t *testing.T) {
+	matcher := NewTargetMatcher(filepath.Join("C:\\", "Media", "Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL.mkv"), true)
+
+	correct := matcher.BestScore([]string{"Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL.srt"}, StandardReleaseMatchWeights)
+	wrong := matcher.BestScore([]string{"The.Muppet.Show.2026.1080p.WEB-DL.srt"}, StandardReleaseMatchWeights)
+	if correct <= wrong {
+		t.Fatalf("expected correct title score > wrong title score, got correct=%d wrong=%d", correct, wrong)
+	}
+}
+
 func TestScoreEpisodeMatch(t *testing.T) {
 	weights := EpisodeMatchWeights{
 		ExactMatch:   120,

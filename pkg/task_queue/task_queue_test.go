@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/emby"
 	task_queue2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/task_queue"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/cache_center"
@@ -280,6 +282,43 @@ func TestTaskQueue_UpdatePriority(t *testing.T) {
 
 	if len(waitingJobs) != 2 {
 		t.Fatal("len(waitingJobs) != 2")
+	}
+}
+
+func TestTaskQueue_GetOneWaitingPrefersFreshJobOverRetryAtSamePriority(t *testing.T) {
+	taskQueue := newTestTaskQueue(t)
+
+	retryJob := task_queue2.NewOneJob(common.Movie, "retry.mkv", DefaultTaskPriorityLevel)
+	retryJob.Id = "000-retry"
+	retryJob.DownloadTimes = 1
+	retryJob.UpdateTime = emby.Time(time.Now().Add(-24 * time.Hour))
+	bok, err := taskQueue.Add(*retryJob)
+	if err != nil {
+		t.Fatal("TestTaskQueue.Add retry", err)
+	}
+	if bok == false {
+		t.Fatal("TestTaskQueue.Add retry == false")
+	}
+
+	freshJob := task_queue2.NewOneJob(common.Movie, "fresh.mkv", DefaultTaskPriorityLevel)
+	freshJob.Id = "zzz-fresh"
+	bok, err = taskQueue.Add(*freshJob)
+	if err != nil {
+		t.Fatal("TestTaskQueue.Add fresh", err)
+	}
+	if bok == false {
+		t.Fatal("TestTaskQueue.Add fresh == false")
+	}
+
+	bok, waitingJob, err := taskQueue.GetOneWaitingJob()
+	if err != nil {
+		t.Fatal("TestTaskQueue.GetOneWaitingJob", err)
+	}
+	if bok == false {
+		t.Fatal("TestTaskQueue.GetOneWaitingJob == false")
+	}
+	if waitingJob.Id != freshJob.Id {
+		t.Fatalf("waiting job = %s, want %s", waitingJob.Id, freshJob.Id)
 	}
 }
 

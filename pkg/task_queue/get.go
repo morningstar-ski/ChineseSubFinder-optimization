@@ -60,38 +60,70 @@ func (t *TaskQueue) GetOneWaitingJob() (bool, task_queue2.OneJob, error) {
 		return false, task_queue2.OneJob{}, nil
 	}
 	// 找到需要返回的复合条件的任务
-	found := false
-	tOneJob := task_queue2.OneJob{}
 	for TaskPriority := 0; TaskPriority <= taskPriorityCount; TaskPriority++ {
-
-		t.taskPriorityMapList[TaskPriority].Any(func(key interface{}, value interface{}) bool {
-
-			tOneJob = value.(task_queue2.OneJob)
-			// 任务的 UpdateTime 与现在的时间大于单个字幕下载的间隔
-			// 默认是 12h, A.After(B) : A > B == true
-			// 见《任务队列设计》--以优先级顺序取出描述
-			if tOneJob.JobStatus == task_queue2.Waiting && (tOneJob.DownloadTimes == 0 ||
-				// 优先级 <= 3 也可以提前取出
-				TaskPriority <= HighTaskPriorityLevel ||
-				// 默认是 12h, A.After(B) : A > B == true
-				(time.Time)(tOneJob.UpdateTime).Add(time.Duration(settings.Get().AdvancedSettings.TaskQueue.OneSubDownloadInterval)*time.Hour).After(time.Now()) == false && tOneJob.DownloadTimes > 0) {
-				// 找到就返回
-				t.log.Debugln("tOneJob.UpdateTime", (time.Time)(tOneJob.UpdateTime).String())
-				t.log.Debugln("tOneJob.UpdateTime", (time.Time)(tOneJob.UpdateTime).Add(time.Duration(settings.Get().AdvancedSettings.TaskQueue.OneSubDownloadInterval)*time.Hour).String())
-				t.log.Debugln("tOneJob.UpdateTime is ", (time.Time)(tOneJob.UpdateTime).Add(time.Duration(settings.Get().AdvancedSettings.TaskQueue.OneSubDownloadInterval)*time.Hour).After(time.Now()))
-				found = true
-				return true
-			}
-
-			return false
-		})
-
+		found, oneJob := t.pickWaitingJobByPriority(TaskPriority)
 		if found == true {
-			return true, tOneJob, nil
+			return true, oneJob, nil
 		}
 	}
 
-	return false, tOneJob, nil
+	return false, task_queue2.OneJob{}, nil
+}
+
+func (t *TaskQueue) pickWaitingJobByPriority(taskPriority int) (bool, task_queue2.OneJob) {
+	now := time.Now()
+	var freshJob task_queue2.OneJob
+	var urgentRetryJob task_queue2.OneJob
+	var retryJob task_queue2.OneJob
+	foundFresh := false
+	foundUrgentRetry := false
+	foundRetry := false
+
+	t.taskPriorityMapList[taskPriority].Each(func(key interface{}, value interface{}) {
+		oneJob := value.(task_queue2.OneJob)
+		if oneJob.JobStatus != task_queue2.Waiting {
+			return
+		}
+
+		if oneJob.DownloadTimes == 0 {
+			if foundFresh == false || (time.Time)(oneJob.AddedTime).Before(time.Time(freshJob.AddedTime)) {
+				freshJob = oneJob
+				foundFresh = true
+			}
+			return
+		}
+
+		if taskPriority <= HighTaskPriorityLevel {
+			if foundUrgentRetry == false || (time.Time)(oneJob.UpdateTime).Before(time.Time(urgentRetryJob.UpdateTime)) {
+				urgentRetryJob = oneJob
+				foundUrgentRetry = true
+			}
+			return
+		}
+
+		nextTryTime := (time.Time)(oneJob.UpdateTime).Add(time.Duration(settings.Get().AdvancedSettings.TaskQueue.OneSubDownloadInterval) * time.Hour)
+		if nextTryTime.After(now) == false {
+			if foundRetry == false || (time.Time)(oneJob.UpdateTime).Before(time.Time(retryJob.UpdateTime)) {
+				retryJob = oneJob
+				foundRetry = true
+			}
+		}
+	})
+
+	if foundFresh {
+		return true, freshJob
+	}
+	if foundUrgentRetry {
+		return true, urgentRetryJob
+	}
+	if foundRetry {
+		t.log.Debugln("tOneJob.UpdateTime", (time.Time)(retryJob.UpdateTime).String())
+		t.log.Debugln("tOneJob.UpdateTime", (time.Time)(retryJob.UpdateTime).Add(time.Duration(settings.Get().AdvancedSettings.TaskQueue.OneSubDownloadInterval)*time.Hour).String())
+		t.log.Debugln("tOneJob.UpdateTime is ", (time.Time)(retryJob.UpdateTime).Add(time.Duration(settings.Get().AdvancedSettings.TaskQueue.OneSubDownloadInterval)*time.Hour).After(now))
+		return true, retryJob
+	}
+
+	return false, task_queue2.OneJob{}
 }
 
 // GetOneDoneJob 获取一个元素，按优先级，0 - taskPriorityCount 的级别去拿去任务，不会移除任务

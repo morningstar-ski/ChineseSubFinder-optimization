@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/get_access_time"
@@ -131,12 +132,18 @@ func ClearRootTmpFolder() error {
 		if curFile.IsDir() {
 			err = os.RemoveAll(fullPath)
 			if err != nil {
+				if isIgnorableRodCacheCleanupError(err) {
+					continue
+				}
 				return err
 			}
 		} else {
 			// 这里就是文件了
 			err = os.Remove(fullPath)
 			if err != nil {
+				if isIgnorableRodCacheCleanupError(err) {
+					continue
+				}
 				return err
 			}
 		}
@@ -226,18 +233,36 @@ func ClearRodTmpRootFolder() error {
 		if curFile.IsDir() {
 			err = os.RemoveAll(fullPath)
 			if err != nil {
+				if isIgnorableRodCacheCleanupError(err) {
+					continue
+				}
 				return err
 			}
 		} else {
 			// 这里就是文件了
 			err = os.Remove(fullPath)
 			if err != nil {
+				if isIgnorableRodCacheCleanupError(err) {
+					continue
+				}
 				return err
 			}
 		}
 	}
 
 	return nil
+}
+
+func isIgnorableRodCacheCleanupError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if os.IsPermission(err) {
+		return true
+	}
+	errText := strings.ToLower(err.Error())
+	return strings.Contains(errText, "access is denied") ||
+		strings.Contains(errText, "used by another process")
 }
 
 // --------------------------------------------------------------

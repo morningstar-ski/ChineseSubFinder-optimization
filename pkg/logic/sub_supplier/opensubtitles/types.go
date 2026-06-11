@@ -61,6 +61,8 @@ type subtitleCandidate struct {
 	Name         string
 	FileName     string
 	ReleaseNames []string
+	FeatureTitle string
+	Year         int
 	Season       int
 	Episode      int
 	Ext          string

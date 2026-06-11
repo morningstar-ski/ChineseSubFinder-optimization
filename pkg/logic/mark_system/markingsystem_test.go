@@ -68,3 +68,30 @@ func TestSelectOneSubFilePrefersSubhdInDefaultSequence(t *testing.T) {
 		t.Fatalf("SelectOneSubFile() FileFullPath = %q; want %q", got.FileFullPath, subhdPath)
 	}
 }
+
+func TestSelectOneSubFilePrefersBetterReleaseMatchOverSitePriority(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	videoPath := filepath.Join(tmpDir, "Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL.mkv")
+	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
+		t.Fatalf("WriteFile(video) error = %v", err)
+	}
+
+	highPriorityWrong := filepath.Join(tmpDir, "[opensubtitles]_0_The.Muppet.Show.2026.1080p.WEB-DL.srt")
+	lowerPriorityCorrect := filepath.Join(tmpDir, "[assrt]_0_Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL.srt")
+	for _, path := range []string{highPriorityWrong, lowerPriorityCorrect} {
+		if err := os.WriteFile(path, []byte(testASSContent), 0o600); err != nil {
+			t.Fatalf("WriteFile(%q) error = %v", path, err)
+		}
+	}
+
+	mk := NewMarkingSystem(log_helper.GetLogger4Tester(), common.DefaultSubSiteSequence(), 0)
+	got := mk.SelectOneSubFile([]string{highPriorityWrong, lowerPriorityCorrect}, videoPath)
+	if got == nil {
+		t.Fatal("SelectOneSubFile() returned nil")
+	}
+	if got.FileFullPath != lowerPriorityCorrect {
+		t.Fatalf("SelectOneSubFile() FileFullPath = %q; want %q", got.FileFullPath, lowerPriorityCorrect)
+	}
+}

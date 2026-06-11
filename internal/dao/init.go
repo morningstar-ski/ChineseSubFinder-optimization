@@ -12,7 +12,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 

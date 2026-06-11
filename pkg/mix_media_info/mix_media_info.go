@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/media_info_dealers"
 
@@ -24,7 +25,7 @@ func GetMixMediaInfo(
 	// 从本地读取 IMDB ID 信息，找到基本 ID 信息后，也会去 IMDB web 找到对应的额外信息填充
 	imdbInfo, err := imdb_helper.GetIMDBInfoFromVideoFile(dealers, videoFPath, isMovie)
 	if err != nil {
-		return nil, err
+		return buildFallbackMediaInfo(videoFPath, isMovie, nil), nil
 	}
 
 	source := "imdb"
@@ -37,7 +38,11 @@ func GetMixMediaInfo(
 	if imdbInfo.TmdbId == "" {
 		// 需要去 web 查询
 		source = "imdb"
-		return GetMediaInfoAndSave(dealers, imdbInfo, imdbInfo.IMDBID, source, videoType)
+		mediaInfo, err := GetMediaInfoAndSave(dealers, imdbInfo, imdbInfo.IMDBID, source, videoType)
+		if err == nil {
+			return mediaInfo, nil
+		}
+		return buildFallbackMediaInfo(videoFPath, isMovie, imdbInfo), nil
 	} else {
 		// 已经存在，从本地拿去信息
 		// 首先从数据库中查找是否存在这个 IMDB 信息，如果不存在再使用 Web 查找，且写入数据库
@@ -51,7 +56,11 @@ func GetMixMediaInfo(
 		} else {
 			// 没有找到本地缓存的 TMDB ID 信息，需要去 web 查询
 			source = "imdb"
-			return GetMediaInfoAndSave(dealers, imdbInfo, imdbInfo.IMDBID, source, videoType)
+			mediaInfo, err := GetMediaInfoAndSave(dealers, imdbInfo, imdbInfo.IMDBID, source, videoType)
+			if err == nil {
+				return mediaInfo, nil
+			}
+			return buildFallbackMediaInfo(videoFPath, isMovie, imdbInfo), nil
 		}
 	}
 }
@@ -139,4 +148,121 @@ func normalizeFileKeyword(videoFPath string) string {
 	fileName = pkg.ReplaceSpecString(fileName, " ")
 	fileName = strings.Join(strings.Fields(fileName), " ")
 	return fileName
+}
+
+func ExpandSearchKeywords(items ...string) []string {
+	out := make([]string, 0, len(items)*2)
+	seen := make(map[string]struct{}, len(items)*2)
+	appendKeyword := func(item string) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return
+		}
+		item = strings.Join(strings.Fields(item), " ")
+		if item == "" {
+			return
+		}
+		key := strings.ToLower(item)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		appendKeyword(item)
+		appendKeyword(replaceKeywordAmpersand(item))
+		appendKeyword(replaceKeywordAnd(item))
+	}
+
+	return out
+}
+
+func NormalizeComparableTitle(title string) string {
+	title = normalizeKeywordConnectorTokens(title)
+	title = pkg.ReplaceSpecString(title, " ")
+	title = strings.ToLower(strings.Join(strings.Fields(title), " "))
+	return title
+}
+
+func replaceKeywordAmpersand(item string) string {
+	fields := strings.Fields(strings.ReplaceAll(strings.ReplaceAll(item, "＆", " & "), "&", " & "))
+	if len(fields) == 0 {
+		return ""
+	}
+	for index, field := range fields {
+		if field == "&" {
+			fields[index] = "and"
+		}
+	}
+	return strings.Join(fields, " ")
+}
+
+func replaceKeywordAnd(item string) string {
+	fields := strings.Fields(item)
+	if len(fields) == 0 {
+		return ""
+	}
+	for index, field := range fields {
+		if strings.EqualFold(field, "and") {
+			fields[index] = "&"
+		}
+	}
+	return strings.Join(fields, " ")
+}
+
+func normalizeKeywordConnectorTokens(item string) string {
+	fields := strings.Fields(strings.ReplaceAll(strings.ReplaceAll(item, "＆", " & "), "&", " & "))
+	if len(fields) == 0 {
+		return ""
+	}
+	for index, field := range fields {
+		if field == "&" || strings.EqualFold(field, "and") {
+			fields[index] = "and"
+		}
+	}
+	return strings.Join(fields, " ")
+}
+
+func buildFallbackMediaInfo(videoFPath string, isMovie bool, imdbInfo *models.IMDBInfo) *models.MediaInfo {
+	videoNfoInfo, _, _ := decode.GetVideoInfoFromFileFullPath(videoFPath, isMovie)
+
+	title := strings.TrimSpace(videoNfoInfo.Title)
+	if title == "" {
+		title = normalizeFileKeyword(videoFPath)
+	}
+	year := strings.TrimSpace(videoNfoInfo.Year)
+	if year == "" {
+		releaseDate := strings.TrimSpace(videoNfoInfo.ReleaseDate)
+		if releaseDate != "" {
+			if parsed, err := time.Parse("2006-01-02", releaseDate); err == nil {
+				year = parsed.Format("2006-01-02")
+			} else if len(releaseDate) >= 4 {
+				year = releaseDate[:4]
+			}
+		}
+	}
+
+	out := &models.MediaInfo{
+		ImdbId:        strings.TrimSpace(videoNfoInfo.ImdbId),
+		TmdbId:        strings.TrimSpace(videoNfoInfo.TmdbId),
+		OriginalTitle: title,
+		TitleEn:       title,
+		TitleCn:       title,
+		Year:          year,
+	}
+	if imdbInfo != nil {
+		if out.ImdbId == "" {
+			out.ImdbId = imdbInfo.IMDBID
+		}
+		if out.TmdbId == "" {
+			out.TmdbId = imdbInfo.TmdbId
+		}
+	}
+	return out
 }

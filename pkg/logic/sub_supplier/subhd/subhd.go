@@ -39,15 +39,20 @@ import (
 	"github.com/Tnze/go.num/v2/zh"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/go-resty/resty/v2"
 	"github.com/nfnt/resize"
 	"github.com/sirupsen/logrus"
 )
+
+const maxConsecutiveDeadGateRowsBeforeStop = 8
 
 type Supplier struct {
 	log            *logrus.Logger
 	fileDownloader *file_downloader.FileDownloader
 	tt             time.Duration
 	isAlive        bool
+	captchaSolver  CaptchaSolver
+	httpClient     *resty.Client
 }
 
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
@@ -66,6 +71,8 @@ func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 	if settings.Get().AdvancedSettings.DebugMode == true {
 		sup.tt = common.OneMovieProcessTimeOut
 	}
+	sup.captchaSolver = newCaptchaSolver(settings.Get().SubtitleSources.SubHDSettings.CaptchaSolver)
+	sup.httpClient, _ = pkg.NewHttpClient(sup.rootURL())
 
 	return &sup
 }
@@ -220,6 +227,7 @@ func (s *Supplier) GetSubListFromFile4Series(seriesInfo *series.SeriesInfo) ([]s
 	titleCandidates := buildSubHDSeriesTitleCandidates(seriesInfo, mediaInfo)
 	var subInfos = make([]supplier.SubInfo, 0)
 	var subList = make([]HdListItem, 0)
+	var lastStep1Err error
 	for value := range seriesInfo.NeedDlSeasonDict {
 		// 第一级界面，找到影片的详情界面
 		//keyword := seriesInfo.Name + " 第" + zh.Uint64(value).String() + "季"
@@ -250,29 +258,48 @@ func (s *Supplier) GetSubListFromFile4Series(seriesInfo *series.SeriesInfo) ([]s
 		for _, detailPageURL := range detailPageURLs {
 			oneSubList, err := s.step1(browser, detailPageURL, false)
 			if err != nil {
-				s.log.Errorln("subhd step1", keyword, detailPageURL)
-				return nil, err
+				lastStep1Err = err
+				s.log.Warningln("subhd step1 skip", keyword, detailPageURL, err)
+				continue
 			}
 
 			subList = append(subList, oneSubList...)
 		}
 	}
+	if len(subList) == 0 && lastStep1Err != nil {
+		return nil, lastStep1Err
+	}
 	// 与剧集需要下载的集 List 进行比较，找到需要下载的列表
 	// 找到那些 Eps 需要下载字幕的
 	subInfoNeedDownload := s.whichEpisodeNeedDownloadSub(seriesInfo, mediaInfo, subList)
 	// 下载字幕
+	consecutiveDeadGateRows := 0
+	var lastDownloadErr error
+	stoppedByDeadGateRows := false
 	for i, item := range subInfoNeedDownload {
 
 		subInfo, err := s.fileDownloader.GetEx(s.GetSupplierName(), browser, item.Url, int64(i), item.Season, item.Episode, s.DownFile)
 		if err != nil {
 			s.log.Errorln(s.GetSupplierName(), "GetEx", item.Title, item.Season, item.Episode, err)
+			lastDownloadErr = err
+			if isSubHDDeadGateLoopError(err) {
+				consecutiveDeadGateRows++
+				if shouldStopAfterRepeatedDeadGateRows(consecutiveDeadGateRows) {
+					s.log.Warningln(s.GetSupplierName(), "stop series download rows after repeated dead gate loops", "count:", consecutiveDeadGateRows)
+					stoppedByDeadGateRows = true
+					break
+				}
+			} else {
+				consecutiveDeadGateRows = 0
+			}
 			continue
 		}
+		consecutiveDeadGateRows = 0
 
 		subInfos = append(subInfos, *subInfo)
 	}
 
-	return subInfos, nil
+	return finalizeDownloadAttempts(subInfos, lastDownloadErr, stoppedByDeadGateRows, seriesInfo.DirPath)
 }
 
 func (s *Supplier) GetSubListFromFile4Anime(seriesInfo *series.SeriesInfo) ([]supplier.SubInfo, error) {
@@ -303,6 +330,9 @@ func (s *Supplier) getSubListFromFile4Movie(filePath string) ([]supplier.SubInfo
 			// 允许的错误，跳过，继续进行文件名的搜索
 			s.log.Errorln(s.GetSupplierName(), "keyword:", imdbInfo.ImdbId)
 			s.log.Errorln("getSubListFromKeyword4Movie", "IMDBID can not found sub", filePath, err)
+			if isSubHDDeadGateLoopError(err) {
+				return nil, err
+			}
 		}
 		// 如果有就优先返回
 		if len(subInfoList) > 0 {
@@ -374,26 +404,63 @@ func (s *Supplier) getSubListFromKeyword4Movie(keyword string) ([]supplier.SubIn
 		return nil, nil
 	}
 	subList := make([]HdListItem, 0)
+	var lastStep1Err error
 	for _, detailPageURL := range detailPageURLs {
 		oneSubList, err := s.step1(browser, detailPageURL, true)
 		if err != nil {
-			return nil, err
+			lastStep1Err = err
+			s.log.Warningln("subhd step1 skip", keyword, detailPageURL, err)
+			continue
 		}
 		subList = append(subList, oneSubList...)
 	}
+	if len(subList) == 0 && lastStep1Err != nil {
+		return nil, lastStep1Err
+	}
 
+	consecutiveDeadGateRows := 0
+	stoppedByDeadGateRows := false
+	var lastDownloadErr error
 	for i, item := range subList {
 
 		subInfo, err := s.fileDownloader.GetEx(s.GetSupplierName(), browser, item.Url, int64(i), 0, 0, s.DownFile)
 		if err != nil {
 			s.log.Errorln(s.GetSupplierName(), "GetEx", item.Title, item.Season, item.Episode, err)
+			lastDownloadErr = err
+			if isSubHDDeadGateLoopError(err) {
+				consecutiveDeadGateRows++
+				if shouldStopAfterRepeatedDeadGateRows(consecutiveDeadGateRows) {
+					s.log.Warningln(s.GetSupplierName(), "stop movie download rows after repeated dead gate loops", "count:", consecutiveDeadGateRows)
+					stoppedByDeadGateRows = true
+					break
+				}
+			} else {
+				consecutiveDeadGateRows = 0
+			}
 			continue
 		}
+		consecutiveDeadGateRows = 0
 
 		subInfos = append(subInfos, *subInfo)
 	}
+	return finalizeDownloadAttempts(subInfos, lastDownloadErr, stoppedByDeadGateRows, keyword)
+}
 
-	return subInfos, nil
+func shouldStopAfterRepeatedDeadGateRows(consecutiveDeadGateRows int) bool {
+	return consecutiveDeadGateRows >= maxConsecutiveDeadGateRowsBeforeStop
+}
+
+func finalizeDownloadAttempts(subInfos []supplier.SubInfo, lastDownloadErr error, stoppedByDeadGateRows bool, context string) ([]supplier.SubInfo, error) {
+	if len(subInfos) > 0 {
+		return subInfos, nil
+	}
+	if stoppedByDeadGateRows {
+		return nil, wrapReason(ReasonDownloadGateChanged, fmt.Errorf("subhd dead gate loop detected for %s", context))
+	}
+	if lastDownloadErr != nil {
+		return nil, lastDownloadErr
+	}
+	return nil, nil
 }
 
 func (s *Supplier) whichEpisodeNeedDownloadSub(seriesInfo *series.SeriesInfo, mediaInfo *models.MediaInfo, allSubList []HdListItem) []HdListItem {
@@ -514,8 +581,12 @@ func (s *Supplier) step0(browser *rod.Browser, keyword string, titleCandidates [
 	}()
 
 	rootURL := s.rootURL()
-	_ = browser
-	result, err := s.httpGetPage(fmt.Sprintf(rootURL+common.SubSubHDSearchUrl, url.QueryEscape(keyword)))
+	searchURL := fmt.Sprintf(rootURL+common.SubSubHDSearchUrl, url.QueryEscape(keyword))
+	result, err := s.httpGetPage(searchURL)
+	if err != nil && browser != nil && shouldFallbackToBrowserPageFetch(err) {
+		s.log.Warningln(s.GetSupplierName(), "step0 http page fetch failed, fallback to browser", "url:", searchURL, "err:", err)
+		result, err = s.browserGetSearchPage(browser, searchURL)
+	}
 	if err != nil {
 		return nil, wrapReason(ReasonProbeFailed, err)
 	}
@@ -540,14 +611,21 @@ func (s *Supplier) step1(browser *rod.Browser, detailPageUrl string, isMovieOrSe
 	}()
 	rootURL := s.rootURL()
 	detailPageUrl = pkg.AddBaseUrl(rootURL, detailPageUrl)
-	_ = browser
 	result, err := s.httpGetPage(detailPageUrl)
+	if err != nil && browser != nil && shouldFallbackToBrowserPageFetch(err) {
+		s.log.Warningln(s.GetSupplierName(), "step1 http page fetch failed, fallback to browser", "url:", detailPageUrl, "err:", err)
+		result, err = s.browserGetPage(browser, detailPageUrl)
+	}
 	if err != nil {
 		return nil, wrapReason(ReasonProbeFailed, err)
 	}
 	lists, err := parseSubtitleRows(result, rootURL, isMovieOrSeries, settings.Get().AdvancedSettings.Topic)
 	if err != nil {
 		return nil, wrapReason(ReasonDetailLayoutChanged, err)
+	}
+	if len(lists) > maxSubHDGateSubtitleCandidates {
+		s.log.Infoln(s.GetSupplierName(), "step1 limit subtitle rows", "url:", detailPageUrl, "total:", len(lists), "use:", maxSubHDGateSubtitleCandidates)
+		lists = lists[:maxSubHDGateSubtitleCandidates]
 	}
 
 	return lists, nil
@@ -561,19 +639,28 @@ func (s *Supplier) DownFile(browser *rod.Browser, subDownloadPageUrl string, Top
 			notify_center.Notify.Add("subhd_DownFile", err.Error())
 		}
 	}()
+	downloadClient, err := s.newSessionHTTPClient()
+	if err != nil {
+		return nil, err
+	}
 	subDownloadPageFullUrl := pkg.AddBaseUrl(s.rootURL(), subDownloadPageUrl)
-	detailPageHTML, err := s.httpGetPage(subDownloadPageFullUrl)
+	downloadPageURL, err := s.resolveFreshDownloadGateURLByBrowser(browser, downloadClient, subDownloadPageFullUrl)
 	if err != nil {
-		return nil, err
+		s.log.Warningln(s.GetSupplierName(), "resolve fresh download gate by browser failed, fallback to http:", err)
+		downloadPageURL, err = s.resolveFreshDownloadGateURL(downloadClient, subDownloadPageFullUrl)
+		if err != nil {
+			s.log.Warningln(s.GetSupplierName(), "resolve fresh download gate failed, fallback to normalized gate:", err)
+			downloadPageURL, err = s.normalizeDownloadGateURL(subDownloadPageFullUrl)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	downloadPageURL, err := parseDownloadPage(detailPageHTML, s.rootURL())
-	if err != nil {
-		return nil, err
-	}
+	s.log.Infoln(s.GetSupplierName(), "resolve download gate", "entry:", subDownloadPageFullUrl, "gate:", downloadPageURL)
 
 	// 需要先判断是否先要输入验证码，然后才到下载界面
 	// 下载字幕
-	subInfo, err := s.downloadSubFileViaGate(browser, downloadPageURL)
+	subInfo, err := s.downloadSubFileViaGate(browser, downloadClient, downloadPageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -882,10 +969,20 @@ func selectSearchResultURLs(searchResults []searchResultItem, titleCandidates []
 
 	out := make([]string, 0, len(items))
 	for _, item := range items {
-		if strings.TrimSpace(item.URL) == "" {
+		url := strings.TrimSpace(item.URL)
+		if url == "" {
 			continue
 		}
-		out = append(out, item.URL)
+		if strings.HasPrefix(url, "/a/") {
+			out = append(out, url)
+		}
+	}
+	for _, item := range items {
+		url := strings.TrimSpace(item.URL)
+		if url == "" || strings.HasPrefix(url, "/a/") {
+			continue
+		}
+		out = append(out, url)
 	}
 	return out
 }

@@ -27,6 +27,15 @@ const subhdASSContent = "[Script Info]\n" +
 	"Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
 	"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,\u661f\u9645\\NSubHD\n"
 
+func makeASSContent(label string) string {
+	return "[Script Info]\n" +
+		"Title: " + label + "\n\n" +
+		"[Events]\n" +
+		"Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
+		"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,你好\\N" + label + "\n" +
+		"Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,再见\\N" + label + "\n"
+}
+
 func TestOneVideoSelectBestSubPrefersSubhdAndWritesSubtitle(t *testing.T) {
 	settings.SetConfigRootPath(t.TempDir())
 	cfg := settings.Get()
@@ -124,5 +133,83 @@ func TestDownloaderResetContextAfterCancel(t *testing.T) {
 	case <-newCtx.Done():
 		t.Fatal("new context should be active after ResetContext")
 	default:
+	}
+}
+
+func TestOneVideoSelectBestSubUsesCurrentDefaultSourcePriority(t *testing.T) {
+	settings.SetConfigRootPath(t.TempDir())
+	cfg := settings.Get()
+	cfg.AdvancedSettings.DebugMode = false
+	cfg.AdvancedSettings.SaveMultiSub = false
+	cfg.AdvancedSettings.FixTimeLine = false
+	cfg.ExperimentalFunction.AutoChangeSubEncode.Enable = false
+	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
+
+	videoDir := t.TempDir()
+	videoPath := filepath.Join(videoDir, "Episode.mkv")
+	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
+		t.Fatalf("WriteFile(video) error = %v", err)
+	}
+
+	downloadDir := t.TempDir()
+	candidates := []struct {
+		site    string
+		content string
+	}{
+		{site: common2.SubSiteXunLei, content: makeASSContent("xunlei")},
+		{site: common2.SubSiteShooter, content: makeASSContent("shooter")},
+		{site: common2.SubSiteSubHd, content: makeASSContent("subhd")},
+		{site: common2.SubSiteSubDL, content: makeASSContent("subdl")},
+		{site: common2.SubSiteAssrt, content: makeASSContent("assrt")},
+		{site: common2.SubSiteMovieSubtitles, content: makeASSContent("moviesubtitles")},
+		{site: common2.SubSiteTVSubtitles, content: makeASSContent("tvsubtitles")},
+		{site: common2.SubSiteOpenSubtitles, content: makeASSContent("opensubtitles")},
+		{site: common2.SubSiteSubtitleBest, content: makeASSContent("subtitle_best")},
+	}
+
+	subFiles := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		path := filepath.Join(downloadDir, "["+candidate.site+"]_0_test.ass")
+		if err := os.WriteFile(path, []byte(candidate.content), 0o600); err != nil {
+			t.Fatalf("WriteFile(%q) error = %v", path, err)
+		}
+		subFiles = append(subFiles, path)
+	}
+
+	log := logrus.New()
+	d := &Downloader{
+		log:              log,
+		mk:               markSystem.NewMarkingSystem(log, common2.DefaultSubSiteSequence(), 0),
+		SaveSubHelper:    save_sub_helper.NewSaveSubHelper(log, formatterEmby.NewFormatter(), nil),
+		subNameFormatter: formatterCommon.Emby,
+	}
+
+	if err := d.oneVideoSelectBestSub(videoPath, subFiles); err != nil {
+		t.Fatalf("oneVideoSelectBestSub() error = %v", err)
+	}
+
+	entries, err := os.ReadDir(videoDir)
+	if err != nil {
+		t.Fatalf("ReadDir(videoDir) error = %v", err)
+	}
+
+	var savedPath string
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == filepath.Base(videoPath) {
+			continue
+		}
+		savedPath = filepath.Join(videoDir, entry.Name())
+		break
+	}
+	if savedPath == "" {
+		t.Fatal("expected one saved subtitle file")
+	}
+
+	savedContent, err := os.ReadFile(savedPath)
+	if err != nil {
+		t.Fatalf("ReadFile(savedPath) error = %v", err)
+	}
+	if string(savedContent) != makeASSContent("subtitle_best") {
+		t.Fatalf("saved subtitle content did not come from highest-priority current source")
 	}
 }

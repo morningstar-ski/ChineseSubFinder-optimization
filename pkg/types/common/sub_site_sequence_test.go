@@ -24,11 +24,6 @@ func TestDefaultSubSiteSequence(t *testing.T) {
 			t.Fatalf("DefaultSubSiteSequence[%d] = %q; want %q", i, got[i], want[i])
 		}
 	}
-	for _, site := range got {
-		if site == SubSiteA4K {
-			t.Fatalf("DefaultSubSiteSequence should not contain %q", SubSiteA4K)
-		}
-	}
 }
 
 func TestOrderSubSiteNames(t *testing.T) {

@@ -71,7 +71,6 @@ func runWithEvaluator(inputPath string, outputPath string, csvPath string, evalu
 
 func buildLiveEvaluator(configRoot string, checkSuppliers bool) (baseline.Evaluator, func(), error) {
 	resolvedConfigRoot := resolveConfigRoot(configRoot)
-	pkg.SetLiteMode(true)
 	pkg.SetLinuxConfigPathInSelfPath(resolvedConfigRoot)
 	settings.SetConfigRootPath(resolvedConfigRoot)
 	logger := logrus.New()

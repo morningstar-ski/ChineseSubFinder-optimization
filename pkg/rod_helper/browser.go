@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -14,6 +15,35 @@ import (
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 )
+
+const minimalStealthBootstrap = `(() => {
+	const defineGetter = (obj, prop, getter) => {
+		try {
+			Object.defineProperty(obj, prop, { get: getter, configurable: true });
+		} catch (_) {}
+	};
+
+	defineGetter(Navigator.prototype, "webdriver", () => undefined);
+	defineGetter(Navigator.prototype, "languages", () => ["zh-CN", "zh", "en-US", "en"]);
+	defineGetter(Navigator.prototype, "plugins", () => [1, 2, 3, 4, 5]);
+
+	if (window.chrome === undefined) {
+		Object.defineProperty(window, "chrome", {
+			value: { runtime: {} },
+			configurable: true,
+		});
+	}
+
+	if (navigator.permissions && navigator.permissions.query) {
+		const originalQuery = navigator.permissions.query.bind(navigator.permissions);
+		navigator.permissions.query = (parameters) => {
+			if (parameters && parameters.name === "notifications") {
+				return Promise.resolve({ state: Notification.permission });
+			}
+			return originalQuery(parameters);
+		};
+	}
+})();`
 
 func NewBrowserEx(opt *BrowserOptions) (*rod.Browser, error) {
 	if opt == nil || opt.Settings == nil {
@@ -53,6 +83,10 @@ func NewPageNavigate(browser *rod.Browser, destURL string, timeout time.Duration
 	}
 
 	page = page.Timeout(timeout)
+	if _, err := page.EvalOnNewDocument(minimalStealthBootstrap); err != nil {
+		_ = page.Close()
+		return nil, 0, "", err
+	}
 	if err := page.SetUserAgent(&proto.NetworkSetUserAgentOverride{
 		UserAgent: random_useragent.RandomUserAgent(true),
 	}); err != nil {
@@ -65,7 +99,7 @@ func NewPageNavigate(browser *rod.Browser, destURL string, timeout time.Duration
 	if err := rod.Try(func() {
 		page.MustNavigate(destURL)
 		wait()
-		page.MustWaitLoad()
+		page.MustWaitIdle()
 	}); err != nil {
 		_ = page.Close()
 		return nil, 0, "", err
@@ -79,7 +113,13 @@ func newLocalBrowser(opt *BrowserOptions) (*rod.Browser, error) {
 	launch := launcher.New().
 		Headless(true).
 		NoSandbox(true).
+		Delete("enable-automation").
+		Append("disable-blink-features", "AutomationControlled").
 		UserDataDir(filepath.Join(pkg.DefRodTmpRootFolder(), pkg.RandStringBytesMaskImprSrcSB(20)))
+
+	if runtime.GOOS == "windows" {
+		launch = launch.Leakless(false)
+	}
 
 	if proxyURL := local_http_proxy_server.GetProxyUrl(); proxyURL != "" {
 		launch = launch.Proxy(proxyURL)
@@ -114,7 +154,9 @@ func newLocalBrowser(opt *BrowserOptions) (*rod.Browser, error) {
 func newRemoteBrowser(opt *BrowserOptions) (*rod.Browser, error) {
 	launch := launcher.MustNewManaged(opt.Settings.ExperimentalFunction.RemoteChromeSettings.RemoteDockerURL).
 		Headless(true).
-		NoSandbox(true)
+		NoSandbox(true).
+		Delete("enable-automation").
+		Append("disable-blink-features", "AutomationControlled")
 
 	if proxyURL := local_http_proxy_server.GetProxyUrl(); proxyURL != "" {
 		launch = launch.Proxy(proxyURL)

@@ -54,7 +54,7 @@ func (d *Downloader) oneVideoSelectBestSub(oneVideoFullPath string, organizeSubF
 	if settings.Get().AdvancedSettings.SaveMultiSub == false {
 		// 选择最优的一个字幕
 		var finalSubFile *subparser.FileInfo
-		finalSubFile = d.mk.SelectOneSubFile(organizeSubFiles)
+		finalSubFile = d.mk.SelectOneSubFile(organizeSubFiles, oneVideoFullPath)
 		if finalSubFile == nil {
 			outString := fmt.Sprintln("Found", len(organizeSubFiles), " subtitles but not one fit:", oneVideoFullPath)
 			d.log.Warnln(outString)

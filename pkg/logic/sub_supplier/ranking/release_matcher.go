@@ -64,6 +64,10 @@ type TargetMatcher struct {
 	isMovie    bool
 }
 
+func (m TargetMatcher) TargetName() string {
+	return m.targetName
+}
+
 type EpisodeMatchWeights struct {
 	ExactMatch     int
 	SeasonPack     int
@@ -163,6 +167,9 @@ func scoreParsedRelease(parsed *PTN.TorrentInfo, targetInfo *PTN.TorrentInfo, ta
 	}
 
 	targetTitle := normalizeTitle(targetName)
+	if targetInfo != nil && targetInfo.Title != "" {
+		targetTitle = normalizeTitle(targetInfo.Title)
+	}
 	candidateTitle := normalizeTitle(parsed.Title)
 	if targetTitle != "" && candidateTitle != "" {
 		if targetTitle == candidateTitle {

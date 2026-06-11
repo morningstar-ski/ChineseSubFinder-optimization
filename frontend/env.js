@@ -4,7 +4,7 @@ const DotEnv = require('dotenv');
 const localEnvFile = `.env.${process.env.NODE_ENV}.local`;
 const envFile = `.env.${process.env.NODE_ENV}`;
 
-module.exports = function () {
+module.exports = function loadEnv() {
   let parseEnv = null;
   if (fs.existsSync(localEnvFile)) {
     parseEnv = DotEnv.config({ path: localEnvFile }).parsed;

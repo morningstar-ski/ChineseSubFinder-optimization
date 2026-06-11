@@ -8,6 +8,7 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
@@ -45,7 +46,11 @@ func (e *SupplierEvaluator) Evaluate(ctx context.Context, sample Sample) (Evalua
 		default:
 		}
 
-		attempts = append(attempts, e.evaluateSupplier(sample, oneSupplier))
+		attempt := e.evaluateSupplier(sample, oneSupplier)
+		attempts = append(attempts, attempt)
+		if attempt.Downloaded {
+			break
+		}
 	}
 
 	return Evaluation{
@@ -103,6 +108,7 @@ func buildSampleSeriesInfo(sample Sample) *series.SeriesInfo {
 
 	return &series.SeriesInfo{
 		Name:             filepath.Base(filepath.Dir(sample.VideoPath)),
+		EpList:           []series.EpisodeInfo{episodeInfo},
 		DirPath:          filepath.Dir(sample.VideoPath),
 		SeasonDict:       map[int]int{sample.Season: sample.Season},
 		NeedDlSeasonDict: map[int]int{sample.Season: sample.Season},
@@ -171,6 +177,16 @@ func classifyAttemptError(oneSupplier ifaces.ISupplier, err error) FailureCatego
 	}
 
 	lowerMsg := strings.ToLower(err.Error())
+	if oneSupplier != nil && oneSupplier.GetSupplierName() == "subhd" {
+		switch {
+		case strings.Contains(lowerMsg, subhd.ReasonCaptchaOcrFailed):
+			return FailureCaptchaOCR
+		case strings.Contains(lowerMsg, subhd.ReasonSearchLayoutChanged),
+			strings.Contains(lowerMsg, subhd.ReasonDetailLayoutChanged):
+			return FailureKeywordMiss
+		}
+	}
+
 	for _, marker := range []string{
 		"connection refused",
 		"no such host",
@@ -194,6 +210,7 @@ func summarizePrimaryFailure(attempts []ProviderAttempt) FailureCategory {
 	hasDeadProvider := false
 	hasDownloadError := false
 	hasBadArchive := false
+	hasCaptchaOCR := false
 	hasKeywordMiss := false
 
 	for _, attempt := range attempts {
@@ -208,6 +225,8 @@ func summarizePrimaryFailure(attempts []ProviderAttempt) FailureCategory {
 			hasDeadProvider = true
 		case FailureDownloadError:
 			hasDownloadError = true
+		case FailureCaptchaOCR:
+			hasCaptchaOCR = true
 		case FailureBadArchive:
 			hasBadArchive = true
 		case FailureKeywordMiss:
@@ -218,6 +237,8 @@ func summarizePrimaryFailure(attempts []ProviderAttempt) FailureCategory {
 	switch {
 	case allNoProviderHit:
 		return FailureNoProviderHit
+	case hasCaptchaOCR:
+		return FailureCaptchaOCR
 	case hasBadArchive:
 		return FailureBadArchive
 	case hasDownloadError:

@@ -3,6 +3,7 @@ package v1
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
@@ -15,7 +16,6 @@ import (
 	backend2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/backend"
 	vsh "github.com/ChineseSubFinder/ChineseSubFinder/pkg/video_scan_and_refresh_helper"
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 )
 
 // RefreshMainList 重构后的视频列表，比如 x:\电影\壮志凌云\壮志凌云.mp4 或者是连续剧的 x:\连续剧\绝命毒师 根目录
@@ -114,15 +114,13 @@ func (cb *ControllerBase) MoviePoster(c *gin.Context) {
 	}
 
 	// 然后还需要将这个全路径信息转换为 静态文件服务器对应的路径返回给前端
-	desUrl, found := cb.GetPathUrlMap()[movieInfo.MainRootDirFPath]
+	desUrl, found := findSharePrefixPath(cb.GetPathUrlMap(), movieInfo.MainRootDirFPath)
+	posterFPath := cb.videoListHelper.GetMoviePoster(movieInfo.VideoFPath)
 	if found == false {
-		// 没有找到对应的 URL
-		errMessage := fmt.Sprintf("MoviePoster.GetPathUrlMap can not find url for path %s", movieInfo.MainRootDirFPath)
-		cb.log.Warningln(errMessage)
-		err = errors.New(errMessage)
+		cb.log.Warningln(fmt.Sprintf("MoviePoster.GetPathUrlMap can not find url for path %s", movieInfo.MainRootDirFPath))
+		c.JSON(http.StatusOK, backend2.PosterInfo{})
 		return
 	}
-	posterFPath := cb.videoListHelper.GetMoviePoster(movieInfo.VideoFPath)
 	posterUrl := path_helper.ChangePhysicalPathToSharePath(posterFPath, movieInfo.MainRootDirFPath, desUrl)
 
 	c.JSON(http.StatusOK, backend2.PosterInfo{
@@ -146,15 +144,13 @@ func (cb *ControllerBase) SeriesPoster(c *gin.Context) {
 	}
 
 	// 然后还需要将这个全路径信息转换为 静态文件服务器对应的路径返回给前端
-	desUrl, found := cb.GetPathUrlMap()[seriesInfo.MainRootDirFPath]
+	desUrl, found := findSharePrefixPath(cb.GetPathUrlMap(), seriesInfo.MainRootDirFPath)
+	posterFPath := cb.videoListHelper.GetSeriesPoster(seriesInfo.RootDirPath)
 	if found == false {
-		// 没有找到对应的 URL
-		errMessage := fmt.Sprintf("SeriesPoster.GetPathUrlMap can not find url for path %s", seriesInfo.MainRootDirFPath)
-		cb.log.Warningln(errMessage)
-		err = errors.New(errMessage)
+		cb.log.Warningln(fmt.Sprintf("SeriesPoster.GetPathUrlMap can not find url for path %s", seriesInfo.MainRootDirFPath))
+		c.JSON(http.StatusOK, backend2.PosterInfo{})
 		return
 	}
-	posterFPath := cb.videoListHelper.GetSeriesPoster(seriesInfo.RootDirPath)
 	posterUrl := path_helper.ChangePhysicalPathToSharePath(posterFPath, seriesInfo.MainRootDirFPath, desUrl)
 
 	c.JSON(http.StatusOK, backend2.PosterInfo{
@@ -178,14 +174,7 @@ func (cb *ControllerBase) OneMovieSubs(c *gin.Context) {
 	}
 
 	// 然后还需要将这个全路径信息转换为 静态文件服务器对应的路径返回给前端
-	desUrl, found := cb.GetPathUrlMap()[movieInfo.MainRootDirFPath]
-	if found == false {
-		// 没有找到对应的 URL
-		errMessage := fmt.Sprintf("OneMovieSubs.GetPathUrlMap can not find url for path %s", movieInfo.MainRootDirFPath)
-		cb.log.Warningln(errMessage)
-		err = errors.New(errMessage)
-		return
-	}
+	desUrl, found := findSharePrefixPath(cb.GetPathUrlMap(), movieInfo.MainRootDirFPath)
 
 	matchedSubs, err := sub_helper.SearchMatchedSubFileByOneVideo(cb.log, movieInfo.VideoFPath)
 	if err != nil {
@@ -195,6 +184,12 @@ func (cb *ControllerBase) OneMovieSubs(c *gin.Context) {
 
 	movieSubsInfo := backend2.MovieSubsInfo{
 		SubUrlList: make([]string, 0),
+	}
+	if found == false {
+		cb.log.Warningln(fmt.Sprintf("OneMovieSubs.GetPathUrlMap can not find url for path %s", movieInfo.MainRootDirFPath))
+		movieSubsInfo.SubFPathList = append(movieSubsInfo.SubFPathList, matchedSubs...)
+		c.JSON(http.StatusOK, movieSubsInfo)
+		return
 	}
 	// 将匹配到的字幕文件转换为 URL
 	for _, sub := range matchedSubs {
@@ -221,18 +216,16 @@ func (cb *ControllerBase) OneSeriesSubs(c *gin.Context) {
 	}
 
 	// 然后还需要将这个全路径信息转换为 静态文件服务器对应的路径返回给前端
-	desUrl, found := cb.GetPathUrlMap()[seriesInfo.MainRootDirFPath]
-	if found == false {
-		// 没有找到对应的 URL
-		errMessage := fmt.Sprintf("OneSeriesSubs.GetPathUrlMap can not find url for path %s", seriesInfo.MainRootDirFPath)
-		cb.log.Warningln(errMessage)
-		err = errors.New(errMessage)
-		return
-	}
+	desUrl, found := findSharePrefixPath(cb.GetPathUrlMap(), seriesInfo.MainRootDirFPath)
 
 	seasonInfo, err := search.SeriesAllEpsAndSubtitles(cb.log, seriesInfo.RootDirPath)
 	if err != nil {
 		cb.log.Errorln("OneSeriesSubs.SeriesAllEpsAndSubtitles", err)
+		return
+	}
+	if found == false {
+		cb.log.Warningln(fmt.Sprintf("OneSeriesSubs.GetPathUrlMap can not find url for path %s", seriesInfo.MainRootDirFPath))
+		c.JSON(http.StatusOK, seasonInfo)
 		return
 	}
 
@@ -247,6 +240,21 @@ func (cb *ControllerBase) OneSeriesSubs(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, seasonInfo)
+}
+
+func findSharePrefixPath(pathURLMap map[string]string, mediaRootPath string) (string, bool) {
+	if sharePrefixPath, found := pathURLMap[mediaRootPath]; found == true {
+		return sharePrefixPath, true
+	}
+
+	cleanMediaRootPath := filepath.Clean(mediaRootPath)
+	for pathKey, sharePrefixPath := range pathURLMap {
+		if filepath.Clean(pathKey) == cleanMediaRootPath {
+			return sharePrefixPath, true
+		}
+	}
+
+	return "", false
 }
 
 // ScanSkipInfo 设置或者获取跳过扫描信息的状态

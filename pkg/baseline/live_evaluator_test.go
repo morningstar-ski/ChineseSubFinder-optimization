@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
@@ -33,6 +34,38 @@ func TestSupplierEvaluatorMovieSuccess(t *testing.T) {
 	}
 	if len(evaluation.Attempts) != 1 || evaluation.Attempts[0].Downloaded == false {
 		t.Fatalf("unexpected attempts %#v", evaluation.Attempts)
+	}
+}
+
+func TestSupplierEvaluatorStopsAfterMovieSuccess(t *testing.T) {
+	evaluator := NewSupplierEvaluator(logrus.New(),
+		fakeSupplier{
+			name: "subdl",
+			movieSubInfos: []supplier.SubInfo{
+				validSubInfo("subdl", "Movie.2024.1080p.srt", ".srt", simpleSRT),
+			},
+		},
+		fakeSupplier{
+			name: "subhd",
+			movieSubInfos: []supplier.SubInfo{
+				validSubInfo("subhd", "Movie.2024.1080p.srt", ".srt", simpleSRT),
+			},
+		},
+	)
+
+	evaluation, err := evaluator.Evaluate(context.Background(), Sample{
+		ID:        "movie-stop-001",
+		VideoPath: "C:\\Media\\Movie.2024.1080p.mkv",
+		Kind:      SampleMovie,
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if len(evaluation.Attempts) != 1 {
+		t.Fatalf("expected early stop after first success, got %#v", evaluation.Attempts)
+	}
+	if evaluation.Attempts[0].Provider != "subdl" || evaluation.Attempts[0].Downloaded == false {
+		t.Fatalf("unexpected first attempt %#v", evaluation.Attempts[0])
 	}
 }
 
@@ -79,6 +112,63 @@ func TestSupplierEvaluatorDeadProvider(t *testing.T) {
 	}
 	if len(evaluation.Attempts) != 2 {
 		t.Fatalf("expected 2 attempts, got %d", len(evaluation.Attempts))
+	}
+}
+
+func TestSupplierEvaluatorStopsAfterSeriesSuccess(t *testing.T) {
+	evaluator := NewSupplierEvaluator(logrus.New(),
+		fakeSupplier{
+			name: "subtitle_best",
+			seriesSubInfos: []supplier.SubInfo{
+				validSeriesSubInfo("subtitle_best", "Show.S01E02.ass", ".ass", 1, 2, simpleASS),
+			},
+		},
+		fakeSupplier{
+			name: "subhd",
+			seriesSubInfos: []supplier.SubInfo{
+				validSeriesSubInfo("subhd", "Show.S01E02.srt", ".srt", 1, 2, simpleSRT),
+			},
+		},
+	)
+
+	evaluation, err := evaluator.Evaluate(context.Background(), Sample{
+		ID:        "series-stop-001",
+		VideoPath: "C:\\Media\\Show\\Season 1\\Show.S01E02.mkv",
+		Kind:      SampleEpisode,
+		Season:    1,
+		Episode:   2,
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if len(evaluation.Attempts) != 1 {
+		t.Fatalf("expected early stop after first series success, got %#v", evaluation.Attempts)
+	}
+	if evaluation.Attempts[0].Provider != "subtitle_best" || evaluation.Attempts[0].Downloaded == false {
+		t.Fatalf("unexpected first attempt %#v", evaluation.Attempts[0])
+	}
+}
+
+func TestSupplierEvaluatorClassifiesSubHDCaptchaOCRFailure(t *testing.T) {
+	evaluator := NewSupplierEvaluator(logrus.New(), fakeSupplier{
+		name:  "subhd",
+		err:   errors.New(subhd.ReasonCaptchaOcrFailed + ": unexpected captcha OCR output"),
+		alive: true,
+	})
+
+	evaluation, err := evaluator.Evaluate(context.Background(), Sample{
+		ID:        "movie-ocr-001",
+		VideoPath: "C:\\Media\\Movie.2024.1080p.mkv",
+		Kind:      SampleMovie,
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if evaluation.PrimaryFailure != FailureCaptchaOCR {
+		t.Fatalf("unexpected primary failure %q", evaluation.PrimaryFailure)
+	}
+	if len(evaluation.Attempts) != 1 || evaluation.Attempts[0].FailureCategory != FailureCaptchaOCR {
+		t.Fatalf("unexpected attempts %#v", evaluation.Attempts)
 	}
 }
 
@@ -134,4 +224,12 @@ func validSubInfo(fromWhere string, name string, ext string, data []byte) suppli
 	return *supplier.NewSubInfo(fromWhere, 0, name, language.ChineseSimple, "https://example.com/"+name, 0, 0, ext, data)
 }
 
-var simpleSRT = []byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n")
+func validSeriesSubInfo(fromWhere string, name string, ext string, season int, episode int, data []byte) supplier.SubInfo {
+	info := supplier.NewSubInfo(fromWhere, 0, name, language.ChineseSimple, "https://example.com/"+name, 0, 0, ext, data)
+	info.Season = season
+	info.Episode = episode
+	return *info
+}
+
+var simpleSRT = []byte("1\n00:00:01,000 --> 00:00:02,000\nhello\n")
+var simpleASS = []byte("[Script Info]\nTitle: test\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,hello\n")

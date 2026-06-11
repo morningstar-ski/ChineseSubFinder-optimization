@@ -1,8 +1,11 @@
 package sub_helper
 
 import (
+	"archive/zip"
+	"bytes"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -11,6 +14,8 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/ass"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/srt"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/unit_test_helper"
 )
 
@@ -91,3 +96,59 @@ func TestGetVADInfosFromSub(t *testing.T) {
 }
 
 const FrontAndEndPerBase = 0
+
+func TestOrganizeDlSubFilesFallsBackToKnownEpisodeForSingleArchiveEntry(t *testing.T) {
+	log := log_helper.GetLogger4Tester()
+	tmpFolderName := "sub_helper_episode_fallback_test"
+	_ = pkg.ClearTmpFolderByName(tmpFolderName)
+	defer func() {
+		_ = pkg.ClearTmpFolderByName(tmpFolderName)
+	}()
+
+	subInfo := supplier.NewSubInfo(
+		"assrt",
+		0,
+		"generic.zip",
+		language.ChineseSimple,
+		"https://example.com/generic.zip",
+		0,
+		0,
+		".zip",
+		mustBuildSubZipBytes(t, map[string]string{
+			"subtitle.srt": strings.Repeat("1\n00:00:01,000 --> 00:00:02,000\nhello world subtitle line\n\n", 40),
+		}),
+	)
+	subInfo.Season = 1
+	subInfo.Episode = 2
+
+	organized, err := OrganizeDlSubFiles(log, tmpFolderName, []supplier.SubInfo{*subInfo}, false)
+	if err != nil {
+		t.Fatalf("OrganizeDlSubFiles() error = %v", err)
+	}
+
+	epsKey := pkg.GetEpisodeKeyName(1, 2)
+	if len(organized[epsKey]) != 1 {
+		t.Fatalf("OrganizeDlSubFiles() organized[%q] = %#v; want one file", epsKey, organized[epsKey])
+	}
+}
+
+func mustBuildSubZipBytes(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range files {
+		writer, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("zip.Create(%q) error = %v", name, err)
+		}
+		if _, err = writer.Write([]byte(body)); err != nil {
+			t.Fatalf("zip.Write(%q) error = %v", name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zip.Close() error = %v", err)
+	}
+
+	return buf.Bytes()
+}

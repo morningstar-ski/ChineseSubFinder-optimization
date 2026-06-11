@@ -5,10 +5,10 @@
 
 ## 当前版本已对齐的内容
 
-- 新增并接通 `OpenSubtitles`、`TVsubtitles`、`Moviesubtitles`、`SubHD`。
+- 新增并接入 `OpenSubtitles`、`TVsubtitles`、`Moviesubtitles`、`SubHD`。
 - 修复预任务初始化完成信号，避免前端长时间停在初始化状态。
 - 帮助文档和问题反馈统一跳转到当前优化仓库。
-- 设置页已移除 `a4k`、`zimuku` 的前端展示入口。
+- 设置页已隐藏未启用的前端展示入口。
 
 ## 常用入口
 

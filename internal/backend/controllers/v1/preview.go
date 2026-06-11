@@ -184,7 +184,6 @@ func (cb *ControllerBase) PreviewSearchOtherWeb(c *gin.Context) {
 	searchOtherWebReply.SearchUrls = make([]string, 0)
 	searchOtherWebReply.SearchUrls = append(searchOtherWebReply.SearchUrls, settings.Get().AdvancedSettings.SuppliersSettings.Zimuku.GetSearchUrl())
 	searchOtherWebReply.SearchUrls = append(searchOtherWebReply.SearchUrls, settings.Get().AdvancedSettings.SuppliersSettings.SubHD.GetSearchUrl())
-	searchOtherWebReply.SearchUrls = append(searchOtherWebReply.SearchUrls, settings.Get().AdvancedSettings.SuppliersSettings.A4k.GetSearchUrl())
 
 	year, err := now.Parse(mixMediaInfo.Year)
 	if err != nil {

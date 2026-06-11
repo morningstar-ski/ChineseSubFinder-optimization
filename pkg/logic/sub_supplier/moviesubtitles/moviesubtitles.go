@@ -167,10 +167,14 @@ func (s *Supplier) getSubListFromFile(videoFPath string) ([]supplier.SubInfo, er
 		}
 
 		cacheKey := fmt.Sprintf("%s-%s", s.GetSupplierName(), finalDownloadURL)
+		subName := candidate.Name
+		if strings.TrimSpace(subName) == "" {
+			subName = videoFileName
+		}
 		subInfo, err := s.fileDownloader.Get(
 			s.GetSupplierName(),
 			int64(index),
-			videoFileName,
+			subName,
 			finalDownloadURL,
 			0,
 			0,
@@ -412,15 +416,17 @@ func selectBestMovie(results []movieSearchResult, mediaInfo *models.MediaInfo, k
 	targetYear := normalizeYear(mediaInfo.Year)
 	candidates := compactStrings(mediaInfo.TitleEn, mediaInfo.OriginalTitle, keyword)
 	type scoredMovie struct {
-		movie movieSearchResult
-		score int
+		movie      movieSearchResult
+		titleScore int
+		score      int
 	}
 	scored := make([]scoredMovie, 0, len(results))
 	for _, result := range results {
-		score := 0
+		titleScore := 0
 		for _, candidate := range candidates {
-			score = maxInt(score, scoreMovieTitle(result.Title, candidate))
+			titleScore = maxInt(titleScore, scoreMovieTitle(result.Title, candidate))
 		}
+		score := titleScore
 		if targetYear != "" && result.Year != "" {
 			if targetYear == result.Year {
 				score += 15
@@ -428,7 +434,7 @@ func selectBestMovie(results []movieSearchResult, mediaInfo *models.MediaInfo, k
 				score -= 5
 			}
 		}
-		scored = append(scored, scoredMovie{movie: result, score: score})
+		scored = append(scored, scoredMovie{movie: result, titleScore: titleScore, score: score})
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -437,7 +443,7 @@ func selectBestMovie(results []movieSearchResult, mediaInfo *models.MediaInfo, k
 		}
 		return scored[i].movie.ID < scored[j].movie.ID
 	})
-	if scored[0].score <= 0 {
+	if scored[0].titleScore <= 0 || scored[0].score <= 0 {
 		return nil
 	}
 	return &scored[0].movie
@@ -489,10 +495,14 @@ func parseCandidateFields(block *goquery.Selection) map[string]string {
 }
 
 func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string) []string {
-	return compactStrings(
+	videoTitle := normalizeVideoTitle(videoFPath)
+	return mix_media_info.ExpandSearchKeywords(
 		mediaInfo.TitleEn,
 		mediaInfo.OriginalTitle,
-		normalizeVideoTitle(videoFPath),
+		videoTitle,
+		stripTrailingYear(mediaInfo.TitleEn),
+		stripTrailingYear(mediaInfo.OriginalTitle),
+		stripTrailingYear(videoTitle),
 	)
 }
 
@@ -503,6 +513,28 @@ func normalizeVideoTitle(videoFPath string) string {
 	}
 	fileName = pkg.ReplaceSpecString(fileName, " ")
 	return strings.Join(strings.Fields(fileName), " ")
+}
+
+func stripTrailingYear(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		"(", " ", ")", " ",
+		"[", " ", "]", " ",
+	)
+	parts := strings.Fields(replacer.Replace(title))
+	if len(parts) == 0 {
+		return ""
+	}
+	last := parts[len(parts)-1]
+	if len(last) == 4 {
+		if _, err := strconv.Atoi(last); err == nil {
+			return strings.TrimSpace(strings.Join(parts[:len(parts)-1], " "))
+		}
+	}
+	return title
 }
 
 func absoluteURL(rootURL string, href string) string {
@@ -580,8 +612,7 @@ func scoreMovieTitle(movieTitle string, candidate string) int {
 
 func normalizeComparableTitle(title string) string {
 	baseTitle, _ := splitMovieTitleAndYear(title)
-	baseTitle = pkg.ReplaceSpecString(baseTitle, " ")
-	return strings.ToLower(strings.Join(strings.Fields(baseTitle), " "))
+	return mix_media_info.NormalizeComparableTitle(baseTitle)
 }
 
 func scoreAuthority(downloads string) int {

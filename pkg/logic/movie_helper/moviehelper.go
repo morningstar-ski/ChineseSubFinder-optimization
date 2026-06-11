@@ -1,11 +1,13 @@
 package movie_helper
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/media_info_dealers"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
@@ -46,7 +48,14 @@ func OneMovieDlSubInAllSite(logger *logrus.Logger, Suppliers []ifaces.ISupplier,
 			logger.Errorln(common.QueueName, i, oneSupplier.GetSupplierName(), "oneMovieDlSubInOneSite", err)
 			continue
 		}
+		if len(subInfos) == 0 {
+			continue
+		}
 		outSUbInfos = append(outSUbInfos, subInfos...)
+		if hasUsableMovieSubtitle(logger, oneVideoFullPath, i, oneSupplier.GetSupplierName(), subInfos) {
+			logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "usable subtitles found, stop fallback")
+			break
+		}
 	}
 
 	for index, info := range outSUbInfos {
@@ -54,6 +63,42 @@ func OneMovieDlSubInAllSite(logger *logrus.Logger, Suppliers []ifaces.ISupplier,
 	}
 
 	return outSUbInfos
+}
+
+func hasUsableMovieSubtitle(logger *logrus.Logger, videoFullPath string, queueIndex int64, supplierName string, subInfos []supplier.SubInfo) bool {
+	tmpFolderName := sanitizeProviderProbeFolderName(filepath.Base(videoFullPath), queueIndex, supplierName)
+	_ = pkg.ClearTmpFolderByName(tmpFolderName)
+	defer func() {
+		_ = pkg.ClearTmpFolderByName(tmpFolderName)
+	}()
+
+	organized, err := sub_helper.OrganizeDlSubFiles(logger, tmpFolderName, subInfos, true)
+	if err != nil {
+		logger.Warningln(common.QueueName, queueIndex, supplierName, "probe organize failed", err)
+		return false
+	}
+	for _, files := range organized {
+		if len(files) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizeProviderProbeFolderName(base string, queueIndex int64, supplierName string) string {
+	replacer := strings.NewReplacer(
+		"\\", "_",
+		"/", "_",
+		":", "_",
+		"*", "_",
+		"?", "_",
+		"\"", "_",
+		"<", "_",
+		">", "_",
+		"|", "_",
+		" ", "_",
+	)
+	return replacer.Replace(fmt.Sprintf("provider_probe_%d_%s_%s", queueIndex, supplierName, base))
 }
 
 // OneMovieDlSubInOneSite 一部电影在一个站点下载字幕

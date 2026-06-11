@@ -113,8 +113,13 @@ func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []sup
 					// 连续剧的情况
 					// 从解压的文件名称推断 Season 和 Episode 信息
 					_, nowSeason, nowEps, err := decode.GetSeasonAndEpisodeFromSubFileName(filepath.Base(fileFullPath))
-					if err != nil {
-						continue
+					if err != nil || nowSeason == 0 || nowEps == 0 {
+						if len(subFileFullPaths) == 1 && subInfos[i].Season > 0 && subInfos[i].Episode > 0 {
+							nowSeason = subInfos[i].Season
+							nowEps = subInfos[i].Episode
+						} else {
+							continue
+						}
 					}
 					newSubName := AddFrontName(subInfos[i], filepath.Base(fileFullPath))
 					newSubNameFullPath := filepath.Join(tmpFolderFullPath, newSubName)
@@ -231,18 +236,13 @@ func SelectChineseBestSubtitle(subs []subparser.FileInfo, subTypePriority int) *
 
 // GetFrontNameAndOrgName 返回的名称包含，那个网站下载的，这个网站中排名第几，文件名
 func GetFrontNameAndOrgName(log *logrus.Logger, info *supplier.SubInfo) string {
-
-	infoName := ""
-	fileName, err := decode.GetVideoInfoFromFileName(info.Name)
-	if err != nil {
-		log.Warnln("", err)
-		// 替换特殊字符
-		infoName = pkg.ReplaceSpecString(info.Name, "x")
-	} else {
-		infoName = fileName.Title + "_S" + strconv.Itoa(fileName.Season) + "E" + strconv.Itoa(fileName.Episode) + filepath.Ext(info.Name)
-	}
+	infoName := pkg.ReplaceSpecString(strings.TrimSpace(info.Name), " ")
+	infoName = strings.Join(strings.Fields(infoName), " ")
 	if len(infoName) < 1 {
-		infoName = pkg.RandStringBytesMaskImprSrcSB(10) + filepath.Ext(info.Name)
+		infoName = pkg.RandStringBytesMaskImprSrcSB(10)
+	}
+	if filepath.Ext(infoName) == "" && info.Ext != "" {
+		infoName += info.Ext
 	}
 	info.Name = infoName
 

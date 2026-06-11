@@ -1,7 +1,13 @@
 package pkg
 
 import (
+	"bytes"
+	"errors"
+	"net/http"
+	"net/url"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/unit_test_helper"
@@ -9,9 +15,47 @@ import (
 )
 
 func TestCloseChrome(t *testing.T) {
+	logger, logOutput := newCloseChromeTestLogger()
 
-	// BUG: will produce Logs under this dir
-	CloseChrome(logrus.New())
+	closeChromeWithRunner(logger, "linux", func(command *exec.Cmd) ([]byte, error) {
+		return []byte("no process found"), errors.New("exit status 1")
+	})
+
+	if strings.Contains(logOutput.String(), "level=warning") == true {
+		t.Fatalf("expected benign close error to be ignored, got logs: %s", logOutput.String())
+	}
+}
+
+func TestCloseChromeLogsRealError(t *testing.T) {
+	logger, logOutput := newCloseChromeTestLogger()
+
+	closeChromeWithRunner(logger, "linux", func(command *exec.Cmd) ([]byte, error) {
+		return nil, errors.New("fork/exec /bin/sh: access denied")
+	})
+
+	if strings.Contains(logOutput.String(), "level=warning") == false {
+		t.Fatalf("expected real close error to log warning, got logs: %s", logOutput.String())
+	}
+}
+
+func TestIsIgnorableCloseChromeError(t *testing.T) {
+	if isIgnorableCloseChromeError(errors.New("exit status 1"), []byte("No such process")) == false {
+		t.Fatal("expected no-process close error to be ignored")
+	}
+	if isIgnorableCloseChromeError(errors.New("fork/exec /bin/sh: access denied"), nil) == true {
+		t.Fatal("expected real process execution error to be preserved")
+	}
+}
+
+func newCloseChromeTestLogger() (*logrus.Logger, *bytes.Buffer) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+	logger.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
+
+	var logOutput bytes.Buffer
+	logger.SetOutput(&logOutput)
+
+	return logger, &logOutput
 }
 
 func TestFileNameIsBDMV(t *testing.T) {
@@ -54,6 +98,28 @@ func TestGetPublicIP(t *testing.T) {
 	//if err != nil {
 	//	t.Fatal(err)
 	//}
+}
+
+func TestNewHttpClientProvidesCookieJar(t *testing.T) {
+	client, err := NewHttpClient("https://subhd.me")
+	if err != nil {
+		t.Fatalf("NewHttpClient() error = %v", err)
+	}
+	if client.GetClient().Jar == nil {
+		t.Fatal("expected NewHttpClient() to attach cookie jar")
+	}
+
+	u, err := url.Parse("https://subhd.me/a/test")
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	client.GetClient().Jar.SetCookies(u, []*http.Cookie{
+		{Name: "csrftoken", Value: "1"},
+	})
+	got := client.GetClient().Jar.Cookies(u)
+	if len(got) != 1 || got[0].Name != "csrftoken" {
+		t.Fatalf("cookie jar round-trip failed, got %#v", got)
+	}
 }
 
 func TestSortByModTime(t *testing.T) {
