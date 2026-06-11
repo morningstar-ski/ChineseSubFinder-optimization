@@ -5,17 +5,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 type subflowTranslator struct{}
 
 func (subflowTranslator) Translate(req TranslateRequest) error {
-	if req.SubflowRootDir == "" {
-		return fmt.Errorf("subflow root dir is empty")
-	}
-	if _, err := os.Stat(req.SubflowRootDir); err != nil {
-		return fmt.Errorf("subflow root dir invalid: %w", err)
+	subflowRootDir, err := resolveSubflowRootDir(req.SubflowRootDir)
+	if err != nil {
+		return err
 	}
 
 	pythonExecutable := req.PythonExecutable
@@ -42,8 +41,8 @@ func (subflowTranslator) Translate(req TranslateRequest) error {
 	}
 
 	cmd := exec.Command(pythonExecutable, args...)
-	cmd.Dir = req.SubflowRootDir
-	cmd.Env = buildPythonPathEnv(req.SubflowRootDir)
+	cmd.Dir = subflowRootDir
+	cmd.Env = buildPythonPathEnv(subflowRootDir)
 
 	output, err := cmd.CombinedOutput()
 	logPath := filepath.Join(req.TaskDir, "translate.stdout.log")
@@ -56,6 +55,56 @@ func (subflowTranslator) Translate(req TranslateRequest) error {
 	}
 
 	return nil
+}
+
+func resolveSubflowRootDir(configured string) (string, error) {
+	candidates := make([]string, 0, 5)
+	seen := make(map[string]struct{})
+
+	appendCandidate := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		cleaned := filepath.Clean(filepath.FromSlash(path))
+		if _, ok := seen[cleaned]; ok {
+			return
+		}
+		seen[cleaned] = struct{}{}
+		candidates = append(candidates, cleaned)
+	}
+
+	appendCandidate(configured)
+	appendCandidate(os.Getenv("CSF_LLM_SUBTITLE_FALLBACK_SUBFLOW_ROOT"))
+	appendCandidate("/opt/subflow")
+
+	if _, thisFile, _, ok := runtime.Caller(0); ok {
+		appendCandidate(filepath.Join(filepath.Dir(thisFile), "..", "..", "third_party", "subflow"))
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		appendCandidate(filepath.Join(cwd, "third_party", "subflow"))
+	}
+
+	for _, candidate := range candidates {
+		if isValidSubflowRootDir(candidate) {
+			return candidate, nil
+		}
+	}
+
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("subflow root dir is empty")
+	}
+	return "", fmt.Errorf("subflow root dir invalid, tried: %s", strings.Join(candidates, ", "))
+}
+
+func isValidSubflowRootDir(root string) bool {
+	info, err := os.Stat(root)
+	if err != nil || info.IsDir() == false {
+		return false
+	}
+	translateJobPath := filepath.Join(root, "src", "subflow", "translate_job.py")
+	info, err = os.Stat(translateJobPath)
+	return err == nil && info.IsDir() == false
 }
 
 func buildPythonPathEnv(subflowRootDir string) []string {
