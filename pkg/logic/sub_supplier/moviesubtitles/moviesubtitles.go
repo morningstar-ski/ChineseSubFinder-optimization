@@ -2,7 +2,6 @@ package moviesubtitles
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -48,6 +48,8 @@ type subtitleCandidate struct {
 	SubtitleExt     string
 	AuthorityScore  int
 }
+
+const movieSubtitlesSearchRetryCount = 2
 
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 	sup := Supplier{}
@@ -166,7 +168,7 @@ func (s *Supplier) getSubListFromFile(videoFPath string) ([]supplier.SubInfo, er
 			continue
 		}
 
-		cacheKey := fmt.Sprintf("%s-%s", s.GetSupplierName(), finalDownloadURL)
+		cacheKey := file_downloader.BuildCacheKey(s.GetSupplierName(), finalDownloadURL)
 		subInfo, err := s.fileDownloader.Get(
 			s.GetSupplierName(),
 			int64(index),
@@ -220,6 +222,10 @@ func (s *Supplier) resolveCandidatesWithFallback(client *resty.Client, mediaInfo
 }
 
 func (s *Supplier) searchMovies(client *resty.Client, keyword string) ([]movieSearchResult, error) {
+	restoreRetryCount := client.RetryCount
+	client.SetRetryCount(movieSubtitlesSearchRetryCount)
+	defer client.SetRetryCount(restoreRetryCount)
+
 	resp, err := client.R().
 		SetFormData(map[string]string{"q": keyword}).
 		Post(settings.Get().AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl + settings.Get().AdvancedSettings.SuppliersSettings.MovieSubtitles.SearchUrl)
@@ -491,11 +497,11 @@ func parseCandidateFields(block *goquery.Selection) map[string]string {
 }
 
 func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string) []string {
-	return compactStrings(
+	return expandSearchKeywordVariants([]string{
 		mediaInfo.TitleEn,
 		mediaInfo.OriginalTitle,
 		normalizeVideoTitle(videoFPath),
-	)
+	})
 }
 
 func normalizeVideoTitle(videoFPath string) string {
@@ -548,6 +554,50 @@ func normalizeYear(year string) string {
 
 func normalizeWhitespace(input string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(input)), " ")
+}
+
+func expandSearchKeywordVariants(items []string) []string {
+	out := make([]string, 0, len(items)*2)
+	seen := make(map[string]struct{})
+	for _, item := range items {
+		for _, variant := range keywordVariants(item) {
+			key := strings.ToLower(strings.TrimSpace(variant))
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, variant)
+		}
+	}
+	return out
+}
+
+func keywordVariants(input string) []string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil
+	}
+
+	variants := []string{input}
+	normalized := normalizeWhitespace(stripKeywordPunctuation(input))
+	if normalized != "" && strings.EqualFold(normalized, input) == false {
+		variants = append(variants, normalized)
+	}
+	return variants
+}
+
+func stripKeywordPunctuation(input string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r), unicode.IsNumber(r), unicode.IsSpace(r):
+			return r
+		default:
+			return ' '
+		}
+	}, input)
 }
 
 func extractNumericID(input string, pattern string) (int, bool) {

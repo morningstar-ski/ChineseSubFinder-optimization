@@ -8,6 +8,7 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -64,6 +65,30 @@ func TestSelectBestMovieRejectsWrongTitle(t *testing.T) {
 	result := selectBestMovie(results, mediaInfo, "Lopez vs Lopez")
 	if result != nil {
 		t.Fatalf("selectBestMovie() = %#v; want nil", result)
+	}
+}
+
+func TestBuildSearchKeywordsAddsPunctuationStrippedVariant(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn: "Will & Harper",
+	}
+
+	keywords := buildSearchKeywords(mediaInfo, filepath.Join("C:\\", "Media", "Will.&.Harper.2024.mkv"))
+	if len(keywords) < 2 {
+		t.Fatalf("expected keyword variants, got %#v", keywords)
+	}
+	if keywords[0] != "Will & Harper" {
+		t.Fatalf("expected original keyword first, got %#v", keywords)
+	}
+	found := false
+	for _, keyword := range keywords {
+		if keyword == "Will Harper" {
+			found = true
+			break
+		}
+	}
+	if found == false {
+		t.Fatalf("expected punctuation-stripped keyword in %#v", keywords)
 	}
 }
 
@@ -177,4 +202,57 @@ func newTestHTTPClient(t *testing.T) *resty.Client {
 		t.Fatalf("NewHttpClient() error = %v", err)
 	}
 	return client
+}
+
+func TestSearchMoviesRetriesEOFUntilSuccess(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cfg := settings.Get()
+	oldRootURL := cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl
+	oldSearchURL := cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.SearchUrl
+	t.Cleanup(func() {
+		cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl = oldRootURL
+		cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.SearchUrl = oldSearchURL
+	})
+
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts <= 2 {
+			hijacker, ok := w.(http.Hijacker)
+			if ok == false {
+				t.Fatalf("response writer does not support hijacking")
+			}
+			conn, _, err := hijacker.Hijack()
+			if err != nil {
+				t.Fatalf("Hijack() error = %v", err)
+			}
+			_ = conn.Close()
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<p class="description">Search results</p><ul style="margin-left:2em"><li><div style="width:500px"><a href="/movie-5012.html">Inception (2010)</a></div></li></ul>`))
+	}))
+	defer server.Close()
+
+	cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl = server.URL
+	cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.SearchUrl = "/search.php"
+
+	client := newTestHTTPClient(t)
+	client.SetRetryCount(0)
+
+	supplier := &Supplier{}
+	results, err := supplier.searchMovies(client, "Inception")
+	if err != nil {
+		t.Fatalf("searchMovies() error = %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+	if len(results) != 1 || results[0].ID != 5012 {
+		t.Fatalf("unexpected results %#v", results)
+	}
+	if client.RetryCount != 0 {
+		t.Fatalf("client retry count should be restored, got %d", client.RetryCount)
+	}
 }

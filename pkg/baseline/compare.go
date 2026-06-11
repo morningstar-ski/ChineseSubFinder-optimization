@@ -24,19 +24,34 @@ type Comparison struct {
 }
 
 type ComparisonSummary struct {
-	TotalSamples               int                     `json:"total_samples"`
-	BeforeDownloadedSamples    int                     `json:"before_downloaded_samples"`
-	AfterDownloadedSamples     int                     `json:"after_downloaded_samples"`
-	DownloadedDelta            int                     `json:"downloaded_delta"`
-	BeforeHitSamples           int                     `json:"before_hit_samples"`
-	AfterHitSamples            int                     `json:"after_hit_samples"`
-	HitDelta                   int                     `json:"hit_delta"`
-	ImprovedSamples            int                     `json:"improved_samples"`
-	RegressedSamples           int                     `json:"regressed_samples"`
-	ChangedSamples             int                     `json:"changed_samples"`
-	UnchangedSamples           int                     `json:"unchanged_samples"`
-	BeforePrimaryFailureCounts map[FailureCategory]int `json:"before_primary_failure_counts"`
-	AfterPrimaryFailureCounts  map[FailureCategory]int `json:"after_primary_failure_counts"`
+	TotalSamples                 int                     `json:"total_samples"`
+	BeforeDownloadedSamples      int                     `json:"before_downloaded_samples"`
+	AfterDownloadedSamples       int                     `json:"after_downloaded_samples"`
+	DownloadedDelta              int                     `json:"downloaded_delta"`
+	BeforeHitSamples             int                     `json:"before_hit_samples"`
+	AfterHitSamples              int                     `json:"after_hit_samples"`
+	HitDelta                     int                     `json:"hit_delta"`
+	ImprovedSamples              int                     `json:"improved_samples"`
+	RegressedSamples             int                     `json:"regressed_samples"`
+	ChangedSamples               int                     `json:"changed_samples"`
+	UnchangedSamples             int                     `json:"unchanged_samples"`
+	BeforeAverageAttemptCount    float64                 `json:"before_average_attempt_count"`
+	AfterAverageAttemptCount     float64                 `json:"after_average_attempt_count"`
+	AverageAttemptDelta          float64                 `json:"average_attempt_delta"`
+	BeforeSubHDAttemptSamples    int                     `json:"before_subhd_attempt_samples"`
+	AfterSubHDAttemptSamples     int                     `json:"after_subhd_attempt_samples"`
+	SubHDAttemptDelta            int                     `json:"subhd_attempt_delta"`
+	BeforeSubHDHitSamples        int                     `json:"before_subhd_hit_samples"`
+	AfterSubHDHitSamples         int                     `json:"after_subhd_hit_samples"`
+	SubHDHitDelta                int                     `json:"subhd_hit_delta"`
+	BeforeSubHDDownloadSamples   int                     `json:"before_subhd_download_samples"`
+	AfterSubHDDownloadSamples    int                     `json:"after_subhd_download_samples"`
+	SubHDDownloadDelta           int                     `json:"subhd_download_delta"`
+	BeforeSubHDCaptchaOCRSamples int                     `json:"before_subhd_captcha_ocr_samples"`
+	AfterSubHDCaptchaOCRSamples  int                     `json:"after_subhd_captcha_ocr_samples"`
+	SubHDCaptchaOCRDelta         int                     `json:"subhd_captcha_ocr_delta"`
+	BeforePrimaryFailureCounts   map[FailureCategory]int `json:"before_primary_failure_counts"`
+	AfterPrimaryFailureCounts    map[FailureCategory]int `json:"after_primary_failure_counts"`
 }
 
 type SampleComparison struct {
@@ -137,11 +152,26 @@ func CompareResults(before []SampleResult, after []SampleResult) (Comparison, er
 
 	comparison.Summary.DownloadedDelta = comparison.Summary.AfterDownloadedSamples - comparison.Summary.BeforeDownloadedSamples
 	comparison.Summary.HitDelta = comparison.Summary.AfterHitSamples - comparison.Summary.BeforeHitSamples
+	comparison.Summary.AverageAttemptDelta = comparison.Summary.AfterAverageAttemptCount - comparison.Summary.BeforeAverageAttemptCount
+	comparison.Summary.SubHDAttemptDelta = comparison.Summary.AfterSubHDAttemptSamples - comparison.Summary.BeforeSubHDAttemptSamples
+	comparison.Summary.SubHDHitDelta = comparison.Summary.AfterSubHDHitSamples - comparison.Summary.BeforeSubHDHitSamples
+	comparison.Summary.SubHDDownloadDelta = comparison.Summary.AfterSubHDDownloadSamples - comparison.Summary.BeforeSubHDDownloadSamples
+	comparison.Summary.SubHDCaptchaOCRDelta = comparison.Summary.AfterSubHDCaptchaOCRSamples - comparison.Summary.BeforeSubHDCaptchaOCRSamples
+
+	if comparison.Summary.TotalSamples > 0 {
+		total := float64(comparison.Summary.TotalSamples)
+		comparison.Summary.BeforeAverageAttemptCount = comparison.Summary.BeforeAverageAttemptCount / total
+		comparison.Summary.AfterAverageAttemptCount = comparison.Summary.AfterAverageAttemptCount / total
+		comparison.Summary.AverageAttemptDelta = comparison.Summary.AfterAverageAttemptCount - comparison.Summary.BeforeAverageAttemptCount
+	}
 
 	return comparison, nil
 }
 
 func WriteComparisonCSV(w io.Writer, comparison Comparison) error {
+	if err := writeUTF8BOM(w); err != nil {
+		return err
+	}
 	writer := csv.NewWriter(w)
 	if err := writer.Write([]string{
 		"sample_id",
@@ -294,6 +324,33 @@ func accumulateSummary(summary *ComparisonSummary, before SampleResult, after Sa
 	if sampleOutcomeRank(after) == 2 {
 		summary.AfterDownloadedSamples++
 	}
+	summary.BeforeAverageAttemptCount += float64(len(before.Attempts))
+	summary.AfterAverageAttemptCount += float64(len(after.Attempts))
+
+	if resultIncludesProvider(before, "subhd") {
+		summary.BeforeSubHDAttemptSamples++
+	}
+	if resultIncludesProvider(after, "subhd") {
+		summary.AfterSubHDAttemptSamples++
+	}
+	if resultHasProviderHit(before, "subhd") {
+		summary.BeforeSubHDHitSamples++
+	}
+	if resultHasProviderHit(after, "subhd") {
+		summary.AfterSubHDHitSamples++
+	}
+	if resultHasProviderDownload(before, "subhd") {
+		summary.BeforeSubHDDownloadSamples++
+	}
+	if resultHasProviderDownload(after, "subhd") {
+		summary.AfterSubHDDownloadSamples++
+	}
+	if resultHasProviderFailureCategory(before, "subhd", FailureCaptchaOCR) {
+		summary.BeforeSubHDCaptchaOCRSamples++
+	}
+	if resultHasProviderFailureCategory(after, "subhd", FailureCaptchaOCR) {
+		summary.AfterSubHDCaptchaOCRSamples++
+	}
 
 	summary.BeforePrimaryFailureCounts[before.PrimaryFailure]++
 	summary.AfterPrimaryFailureCounts[after.PrimaryFailure]++
@@ -308,6 +365,42 @@ func accumulateSummary(summary *ComparisonSummary, before SampleResult, after Sa
 	default:
 		summary.UnchangedSamples++
 	}
+}
+
+func resultIncludesProvider(result SampleResult, provider string) bool {
+	for _, attempt := range result.Attempts {
+		if attempt.Provider == provider {
+			return true
+		}
+	}
+	return false
+}
+
+func resultHasProviderHit(result SampleResult, provider string) bool {
+	for _, attempt := range result.Attempts {
+		if attempt.Provider == provider && attempt.Hit {
+			return true
+		}
+	}
+	return false
+}
+
+func resultHasProviderDownload(result SampleResult, provider string) bool {
+	for _, attempt := range result.Attempts {
+		if attempt.Provider == provider && attempt.Downloaded {
+			return true
+		}
+	}
+	return false
+}
+
+func resultHasProviderFailureCategory(result SampleResult, provider string, category FailureCategory) bool {
+	for _, attempt := range result.Attempts {
+		if attempt.Provider == provider && attempt.FailureCategory == category {
+			return true
+		}
+	}
+	return false
 }
 
 func accumulateProviderStats(providerStats map[string]*ProviderComparison, result SampleResult, isBefore bool) {

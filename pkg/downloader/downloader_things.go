@@ -25,6 +25,11 @@ func (d *Downloader) oneVideoSelectBestSub(oneVideoFullPath string, organizeSubF
 		return common.AllSiteDownloadSubNotFound
 	}
 
+	organizeSubFiles = d.filterInvalidSubtitleCandidates(oneVideoFullPath, organizeSubFiles)
+	if len(organizeSubFiles) < 1 {
+		return common.AllSiteDownloadSubNotFound
+	}
+
 	var err error
 	// 得到目标视频文件的文件名
 	videoFileName := filepath.Base(oneVideoFullPath)
@@ -55,6 +60,9 @@ func (d *Downloader) oneVideoSelectBestSub(oneVideoFullPath string, organizeSubF
 		// 选择最优的一个字幕
 		var finalSubFile *subparser.FileInfo
 		finalSubFile = d.mk.SelectOneSubFile(organizeSubFiles)
+		if finalSubFile == nil {
+			finalSubFile = d.tryLLMSubtitleFallback(oneVideoFullPath, organizeSubFiles)
+		}
 		if finalSubFile == nil {
 			outString := fmt.Sprintln("Found", len(organizeSubFiles), " subtitles but not one fit:", oneVideoFullPath)
 			d.log.Warnln(outString)
@@ -172,4 +180,24 @@ func (d *Downloader) saveFullSeasonSub(seriesInfo *series.SeriesInfo, organizeSu
 	}
 
 	return fullSeasonSubDict
+}
+
+func (d *Downloader) tryLLMSubtitleFallback(videoPath string, organizeSubFiles []string) *subparser.FileInfo {
+	if d.llmSubtitleFallback == nil || d.llmSubtitleFallback.Enabled() == false {
+		return nil
+	}
+
+	englishCandidate := d.mk.SelectBestEnglishSubFile(organizeSubFiles, videoPath)
+	if englishCandidate == nil {
+		return nil
+	}
+
+	fallbackSub, err := d.llmSubtitleFallback.BuildChineseSubtitleFromEnglish(videoPath, englishCandidate)
+	if err != nil {
+		d.log.Warningln("tryLLMSubtitleFallback.BuildChineseSubtitleFromEnglish", filepath.Base(videoPath), err)
+		return nil
+	}
+
+	d.log.Infoln("tryLLMSubtitleFallback.Success", "video", filepath.Base(videoPath), "source", englishCandidate.Name)
+	return fallbackSub
 }

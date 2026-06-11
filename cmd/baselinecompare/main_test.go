@@ -76,6 +76,9 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile csv returned error: %v", err)
 	}
+	if strings.HasPrefix(string(csvBytes), "\ufeff") == false {
+		t.Fatalf("csv missing utf-8 bom %q", string(csvBytes))
+	}
 	if strings.Contains(string(csvBytes), "episode-001,C:\\Media\\Show\\S01E01.mkv,episode,1,1,improved") == false {
 		t.Fatalf("unexpected comparison csv %s", string(csvBytes))
 	}

@@ -122,6 +122,50 @@ func TestCacheCenter_DownloadFileGetMissingCacheFile(t *testing.T) {
 	assertCacheDeleted(t, cc, subInfo.GetUID())
 }
 
+func TestCacheCenter_DownloadFileGetRecoversFromLegacyFileCache(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+
+	legacyCacheName := "test_download_file_legacy_" + time.Now().Format("20060102150405.000000000")
+	DelDb(legacyCacheName)
+	legacyCC := newCacheCenterOrSkip(t, legacyCacheName)
+	subInfo := newTestSubInfo("legacy-only-url", []byte{1, 2, 3, 4})
+	if err := legacyCC.DownloadFileAdd(subInfo); err != nil {
+		t.Fatal(err)
+	}
+	legacyCC.Close()
+	if err := os.Remove(legacyCC.dbFPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		DelDb(legacyCacheName)
+	})
+
+	cc, cleanup := newTestCacheCenter(t)
+	defer cleanup()
+
+	bok, gotSubInfo, err := cc.DownloadFileGet(subInfo.GetUID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bok == false {
+		t.Fatal("expected recovered cache hit")
+	}
+	if gotSubInfo == nil {
+		t.Fatal("expected recovered sub info")
+	}
+	if gotSubInfo.FileUrl != subInfo.FileUrl {
+		t.Fatalf("recovered FileUrl = %q, want %q", gotSubInfo.FileUrl, subInfo.FileUrl)
+	}
+
+	var count int64
+	if err := cc.db.Model(&models.DownloadFileInfo{}).Where("uid = ?", subInfo.GetUID()).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected recovered cache metadata count 1, got %d", count)
+	}
+}
+
 func newTestCacheCenter(t *testing.T) (*CacheCenter, func()) {
 	t.Helper()
 

@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,6 +37,11 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	subtitleDownloadTimeout    = common.HTMLTimeOut + 30*time.Second
+	subtitleDownloadRetryCount = 2
 )
 
 // NewHttpClient 新建一个 resty 的对象
@@ -81,6 +87,16 @@ func NewHttpClient(referer ...string) (*resty.Client, error) {
 		httpClient.RemoveProxy()
 	}
 
+	return httpClient, nil
+}
+
+func newSubtitleDownloadHTTPClient() (*resty.Client, error) {
+	httpClient, err := NewHttpClient()
+	if err != nil {
+		return nil, err
+	}
+	httpClient.SetTimeout(subtitleDownloadTimeout)
+	httpClient.SetRetryCount(subtitleDownloadRetryCount)
 	return httpClient, nil
 }
 
@@ -146,7 +162,7 @@ type downloadResult struct {
 type SubtitleContentInspector func(body []byte, ext string) (bool, error)
 
 func downloadFileRaw(l *logrus.Logger, urlStr string) (*downloadResult, error) {
-	httpClient, err := NewHttpClient()
+	httpClient, err := newSubtitleDownloadHTTPClient()
 	if err != nil {
 		return nil, err
 	}
@@ -196,24 +212,71 @@ func DownSubtitleFile(l *logrus.Logger, inspector SubtitleContentInspector, urlS
 
 // GetFileName 获取下载文件的文件名
 func GetFileName(l *logrus.Logger, resp *http.Response) string {
-	contentDisposition := resp.Header.Get("Content-Disposition")
-	if len(contentDisposition) == 0 {
-		m := regexp.MustCompile(`^(.*/)?(?:$|(.+?)(?:(\.[^.]*$)|$))`).FindStringSubmatch(resp.Request.URL.String())
-
-		if m == nil || len(m) < 4 {
-			l.Warningln("GetFileName.regexp.MustCompile.FindStringSubmatch", resp.Request.URL.String())
-			return ""
-		}
-
-		return m[2] + m[3]
-	}
-	re := regexp.MustCompile(`filename=["]*([^"]+)["]*`)
-	matched := re.FindStringSubmatch(contentDisposition)
-	if matched == nil || len(matched) == 0 || len(matched[0]) == 0 {
-		l.Errorln("GetFileName.Content-Disposition", contentDisposition)
+	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
 		return ""
 	}
-	return matched[1]
+	contentDisposition := resp.Header.Get("Content-Disposition")
+	if len(contentDisposition) == 0 {
+		return fallbackFileNameFromURL(l, resp.Request.URL.String())
+	}
+	if _, params, err := mime.ParseMediaType(contentDisposition); err == nil {
+		if fileName := decodeRFC5987FileName(params["filename*"]); fileName != "" {
+			return fileName
+		}
+		if fileName := strings.TrimSpace(params["filename"]); fileName != "" {
+			return fileName
+		}
+	}
+	re := regexp.MustCompile(`filename=["]*([^";]+)["]*`)
+	matched := re.FindStringSubmatch(contentDisposition)
+	if matched != nil && len(matched) > 1 && strings.TrimSpace(matched[1]) != "" {
+		return strings.TrimSpace(matched[1])
+	}
+	if fileName := decodeRFC5987FileName(extractRFC5987Value(contentDisposition)); fileName != "" {
+		return fileName
+	}
+	l.Errorln("GetFileName.Content-Disposition", contentDisposition)
+	return fallbackFileNameFromURL(l, resp.Request.URL.String())
+}
+
+func fallbackFileNameFromURL(l *logrus.Logger, rawURL string) string {
+	m := regexp.MustCompile(`^(.*/)?(?:$|(.+?)(?:(\.[^.]*$)|$))`).FindStringSubmatch(rawURL)
+	if m == nil || len(m) < 4 {
+		if l != nil {
+			l.Warningln("GetFileName.regexp.MustCompile.FindStringSubmatch", rawURL)
+		}
+		return ""
+	}
+	return m[2] + m[3]
+}
+
+func extractRFC5987Value(contentDisposition string) string {
+	idx := strings.Index(strings.ToLower(contentDisposition), "filename*=")
+	if idx < 0 {
+		return ""
+	}
+	value := strings.TrimSpace(contentDisposition[idx+len("filename*="):])
+	if semi := strings.Index(value, ";"); semi >= 0 {
+		value = value[:semi]
+	}
+	return strings.Trim(value, "\"")
+}
+
+func decodeRFC5987FileName(value string) string {
+	value = strings.TrimSpace(strings.Trim(value, "\""))
+	if value == "" {
+		return ""
+	}
+	parts := strings.SplitN(value, "'", 3)
+	encoded := value
+	if len(parts) == 3 {
+		encoded = parts[2]
+	}
+	decoded, err := url.PathUnescape(encoded)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(decoded)
 }
 
 // ValidateSubtitleDownloadPayload 校验下载内容是否像一个可用的字幕文件或压缩包

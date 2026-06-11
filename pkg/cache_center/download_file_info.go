@@ -22,6 +22,10 @@ func (c *CacheCenter) DownloadFileAdd(subInfo *supplier.SubInfo) error {
 	defer c.locker.Unlock()
 	c.locker.Lock()
 
+	return c.downloadFileAddLocked(subInfo)
+}
+
+func (c *CacheCenter) downloadFileAddLocked(subInfo *supplier.SubInfo) error {
 	if subInfo.FileUrl == "" {
 		return errors.New("subInfo FileUrl is empty")
 	}
@@ -70,6 +74,14 @@ func (c *CacheCenter) DownloadFileGet(fileUrlUID string, validators ...DownloadF
 	c.db.Where("uid = ?", fileUrlUID).Find(&dfs)
 
 	if len(dfs) == 0 {
+		recoveredSubInfo, recovered, err := c.recoverDownloadFileCacheLocked(fileUrlUID, validators...)
+		if err != nil {
+			return false, nil, err
+		}
+		if recovered {
+			c.Log.Infoln("DownloadFileGet", fileUrlUID, "cache_recovered")
+			return true, recoveredSubInfo, nil
+		}
 		c.Log.Debugln("DownloadFileGet", fileUrlUID, "cache_miss")
 		return false, nil, nil
 	}
@@ -120,6 +132,73 @@ func (c *CacheCenter) DownloadFileGet(fileUrlUID string, validators ...DownloadF
 
 	c.Log.Debugln("DownloadFileGet", fileUrlUID, "cache_hit")
 	return true, &subInfo, nil
+}
+
+func (c *CacheCenter) recoverDownloadFileCacheLocked(fileUrlUID string, validators ...DownloadFileCacheValidator) (*supplier.SubInfo, bool, error) {
+	pattern := filepath.Join(c.centerFolder, downloadFilesFolderName, "*", "*", fileUrlUID)
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(matches) == 0 {
+		return nil, false, nil
+	}
+
+	var latestPath string
+	var latestModTime time.Time
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if latestPath == "" || info.ModTime().After(latestModTime) {
+			latestPath = match
+			latestModTime = info.ModTime()
+		}
+	}
+	if latestPath == "" {
+		return nil, false, nil
+	}
+
+	subInfo, err := c.readDownloadSubInfoLocked(latestPath, validators...)
+	if err != nil {
+		return nil, false, nil
+	}
+	if err := c.downloadFileAddLocked(subInfo); err != nil {
+		return nil, false, err
+	}
+	return subInfo, true, nil
+}
+
+func (c *CacheCenter) readDownloadSubInfoLocked(localFileFPath string, validators ...DownloadFileCacheValidator) (*supplier.SubInfo, error) {
+	if pkg.IsFile(localFileFPath) == false {
+		return nil, errors.New("cache file missing")
+	}
+
+	bytes, err := os.ReadFile(localFileFPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var subInfo supplier.SubInfo
+	err = json.Unmarshal(bytes, &subInfo)
+	if err != nil {
+		return nil, err
+	}
+	if subInfo.FileUrl == "" || len(subInfo.Data) == 0 {
+		return nil, errors.New("empty sub info data")
+	}
+	for _, validate := range validators {
+		if validate == nil {
+			continue
+		}
+		err = validate(&subInfo)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &subInfo, nil
 }
 
 func (c *CacheCenter) deleteDownloadFileCacheLocked(df models.DownloadFileInfo, localFileFPath string) {

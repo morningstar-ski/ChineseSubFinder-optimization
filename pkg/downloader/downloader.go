@@ -14,6 +14,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/scan_logic"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/llm_subtitle_fallback"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/assrt"
 
@@ -51,6 +52,8 @@ type Downloader struct {
 	SaveSubHelper            *save_sub_helper.SaveSubHelper                   // 保存字幕的逻辑
 	ManualUploadSub2Local    *manual_upload_sub_2_local.ManualUploadSub2Local // 手动上传字幕到本地
 	PreviewQueue             *preview_queue.PreviewQueue                      // 预览队列
+
+	llmSubtitleFallback *llm_subtitle_fallback.Manager
 
 	cacheLocker   sync.Mutex
 	movieInfoMap  map[string]MovieInfo  // 给 Web 界面使用的，Key: VideoFPath
@@ -96,6 +99,10 @@ func NewDownloader(inSubFormatter ifaces.ISubFormatter, fileDownloader *file_dow
 		downloader.log,
 		downloader.subFormatter,
 		downloader.subTimelineFixerHelperEx)
+	downloader.llmSubtitleFallback = llm_subtitle_fallback.NewManager(
+		downloader.log,
+		&settings.Get().ExperimentalFunction.LLMSubtitleFallback,
+	)
 
 	downloader.ManualUploadSub2Local = manual_upload_sub_2_local.NewManualUploadSub2Local(downloader.log, downloader.SaveSubHelper, downloader.ScanLogic)
 	downloader.PreviewQueue = preview_queue.NewPreviewQueue(downloader.log)
@@ -216,6 +223,10 @@ func (d *Downloader) ReloadSettings(inSubFormatter ifaces.ISubFormatter) error {
 		d.log,
 		d.subFormatter,
 		d.subTimelineFixerHelperEx)
+	d.llmSubtitleFallback = llm_subtitle_fallback.NewManager(
+		d.log,
+		&settings.Get().ExperimentalFunction.LLMSubtitleFallback,
+	)
 	d.ManualUploadSub2Local = manual_upload_sub_2_local.NewManualUploadSub2Local(d.log, d.SaveSubHelper, d.ScanLogic)
 	d.PreviewQueue = preview_queue.NewPreviewQueue(d.log)
 

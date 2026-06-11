@@ -80,6 +80,12 @@ func TestCompareResults(t *testing.T) {
 	if comparison.Summary.BeforeHitSamples != 1 || comparison.Summary.AfterHitSamples != 2 {
 		t.Fatalf("unexpected hit summary %#v", comparison.Summary)
 	}
+	if comparison.Summary.BeforeAverageAttemptCount != 1.5 || comparison.Summary.AfterAverageAttemptCount != 1.5 {
+		t.Fatalf("unexpected attempt summary %#v", comparison.Summary)
+	}
+	if comparison.Summary.BeforeSubHDAttemptSamples != 0 || comparison.Summary.AfterSubHDAttemptSamples != 0 {
+		t.Fatalf("unexpected subhd attempt summary %#v", comparison.Summary)
+	}
 	if comparison.Samples[0].Sample.ID != "episode-001" || comparison.Samples[0].Status != SampleDiffImproved {
 		t.Fatalf("unexpected first sample comparison %#v", comparison.Samples[0])
 	}
@@ -94,6 +100,62 @@ func TestCompareResults(t *testing.T) {
 	}
 	if comparison.Providers[1].Provider != "subdl" || comparison.Providers[1].DownloadDelta != -1 {
 		t.Fatalf("unexpected subdl summary %#v", comparison.Providers[1])
+	}
+}
+
+func TestCompareResultsTracksSubHDFallbackPressure(t *testing.T) {
+	before := []SampleResult{
+		{
+			Sample: Sample{
+				ID:        "movie-001",
+				VideoPath: "C:\\Media\\Movie.mkv",
+				Kind:      SampleMovie,
+			},
+			PrimaryFailure: FailureCaptchaOCR,
+			Attempts: []ProviderAttempt{
+				{Provider: "subtitle_best", Hit: false, Downloaded: false, FailureCategory: FailureNoProviderHit},
+				{Provider: "subhd", Hit: false, Downloaded: false, FailureCategory: FailureCaptchaOCR},
+			},
+		},
+	}
+	after := []SampleResult{
+		{
+			Sample: Sample{
+				ID:        "movie-001",
+				VideoPath: "C:\\Media\\Movie.mkv",
+				Kind:      SampleMovie,
+			},
+			Attempts: []ProviderAttempt{
+				{Provider: "subtitle_best", Hit: true, Downloaded: true},
+			},
+		},
+	}
+
+	comparison, err := CompareResults(before, after)
+	if err != nil {
+		t.Fatalf("CompareResults returned error: %v", err)
+	}
+
+	if comparison.Summary.BeforeSubHDAttemptSamples != 1 || comparison.Summary.AfterSubHDAttemptSamples != 0 {
+		t.Fatalf("unexpected subhd attempt samples %#v", comparison.Summary)
+	}
+	if comparison.Summary.BeforeSubHDHitSamples != 0 || comparison.Summary.AfterSubHDHitSamples != 0 {
+		t.Fatalf("unexpected subhd hit samples %#v", comparison.Summary)
+	}
+	if comparison.Summary.BeforeSubHDDownloadSamples != 0 || comparison.Summary.AfterSubHDDownloadSamples != 0 {
+		t.Fatalf("unexpected subhd download samples %#v", comparison.Summary)
+	}
+	if comparison.Summary.BeforeSubHDCaptchaOCRSamples != 1 || comparison.Summary.AfterSubHDCaptchaOCRSamples != 0 {
+		t.Fatalf("unexpected subhd captcha ocr samples %#v", comparison.Summary)
+	}
+	if comparison.Summary.SubHDCaptchaOCRDelta != -1 {
+		t.Fatalf("unexpected subhd captcha ocr delta %#v", comparison.Summary)
+	}
+	if comparison.Summary.BeforeAverageAttemptCount != 2 || comparison.Summary.AfterAverageAttemptCount != 1 {
+		t.Fatalf("unexpected average attempt counts %#v", comparison.Summary)
+	}
+	if comparison.Summary.AverageAttemptDelta != -1 {
+		t.Fatalf("unexpected average attempt delta %#v", comparison.Summary)
 	}
 }
 
@@ -156,6 +218,9 @@ func TestWriteComparisonCSV(t *testing.T) {
 	}
 
 	output := buf.String()
+	if strings.HasPrefix(output, utf8BOM) == false {
+		t.Fatalf("csv output missing utf-8 bom: %q", output)
+	}
 	for _, want := range []string{
 		"sample_id,video_path,sample_kind,season,episode,status,before_primary_failure,after_primary_failure,before_hit_providers,after_hit_providers,before_downloaded_providers,after_downloaded_providers",
 		"episode-001,C:\\Media\\Show\\S01E01.mkv,episode,1,1,improved,no_provider_hit,,,assrt,,assrt",

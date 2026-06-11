@@ -66,6 +66,9 @@ func TestWriteCSV(t *testing.T) {
 	}
 
 	output := buf.String()
+	if strings.HasPrefix(output, utf8BOM) == false {
+		t.Fatalf("csv output missing utf-8 bom: %q", output)
+	}
 	for _, want := range []string{
 		"sample_id,video_path,sample_kind,season,episode,provider,hit,downloaded,primary_failure,provider_failure,note",
 		"tv-001,C:\\Media\\Show\\S01E01.mkv,episode,1,1,assrt,false,false,keyword_search_miss,keyword_search_miss,fallback exhausted",

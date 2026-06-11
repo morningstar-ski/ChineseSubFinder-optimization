@@ -80,6 +80,7 @@ func newLocalBrowser(opt *BrowserOptions) (*rod.Browser, error) {
 	launch := launcher.New().
 		Headless(true).
 		NoSandbox(true).
+		Leakless(false).
 		UserDataDir(filepath.Join(pkg.DefRodTmpRootFolder(), pkg.RandStringBytesMaskImprSrcSB(20)))
 
 	if proxyURL := local_http_proxy_server.GetProxyUrl(); proxyURL != "" {

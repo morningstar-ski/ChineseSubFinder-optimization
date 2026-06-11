@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -32,13 +34,23 @@ import (
 )
 
 type Supplier struct {
-	log               *logrus.Logger
-	fileDownloader    *file_downloader.FileDownloader
-	isAlive           bool
-	theSearchInterval time.Duration
+	log                    *logrus.Logger
+	fileDownloader         *file_downloader.FileDownloader
+	isAlive                bool
+	badDownloadSubIDs      sync.Map
+	badDownloadSubIDsPath  string
+	badDownloadSubIDsMutex sync.Mutex
+	theSearchInterval      time.Duration
 }
 
 var assrtSearchKeywordOrder = []string{"cn", "en", "org", "file"}
+
+const assrtBadDownloadSubIDTTL = 24 * time.Hour
+
+type persistentBadDownloadSubID struct {
+	ID        int       `json:"id"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
 
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 
@@ -51,6 +63,8 @@ func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 	}
 
 	sup.theSearchInterval = 20 * time.Second
+	sup.badDownloadSubIDsPath = resolveBadDownloadSubIDsPath(sup.log)
+	sup.loadPersistentBadDownloadSubIDs()
 
 	return &sup
 }
@@ -150,8 +164,8 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 	outSubInfoList := make([]supplier.SubInfo, 0)
 	mediaInfo, err := mix_media_info.GetMixMediaInfo(s.fileDownloader.MediaInfoDealers, videoFPath, isMovie)
 	if err != nil {
-		s.log.Errorln(s.GetSupplierName(), videoFPath, "GetMixMediaInfo", err)
-		return nil, err
+		s.log.Warningln(s.GetSupplierName(), videoFPath, "GetMixMediaInfo", err, "fallback to file keyword search")
+		mediaInfo = nil
 	}
 	searchSubResult, err := s.getSubInfoWithFallback(mediaInfo, videoFPath, isMovie)
 	if err != nil {
@@ -164,10 +178,18 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 	sortAssrtSearchSubs(searchSubResult.Sub.Subs, videoFPath, isMovie)
 
 	videoFileName := filepath.Base(videoFPath)
-	for index, subInfo := range searchSubResult.Sub.Subs {
+	for index, searchSub := range searchSubResult.Sub.Subs {
+		if s.shouldSkipBadDownloadSubID(searchSub.Id) {
+			s.log.Infoln(s.GetSupplierName(), videoFileName, "Skip known bad subtitle candidate", searchSub.Id)
+			continue
+		}
 
 		// 闂佸吋鍎抽崲鑼躲亹閸ヮ剙绀傞柧姘€荤粔濂告煟閵娿儱顏х紒妤€鎳忓顏堟寠婢跺瀣€闂佺鈧崑?
-		oneSubDetail, err := s.getSubDetail(int(subInfo.Id))
+		if shouldSkipAssrtCandidateForTarget(searchSub, mediaInfo, videoFPath, isMovie) {
+			s.log.Infoln(s.GetSupplierName(), videoFileName, "Skip mismatched subtitle candidate", searchSub.Id, searchSub.Videoname)
+			continue
+		}
+		oneSubDetail, err := s.getSubDetail(int(searchSub.Id))
 		if err != nil {
 			s.log.Errorln("getSubDetail", err)
 			continue
@@ -181,9 +203,12 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 		subInfo, err := s.fileDownloader.Get(s.GetSupplierName(), int64(index), videoFileName, nowSubDownloadUrl,
 			0, 0,
 			// 閻庣數澧楅〃鍛村春鐏炲墽鈻旈柍褜鍓氱粙澶愵敂閸℃妫楀┑鐐茬墕閿曪箑鈻撻幋锕€鍗冲鍓侇焾閺?FileDownloadUrl 闂佹眹鍔岀€氼喗绔熼幒鎴殫濞达絽鎽滈幗鐔虹磼濡ゅ绱伴悷?
-			fmt.Sprintf("%s-%s-%d", s.GetSupplierName(), subInfo.NativeName, subInfo.Id),
+			fmt.Sprintf("%s-%s-%d", s.GetSupplierName(), searchSub.NativeName, searchSub.Id),
 		)
 		if err != nil {
+			if s.rememberBadDownloadSubID(searchSub.Id, err) {
+				s.log.Infoln(s.GetSupplierName(), videoFileName, "Remember bad subtitle candidate", searchSub.Id, err)
+			}
 			s.log.Error("FileDownloader.Get", err)
 			continue
 		}
@@ -198,10 +223,148 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 	return outSubInfoList, nil
 }
 
+func (s *Supplier) shouldSkipBadDownloadSubID(subID assrtFlexibleInt) bool {
+	value, found := s.badDownloadSubIDs.Load(int(subID))
+	if found == false {
+		return false
+	}
+	recordedAt, ok := value.(time.Time)
+	if ok == false {
+		s.badDownloadSubIDs.Delete(int(subID))
+		_ = s.persistBadDownloadSubIDs()
+		return false
+	}
+	if time.Since(recordedAt) > assrtBadDownloadSubIDTTL {
+		s.badDownloadSubIDs.Delete(int(subID))
+		_ = s.persistBadDownloadSubIDs()
+		return false
+	}
+	return true
+}
+
+func (s *Supplier) rememberBadDownloadSubID(subID assrtFlexibleInt, err error) bool {
+	if err == nil || isPermanentAssrtDownloadError(err) == false {
+		return false
+	}
+	s.badDownloadSubIDs.Store(int(subID), time.Now().UTC())
+	if persistErr := s.persistBadDownloadSubIDs(); persistErr != nil && s.log != nil {
+		s.log.Warningln(s.GetSupplierName(), "persistBadDownloadSubIDs", persistErr)
+	}
+	return true
+}
+
+func isPermanentAssrtDownloadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "invalid archive payload")
+}
+
+func resolveBadDownloadSubIDsPath(log *logrus.Logger) string {
+	cacheCenterFolder, err := pkg.GetRootCacheCenterFolder()
+	if err != nil {
+		if log != nil {
+			log.Warningln(common2.SubSiteAssrt, "GetRootCacheCenterFolder", err)
+		}
+		return ""
+	}
+	return filepath.Join(cacheCenterFolder, "assrt_bad_download_sub_ids.json")
+}
+
+func (s *Supplier) loadPersistentBadDownloadSubIDs() {
+	if s.badDownloadSubIDsPath == "" {
+		return
+	}
+	body, err := os.ReadFile(s.badDownloadSubIDsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		if s.log != nil {
+			s.log.Warningln(s.GetSupplierName(), "ReadFile", s.badDownloadSubIDsPath, err)
+		}
+		return
+	}
+
+	var entries []persistentBadDownloadSubID
+	if err = json.Unmarshal(body, &entries); err != nil {
+		if s.log != nil {
+			s.log.Warningln(s.GetSupplierName(), "json.Unmarshal", s.badDownloadSubIDsPath, err)
+		}
+		return
+	}
+
+	now := time.Now().UTC()
+	changed := false
+	for _, entry := range entries {
+		if entry.ID == 0 {
+			changed = true
+			continue
+		}
+		if entry.UpdatedAt.IsZero() || now.Sub(entry.UpdatedAt) > assrtBadDownloadSubIDTTL {
+			changed = true
+			continue
+		}
+		s.badDownloadSubIDs.Store(entry.ID, entry.UpdatedAt.UTC())
+	}
+	if changed {
+		_ = s.persistBadDownloadSubIDs()
+	}
+}
+
+func (s *Supplier) persistBadDownloadSubIDs() error {
+	if s.badDownloadSubIDsPath == "" {
+		return nil
+	}
+
+	s.badDownloadSubIDsMutex.Lock()
+	defer s.badDownloadSubIDsMutex.Unlock()
+
+	now := time.Now().UTC()
+	entries := make([]persistentBadDownloadSubID, 0)
+	s.badDownloadSubIDs.Range(func(key, value interface{}) bool {
+		id, ok := key.(int)
+		if ok == false || id == 0 {
+			return true
+		}
+		recordedAt, ok := value.(time.Time)
+		if ok == false || recordedAt.IsZero() || now.Sub(recordedAt) > assrtBadDownloadSubIDTTL {
+			s.badDownloadSubIDs.Delete(key)
+			return true
+		}
+		entries = append(entries, persistentBadDownloadSubID{
+			ID:        id,
+			UpdatedAt: recordedAt.UTC(),
+		})
+		return true
+	})
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].UpdatedAt.Equal(entries[j].UpdatedAt) {
+			return entries[i].ID < entries[j].ID
+		}
+		return entries[i].UpdatedAt.Before(entries[j].UpdatedAt)
+	})
+
+	body, err := json.Marshal(entries)
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(s.badDownloadSubIDsPath), os.ModePerm); err != nil {
+		return err
+	}
+
+	tempPath := s.badDownloadSubIDsPath + ".tmp"
+	if err = os.WriteFile(tempPath, body, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, s.badDownloadSubIDsPath)
+}
+
 func (s *Supplier) getSubInfoWithFallback(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool) (*SearchSubResult, error) {
 	videoFileName := filepath.Base(videoFPath)
 	for _, keyWordType := range assrtSearchKeywordOrder {
-		keyWord, err := mix_media_info.KeyWordSelect(mediaInfo, videoFPath, isMovie, keyWordType)
+		keyWord, err := selectAssrtSearchKeyword(mediaInfo, videoFPath, isMovie, keyWordType)
 		if err != nil {
 			s.log.Infoln(s.GetSupplierName(), videoFileName, "Skip Search KeyWordType", keyWordType, err)
 			continue
@@ -224,11 +387,19 @@ func (s *Supplier) getSubInfoWithFallback(mediaInfo *models.MediaInfo, videoFPat
 	return nil, nil
 }
 
+func selectAssrtSearchKeyword(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, keyWordType string) (string, error) {
+	if mediaInfo == nil && keyWordType != "file" {
+		return "", errors.New("media info unavailable")
+	}
+
+	return mix_media_info.KeyWordSelect(mediaInfo, videoFPath, isMovie, keyWordType)
+}
+
 func (s *Supplier) getSubInfoEx(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, keyWordType string) (bool, *SearchSubResult, error) {
 
 	var searchSubResult *SearchSubResult
 	var err error
-	keyWord, err := mix_media_info.KeyWordSelect(mediaInfo, videoFPath, isMovie, keyWordType)
+	keyWord, err := selectAssrtSearchKeyword(mediaInfo, videoFPath, isMovie, keyWordType)
 	if err != nil {
 		s.log.Errorln(s.GetSupplierName(), videoFPath, "keyWordSelect", err)
 		return false, searchSubResult, err
@@ -402,6 +573,97 @@ func parseAssrtTargetEpisode(matcher ranking.TargetMatcher) int {
 		return 0
 	}
 	return episode
+}
+
+func shouldSkipAssrtCandidateForTarget(sub SearchSubItem, mediaInfo *models.MediaInfo, videoFPath string, isMovie bool) bool {
+	if isMovie {
+		candidateTitle := assrtCandidateTitle(sub)
+		targetTitles := assrtTargetTitles(mediaInfo, videoFPath)
+		if candidateTitle != "" && len(targetTitles) > 0 && assrtTitleMatchesAny(candidateTitle, targetTitles) == false {
+			return true
+		}
+		return false
+	}
+
+	matcher := ranking.NewTargetMatcher(videoFPath, false)
+	targetSeason := parseAssrtTargetSeason(matcher)
+	targetEpisode := parseAssrtTargetEpisode(matcher)
+	if targetSeason == 0 && targetEpisode == 0 {
+		return false
+	}
+
+	candidateSeason, candidateEpisode := parseAssrtSeasonEpisode(sub)
+	if candidateSeason == 0 && candidateEpisode == 0 {
+		return false
+	}
+	if candidateSeason != 0 && targetSeason != 0 && candidateSeason != targetSeason {
+		return true
+	}
+	if candidateEpisode == 0 {
+		return false
+	}
+	if targetEpisode != 0 && candidateEpisode != targetEpisode {
+		return true
+	}
+
+	return false
+}
+
+func assrtCandidateTitle(sub SearchSubItem) string {
+	for _, name := range []string{sub.Videoname, sub.NativeName} {
+		if title := assrtNormalizedTitleFromName(name); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func assrtTargetTitles(mediaInfo *models.MediaInfo, videoFPath string) []string {
+	titles := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+	appendTitle := func(title string) {
+		normalized := assrtNormalizedTitleFromName(title)
+		if normalized == "" {
+			return
+		}
+		if _, ok := seen[normalized]; ok {
+			return
+		}
+		seen[normalized] = struct{}{}
+		titles = append(titles, normalized)
+	}
+
+	appendTitle(filepath.Base(videoFPath))
+	if mediaInfo != nil {
+		appendTitle(mediaInfo.TitleCn)
+		appendTitle(mediaInfo.TitleEn)
+		appendTitle(mediaInfo.OriginalTitle)
+	}
+
+	return titles
+}
+
+func assrtTitleMatchesAny(candidateTitle string, targetTitles []string) bool {
+	for _, targetTitle := range targetTitles {
+		if targetTitle == candidateTitle {
+			return true
+		}
+	}
+	return false
+}
+
+func assrtNormalizedTitleFromName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	if info, err := decode.GetVideoInfoFromFileName(name); err == nil && info != nil && info.Title != "" {
+		name = info.Title
+	} else {
+		name = strings.TrimSuffix(name, filepath.Ext(name))
+	}
+	name = pkg.ReplaceSpecString(name, " ")
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
 }
 
 func (s *Supplier) getSubDetail(subID int) (OneSubDetail, error) {

@@ -2,12 +2,12 @@ package subdl
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -71,6 +71,10 @@ func (s *Supplier) CheckAlive() (bool, int64) {
 		"languages":     subdlDefaultLanguage,
 		"subs_per_page": "1",
 	})
+	if shouldTreatCheckAliveProbeAsHealthy(err) {
+		s.isAlive = true
+		return true, time.Since(startT).Milliseconds()
+	}
 	if err != nil {
 		s.log.Errorln(s.GetSupplierName(), "CheckAlive.SearchSubtitles", err)
 		s.isAlive = false
@@ -79,6 +83,10 @@ func (s *Supplier) CheckAlive() (bool, int64) {
 
 	s.isAlive = true
 	return true, time.Since(startT).Milliseconds()
+}
+
+func shouldTreatCheckAliveProbeAsHealthy(err error) bool {
+	return err == nil || errors.Is(err, errSubdlStatusFalse)
 }
 
 func (s *Supplier) IsAlive() bool {
@@ -160,8 +168,8 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 
 	mediaInfo, err := mix_media_info.GetMixMediaInfo(s.fileDownloader.MediaInfoDealers, videoFPath, isMovie)
 	if err != nil {
-		s.log.Errorln(s.GetSupplierName(), videoFPath, "GetMixMediaInfo", err)
-		return nil, err
+		s.log.Warningln(s.GetSupplierName(), videoFPath, "GetMixMediaInfo", err, "fallback to title-based search")
+		mediaInfo = nil
 	}
 
 	candidates, err := s.searchCandidatesWithFallback(mediaInfo, videoFPath, isMovie, season, episode)
@@ -175,7 +183,16 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 	videoFileName := filepath.Base(videoFPath)
 	outSubInfoList := make([]supplier.SubInfo, 0)
 	for index, candidate := range candidates {
-		cacheKey := fmt.Sprintf("%s-%s-%d-%s", s.GetSupplierName(), mediaInfo.ImdbId, index, candidate.DownloadURL)
+		imdbID := ""
+		if mediaInfo != nil {
+			imdbID = mediaInfo.ImdbId
+		}
+		cacheKey := file_downloader.BuildCacheKey(
+			s.GetSupplierName(),
+			imdbID,
+			strconv.Itoa(index),
+			candidate.DownloadURL,
+		)
 		subInfo, err := s.fileDownloader.Get(s.GetSupplierName(), int64(index), videoFileName, candidate.DownloadURL, 0, 0, cacheKey)
 		if err != nil {
 			s.log.Errorln(s.GetSupplierName(), "FileDownloader.Get", err)
@@ -231,16 +248,20 @@ func (s *Supplier) buildSearchQueries(mediaInfo *models.MediaInfo, videoFPath st
 		base["unpack"] = "1"
 	}
 
-	if year := normalizeYear(mediaInfo.Year); year != "" {
-		base["year"] = year
+	if mediaInfo != nil {
+		if year := normalizeYear(mediaInfo.Year); year != "" {
+			base["year"] = year
+		}
 	}
 
 	out := make([]map[string]string, 0)
-	if mediaInfo.ImdbId != "" {
-		out = append(out, cloneQueryMap(base, map[string]string{"imdb_id": mediaInfo.ImdbId}))
-	}
-	if mediaInfo.TmdbId != "" {
-		out = append(out, cloneQueryMap(base, map[string]string{"tmdb_id": mediaInfo.TmdbId}))
+	if mediaInfo != nil {
+		if mediaInfo.ImdbId != "" {
+			out = append(out, cloneQueryMap(base, map[string]string{"imdb_id": mediaInfo.ImdbId}))
+		}
+		if mediaInfo.TmdbId != "" {
+			out = append(out, cloneQueryMap(base, map[string]string{"tmdb_id": mediaInfo.TmdbId}))
+		}
 	}
 
 	for _, title := range orderedSearchTitles(mediaInfo, videoFPath) {
@@ -254,13 +275,17 @@ func (s *Supplier) buildSearchQueries(mediaInfo *models.MediaInfo, videoFPath st
 }
 
 func orderedSearchTitles(mediaInfo *models.MediaInfo, videoFPath string) []string {
-	out := []string{
+	if mediaInfo == nil {
+		return expandSearchTitleVariants([]string{
+			normalizeVideoTitle(videoFPath),
+		})
+	}
+	return expandSearchTitleVariants([]string{
 		mediaInfo.TitleEn,
 		mediaInfo.OriginalTitle,
 		mediaInfo.TitleCn,
 		normalizeVideoTitle(videoFPath),
-	}
-	return out
+	})
 }
 
 func normalizeVideoTitle(videoFPath string) string {
@@ -277,6 +302,50 @@ func normalizeYear(year string) string {
 		return year[:4]
 	}
 	return ""
+}
+
+func expandSearchTitleVariants(items []string) []string {
+	out := make([]string, 0, len(items)*2)
+	seen := make(map[string]struct{})
+	for _, item := range items {
+		for _, variant := range titleVariants(item) {
+			key := strings.ToLower(strings.TrimSpace(variant))
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, variant)
+		}
+	}
+	return out
+}
+
+func titleVariants(input string) []string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil
+	}
+
+	variants := []string{input}
+	normalized := strings.Join(strings.Fields(stripSearchPunctuation(input)), " ")
+	if normalized != "" && strings.EqualFold(normalized, input) == false {
+		variants = append(variants, normalized)
+	}
+	return variants
+}
+
+func stripSearchPunctuation(input string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r), unicode.IsNumber(r), unicode.IsSpace(r):
+			return r
+		default:
+			return ' '
+		}
+	}, input)
 }
 
 func selectCandidates(results []SubtitleHit, videoFPath string, isMovie bool, season, episode, limit int) []subtitleCandidate {

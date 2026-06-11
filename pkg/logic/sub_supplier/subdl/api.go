@@ -2,11 +2,14 @@ package subdl
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/go-resty/resty/v2"
 )
+
+var errSubdlStatusFalse = errors.New("subdl search returned status=false")
 
 type Api struct {
 	apiKey string
@@ -30,7 +33,7 @@ func (a *Api) SearchSubtitles(client *resty.Client, queryParams map[string]strin
 	}
 	searchResponse.populateLegacyResults()
 	if searchResponse.Status == false {
-		return nil, fmt.Errorf("subdl search returned status=false")
+		return nil, fmt.Errorf("%w", errSubdlStatusFalse)
 	}
 
 	return &searchResponse, nil

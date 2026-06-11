@@ -1,6 +1,7 @@
 package subdl
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -27,6 +28,57 @@ func TestBuildSearchQueries(t *testing.T) {
 	}
 	if queries[0]["type"] != "tv" || queries[0]["season_number"] != "1" || queries[0]["episode_number"] != "3" {
 		t.Fatalf("expected tv episode params, got %#v", queries[0])
+	}
+}
+
+func TestBuildSearchQueriesWithoutMediaInfoFallsBackToFilmName(t *testing.T) {
+	supplier := &Supplier{topic: 1, api: NewApi("test-key")}
+
+	queries := supplier.buildSearchQueries(nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL.mkv"), false, 1, 3)
+	if len(queries) == 0 {
+		t.Fatal("expected fallback queries without media info")
+	}
+	if queries[0]["film_name"] != "My Show" {
+		t.Fatalf("expected file-name fallback query, got %#v", queries[0])
+	}
+	if queries[0]["season_number"] != "1" || queries[0]["episode_number"] != "3" {
+		t.Fatalf("expected episode params in fallback query, got %#v", queries[0])
+	}
+}
+
+func TestOrderedSearchTitlesAddsPunctuationStrippedVariant(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn: "Will & Harper",
+	}
+
+	titles := orderedSearchTitles(mediaInfo, filepath.Join("C:\\", "Media", "Will.&.Harper.2024.mkv"))
+	if len(titles) < 2 {
+		t.Fatalf("expected variants, got %#v", titles)
+	}
+	if titles[0] != "Will & Harper" {
+		t.Fatalf("expected original title first, got %#v", titles)
+	}
+	found := false
+	for _, title := range titles {
+		if title == "Will Harper" {
+			found = true
+			break
+		}
+	}
+	if found == false {
+		t.Fatalf("expected punctuation-stripped variant in %#v", titles)
+	}
+}
+
+func TestShouldTreatCheckAliveProbeAsHealthy(t *testing.T) {
+	if shouldTreatCheckAliveProbeAsHealthy(nil) == false {
+		t.Fatal("nil probe error should be treated as healthy")
+	}
+	if shouldTreatCheckAliveProbeAsHealthy(errSubdlStatusFalse) == false {
+		t.Fatal("status=false probe should be treated as healthy")
+	}
+	if shouldTreatCheckAliveProbeAsHealthy(errors.New("network down")) != false {
+		t.Fatal("network failure should not be treated as healthy")
 	}
 }
 

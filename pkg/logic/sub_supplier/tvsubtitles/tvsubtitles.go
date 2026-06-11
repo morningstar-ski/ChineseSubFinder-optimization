@@ -40,6 +40,8 @@ type seasonPlan struct {
 	AllEpisodesPage      string
 }
 
+const tvSubtitlesSearchRetryCount = 2
+
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 	return &Supplier{
 		log:            fileDownloader.Log,
@@ -162,7 +164,7 @@ func (s *Supplier) getEpisodeSubtitle(videoFPath string, season, episode int) ([
 		return nil, err
 	}
 
-	cacheKey := fmt.Sprintf("%s-%s", s.GetSupplierName(), finalDownloadURL)
+	cacheKey := file_downloader.BuildCacheKey(s.GetSupplierName(), finalDownloadURL)
 	subInfo, err := s.fileDownloader.Get(
 		s.GetSupplierName(),
 		0,
@@ -212,6 +214,10 @@ func (s *Supplier) resolveSubtitlePageURL(client *resty.Client, mediaInfo *model
 }
 
 func (s *Supplier) searchShows(client *resty.Client, keyword string) ([]showSearchResult, error) {
+	restoreRetryCount := client.RetryCount
+	client.SetRetryCount(tvSubtitlesSearchRetryCount)
+	defer client.SetRetryCount(restoreRetryCount)
+
 	resp, err := client.R().
 		SetFormData(map[string]string{"qs": keyword}).
 		Post(settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl + settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl)

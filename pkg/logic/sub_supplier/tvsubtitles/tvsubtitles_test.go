@@ -1,9 +1,13 @@
 package tvsubtitles
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 )
 
 func TestParseSearchResults(t *testing.T) {
@@ -119,5 +123,61 @@ func TestSelectBestShowRejectsWrongSeries(t *testing.T) {
 	result := selectBestShow(results, mediaInfo, "Lopez vs Lopez")
 	if result != nil {
 		t.Fatalf("selectBestShow() = %#v; want nil", result)
+	}
+}
+
+func TestSearchShowsRetriesEOFUntilSuccess(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cfg := settings.Get()
+	oldRootURL := cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl
+	oldSearchURL := cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl
+	t.Cleanup(func() {
+		cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl = oldRootURL
+		cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl = oldSearchURL
+	})
+
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts <= 2 {
+			hijacker, ok := w.(http.Hijacker)
+			if ok == false {
+				t.Fatalf("response writer does not support hijacking")
+			}
+			conn, _, err := hijacker.Hijack()
+			if err != nil {
+				t.Fatalf("Hijack() error = %v", err)
+			}
+			_ = conn.Close()
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<p class="description">Search results</p><ul><li><div><a href="/tvshow-2434.html">From (2022-2026)</a></div></li></ul>`))
+	}))
+	defer server.Close()
+
+	cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl = server.URL
+	cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl = "/search1.php"
+
+	client, err := pkg.NewHttpClient()
+	if err != nil {
+		t.Fatalf("NewHttpClient() error = %v", err)
+	}
+	client.SetRetryCount(0)
+
+	supplier := &Supplier{}
+	results, err := supplier.searchShows(client, "From")
+	if err != nil {
+		t.Fatalf("searchShows() error = %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+	if len(results) != 1 || results[0].ID != 2434 {
+		t.Fatalf("unexpected results %#v", results)
+	}
+	if client.RetryCount != 0 {
+		t.Fatalf("client retry count should be restored, got %d", client.RetryCount)
 	}
 }

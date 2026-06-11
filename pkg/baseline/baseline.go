@@ -7,6 +7,8 @@ import (
 	"strconv"
 )
 
+const utf8BOM = "\ufeff"
+
 type FailureCategory string
 
 const (
@@ -16,6 +18,7 @@ const (
 	FailureBadArchive    FailureCategory = "bad_archive"
 	FailureDeadProvider  FailureCategory = "dead_provider"
 	FailureDownloadError FailureCategory = "download_error"
+	FailureCaptchaOCR    FailureCategory = "captcha_ocr_failed"
 )
 
 type SampleKind string
@@ -104,6 +107,9 @@ func validateSample(sample Sample) error {
 }
 
 func WriteCSV(w io.Writer, results []SampleResult) error {
+	if err := writeUTF8BOM(w); err != nil {
+		return err
+	}
 	writer := csv.NewWriter(w)
 	if err := writer.Write([]string{
 		"sample_id",
@@ -149,6 +155,11 @@ func WriteCSV(w io.Writer, results []SampleResult) error {
 	return writer.Error()
 }
 
+func writeUTF8BOM(w io.Writer) error {
+	_, err := io.WriteString(w, utf8BOM)
+	return err
+}
+
 func validateFailureCategory(category FailureCategory) error {
 	switch category {
 	case FailureNone,
@@ -156,7 +167,8 @@ func validateFailureCategory(category FailureCategory) error {
 		FailureKeywordMiss,
 		FailureBadArchive,
 		FailureDeadProvider,
-		FailureDownloadError:
+		FailureDownloadError,
+		FailureCaptchaOCR:
 		return nil
 	default:
 		return fmt.Errorf("unknown failure category %q", category)

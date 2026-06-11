@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"os"
-	"time"
+	"path/filepath"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/baseline"
@@ -24,16 +25,19 @@ func main() {
 	csvPath := flag.String("csv", "", "optional path to output CSV file")
 	configRoot := flag.String("config-root", "", "optional path to ChineseSubFinder config root")
 	checkSuppliers := flag.Bool("check-suppliers", false, "check supplier availability before replay")
+	cacheName := flag.String("cache-name", "", "optional stable cache namespace for download reuse")
+	freshCache := flag.Bool("fresh-cache", false, "clear the selected baselinelive cache before replay")
+	liteMode := flag.Bool("lite-mode", true, "run in lite mode and skip browser-only suppliers such as subhd")
 	flag.Parse()
 
-	if err := run(*inputPath, *outputPath, *csvPath, *configRoot, *checkSuppliers); err != nil {
+	if err := run(*inputPath, *outputPath, *csvPath, *configRoot, *checkSuppliers, *cacheName, *freshCache, *liteMode); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(inputPath string, outputPath string, csvPath string, configRoot string, checkSuppliers bool) error {
-	evaluator, cleanup, err := buildLiveEvaluator(configRoot, checkSuppliers)
+func run(inputPath string, outputPath string, csvPath string, configRoot string, checkSuppliers bool, cacheName string, freshCache bool, liteMode bool) error {
+	evaluator, cleanup, err := buildLiveEvaluator(configRoot, checkSuppliers, cacheName, freshCache, liteMode)
 	if err != nil {
 		return err
 	}
@@ -69,22 +73,30 @@ func runWithEvaluator(inputPath string, outputPath string, csvPath string, evalu
 	return nil
 }
 
-func buildLiveEvaluator(configRoot string, checkSuppliers bool) (baseline.Evaluator, func(), error) {
+func buildLiveEvaluator(configRoot string, checkSuppliers bool, cacheNameOverride string, freshCache bool, liteMode bool) (baseline.Evaluator, func(), error) {
 	resolvedConfigRoot := resolveConfigRoot(configRoot)
-	pkg.SetLiteMode(true)
+	restoreWorkRoot, err := enterWorkRoot(resolvedConfigRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	pkg.SetLiteMode(liteMode)
 	pkg.SetLinuxConfigPathInSelfPath(resolvedConfigRoot)
 	settings.SetConfigRootPath(resolvedConfigRoot)
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 
 	authKey := loadAuthKey(logger)
-	cacheName := "baseline_live_" + time.Now().Format("20060102150405.000000000")
+	cacheName := resolveCacheName(resolvedConfigRoot, cacheNameOverride)
+	if freshCache {
+		cache_center.DelDb(cacheName)
+	}
 	cacheCenter := cache_center.NewCacheCenter(cacheName, logger)
 	fileDownloaderInstance := file_downloader.NewFileDownloader(cacheCenter, authKey)
 	tmdbHelper, err := buildTmdbHelperFromSettings(logger)
 	if err != nil {
 		cacheCenter.Close()
 		cache_center.DelDb(cacheName)
+		restoreWorkRoot()
 		return nil, nil, err
 	}
 	fileDownloaderInstance.MediaInfoDealers.SetTmdbHelperInstance(tmdbHelper)
@@ -96,12 +108,13 @@ func buildLiveEvaluator(configRoot string, checkSuppliers bool) (baseline.Evalua
 	if err := process.Wait(); err != nil {
 		cacheCenter.Close()
 		cache_center.DelDb(cacheName)
+		restoreWorkRoot()
 		return nil, nil, err
 	}
 
 	cleanup := func() {
 		cacheCenter.Close()
-		cache_center.DelDb(cacheName)
+		restoreWorkRoot()
 	}
 
 	return baseline.NewSupplierEvaluator(logger, process.SubSupplierHub.Suppliers...), cleanup, nil
@@ -113,6 +126,42 @@ func resolveConfigRoot(configRoot string) string {
 	}
 
 	return pkg.ConfigRootDirFPath()
+}
+
+func resolveCacheName(configRoot string, cacheNameOverride string) string {
+	if cacheNameOverride != "" {
+		return cacheNameOverride
+	}
+
+	absConfigRoot, err := filepath.Abs(configRoot)
+	if err != nil {
+		absConfigRoot = configRoot
+	}
+
+	cacheKey := fmt.Sprintf("%x", sha256.Sum256([]byte(absConfigRoot)))
+	return "baseline_live_" + cacheKey[:16]
+}
+
+func enterWorkRoot(configRoot string) (func(), error) {
+	absConfigRoot, err := filepath.Abs(configRoot)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(absConfigRoot, os.ModePerm); err != nil {
+		return nil, err
+	}
+
+	originalWorkingDir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chdir(absConfigRoot); err != nil {
+		return nil, err
+	}
+
+	return func() {
+		_ = os.Chdir(originalWorkingDir)
+	}, nil
 }
 
 func loadAuthKey(logger *logrus.Logger) random_auth_key.AuthKey {

@@ -6,9 +6,25 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
 	"github.com/sirupsen/logrus"
 )
+
+func TestOverDailyDownloadLimitTreatsNegativeLimitAsUnlimited(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+
+	oldLimit := settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit
+	settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit = -1
+	defer func() {
+		settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit = oldLimit
+	}()
+
+	supplier := &Supplier{log: logrus.New()}
+	if supplier.OverDailyDownloadLimit() {
+		t.Fatal("expected negative daily download limit to mean unlimited")
+	}
+}
 
 func TestWhichEpisodeNeedDownloadSubFiltersWrongSeriesTitle(t *testing.T) {
 	supplier := &Supplier{log: logrus.New()}

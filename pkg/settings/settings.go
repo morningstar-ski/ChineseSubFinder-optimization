@@ -185,6 +185,8 @@ func (s *Settings) ensureDefaults() {
 	}
 	if s.ExperimentalFunction == nil {
 		s.ExperimentalFunction = NewExperimentalFunction()
+	} else {
+		s.ExperimentalFunction.ensureDefaults()
 	}
 }
 

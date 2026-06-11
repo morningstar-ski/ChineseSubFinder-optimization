@@ -57,6 +57,9 @@ func TestRunWithEvaluator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile csv returned error: %v", err)
 	}
+	if strings.HasPrefix(string(csvBytes), "\ufeff") == false {
+		t.Fatalf("csv missing utf-8 bom %q", string(csvBytes))
+	}
 	if strings.Contains(string(csvBytes), "movie-001,C:\\Media\\Movie.mkv,movie") == false {
 		t.Fatalf("unexpected csv content %s", string(csvBytes))
 	}
@@ -74,6 +77,59 @@ func TestResolveConfigRoot(t *testing.T) {
 			t.Fatalf("resolveConfigRoot default = %s", got)
 		}
 	})
+}
+
+func TestResolveCacheName(t *testing.T) {
+	t.Run("explicit override", func(t *testing.T) {
+		if got := resolveCacheName("C:\\tmp\\config", "manual-cache"); got != "manual-cache" {
+			t.Fatalf("resolveCacheName override = %s", got)
+		}
+	})
+
+	t.Run("stable hash from config root", func(t *testing.T) {
+		left := resolveCacheName("C:\\tmp\\config", "")
+		right := resolveCacheName("C:\\tmp\\config", "")
+		if left != right {
+			t.Fatalf("resolveCacheName should be stable, got %q and %q", left, right)
+		}
+		if strings.HasPrefix(left, "baseline_live_") == false {
+			t.Fatalf("resolveCacheName prefix = %q", left)
+		}
+		if len(left) != len("baseline_live_")+16 {
+			t.Fatalf("resolveCacheName length = %d, value = %q", len(left), left)
+		}
+	})
+}
+
+func TestEnterWorkRoot(t *testing.T) {
+	originalWorkingDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd returned error: %v", err)
+	}
+
+	workRoot := filepath.Join(t.TempDir(), "config-root")
+	restoreWorkingDir, err := enterWorkRoot(workRoot)
+	if err != nil {
+		t.Fatalf("enterWorkRoot returned error: %v", err)
+	}
+	t.Cleanup(restoreWorkingDir)
+
+	gotWorkingDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd after enterWorkRoot returned error: %v", err)
+	}
+	if gotWorkingDir != workRoot {
+		t.Fatalf("working directory = %q, want %q", gotWorkingDir, workRoot)
+	}
+
+	restoreWorkingDir()
+	gotWorkingDir, err = os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd after restore returned error: %v", err)
+	}
+	if gotWorkingDir != originalWorkingDir {
+		t.Fatalf("restored working directory = %q, want %q", gotWorkingDir, originalWorkingDir)
+	}
 }
 
 func TestLoadAuthKeyFallsBackToDefaults(t *testing.T) {

@@ -109,9 +109,13 @@ func (s *Supplier) IsAlive() bool {
 }
 
 func (s *Supplier) OverDailyDownloadLimit() bool {
-	if settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit == 0 {
+	limit := settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit
+	if limit == 0 {
 		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit is 0, will Skip Download")
 		return true
+	}
+	if limit < 0 {
+		return false
 	}
 
 	// 需要查询今天的限额
@@ -121,7 +125,7 @@ func (s *Supplier) OverDailyDownloadLimit() bool {
 		s.log.Errorln(s.GetSupplierName(), "DailyDownloadCountGet", err)
 		return true
 	}
-	if count >= settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit {
+	if count >= limit {
 		// 超限了
 		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit:", settings.Get().AdvancedSettings.SuppliersSettings.SubHD.DailyDownloadLimit, "Now Is:", count)
 		return true

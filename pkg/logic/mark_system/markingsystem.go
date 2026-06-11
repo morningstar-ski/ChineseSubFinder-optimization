@@ -1,11 +1,18 @@
 package mark_system
 
 import (
+	"path/filepath"
+	"strings"
+
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/ass"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/srt"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/ranking"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
+	language2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/subparser"
 	"github.com/sirupsen/logrus"
 )
@@ -105,6 +112,66 @@ func (m MarkingSystem) SelectEachSiteTop1SubFile(organizeSubFiles []string) ([]s
 	return outSiteName, outSubParserFileInfos
 }
 
+// SelectBestEnglishSubFile 在中文字幕候选失败后，选择最匹配视频版本的英文候选字幕。
+func (m MarkingSystem) SelectBestEnglishSubFile(organizeSubFiles []string, targetVideoFullPath string) *subparser.FileInfo {
+	subInfoDict := m.parseSubFileInfo(organizeSubFiles)
+	siteNames := make([]string, 0, len(subInfoDict))
+	for siteName := range subInfoDict {
+		siteNames = append(siteNames, siteName)
+	}
+	orderedSiteNames := common.OrderSubSiteNames(siteNames, m.subSiteSequence)
+
+	targetName := filepath.Base(targetVideoFullPath)
+	targetInfo, _ := decode.GetVideoInfoFromFileName(targetName)
+	isMovie := targetInfo == nil || (targetInfo.Season == 0 && targetInfo.Episode == 0)
+	targetSeason := 0
+	targetEpisode := 0
+	if targetInfo != nil {
+		targetSeason = targetInfo.Season
+		targetEpisode = targetInfo.Episode
+	}
+	matcher := ranking.NewTargetMatcher(targetVideoFullPath, isMovie)
+
+	var best *subparser.FileInfo
+	bestScore := 0
+	hasBest := false
+
+	for siteIndex, siteName := range orderedSiteNames {
+		infos := subInfoDict[siteName]
+		for idx := range infos {
+			info := infos[idx]
+			if isEnglishFallbackCandidate(info) == false {
+				continue
+			}
+
+			score := ranking.ScoreCandidate(matcher, englishCandidateMetadata(info, len(orderedSiteNames)-siteIndex), ranking.CandidateScoreSpec{
+				IsMovie:       isMovie,
+				TargetSeason:  targetSeason,
+				TargetEpisode: targetEpisode,
+				EpisodeMatchWeights: &ranking.EpisodeMatchWeights{
+					ExactMatch:     40,
+					SeasonPack:     10,
+					WrongEpisode:   -35,
+					SeasonMatch:    0,
+					WrongSeason:    0,
+					WrongEpisodeSB: 0,
+				},
+				SubTypePriority:     1,
+				HIPenalty:           -3,
+				ReleaseMatchWeights: ranking.StandardReleaseMatchWeights,
+			})
+			if hasBest == false || score > bestScore {
+				infoCopy := info
+				best = &infoCopy
+				bestScore = score
+				hasBest = true
+			}
+		}
+	}
+
+	return best
+}
+
 // parseSubFileInfo 从文件解析字幕信息
 func (m MarkingSystem) parseSubFileInfo(organizeSubFiles []string) map[string][]subparser.FileInfo {
 	// 一个网站可能就算取了 Top1 字幕，也可能是返回一个压缩包，然后解压完就是多个字幕，所以
@@ -130,4 +197,34 @@ func (m MarkingSystem) parseSubFileInfo(organizeSubFiles []string) map[string][]
 		subInfoDict[subFileInfo.FromWhereSite] = append(subInfoDict[subFileInfo.FromWhereSite], *subFileInfo)
 	}
 	return subInfoDict
+}
+
+func isEnglishFallbackCandidate(info subparser.FileInfo) bool {
+	if language.HasChineseLang(info.Lang) {
+		return false
+	}
+	if info.Lang == language2.English {
+		return true
+	}
+	return len(info.OtherLines) > 0 && len(info.CHLines) == 0
+}
+
+func englishCandidateMetadata(info subparser.FileInfo, siteAuthority int) ranking.CandidateMetadata {
+	candidate := ranking.CandidateMetadata{
+		Name:           info.Name,
+		SubtitleExt:    strings.ToLower(info.Ext),
+		AuthorityScore: siteAuthority * 10,
+	}
+
+	if parsed, err := decode.GetVideoInfoFromFileName(info.Name); err == nil && parsed != nil {
+		candidate.Season = parsed.Season
+		candidate.Episode = parsed.Episode
+	}
+
+	lowerName := strings.ToLower(info.Name)
+	if strings.Contains(lowerName, ".hi.") || strings.Contains(lowerName, " sdh") || strings.Contains(lowerName, ".sdh.") || strings.Contains(lowerName, " hearing") {
+		candidate.HasHI = true
+	}
+
+	return candidate
 }

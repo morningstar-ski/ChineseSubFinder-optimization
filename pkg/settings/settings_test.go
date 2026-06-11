@@ -218,3 +218,32 @@ func TestSettingsSaveAndReadPreservesChineseMediaPaths(t *testing.T) {
 		t.Fatalf("series paths mismatch, want %#v got %#v", cfg.CommonSettings.SeriesPaths, reloaded.CommonSettings.SeriesPaths)
 	}
 }
+
+func TestExperimentalFunctionEnsureDefaultsFillsLLMSubtitleFallback(t *testing.T) {
+	cfg := NewSettings(t.TempDir())
+
+	cfg.ExperimentalFunction = &ExperimentalFunction{}
+	cfg.ensureDefaults()
+
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.Provider != defaultLLMSubtitleFallbackProvider {
+		t.Fatalf("provider = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.Provider)
+	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.Model != defaultLLMSubtitleFallbackModel {
+		t.Fatalf("model = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.Model)
+	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir != defaultLLMSubtitleFallbackSubflowRoot {
+		t.Fatalf("subflow_root_dir = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir)
+	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir != defaultLLMSubtitleFallbackLogDir {
+		t.Fatalf("log_dir = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir)
+	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.OnlyWhenNoChineseCandidate != true {
+		t.Fatal("only_when_no_chinese_candidate should default to true")
+	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.SourceLanguage != defaultLLMSubtitleFallbackSourceLang {
+		t.Fatalf("source_language = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.SourceLanguage)
+	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.TargetLanguage != defaultLLMSubtitleFallbackTargetLang {
+		t.Fatalf("target_language = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.TargetLanguage)
+	}
+}

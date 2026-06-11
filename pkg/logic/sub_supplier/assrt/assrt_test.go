@@ -1,12 +1,19 @@
 package assrt
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/ranking"
 
@@ -202,6 +209,149 @@ func TestAssrtCandidateMetadataParsesSeasonEpisode(t *testing.T) {
 	}
 }
 
+func TestShouldSkipAssrtCandidateForTargetSkipsWrongEpisode(t *testing.T) {
+	sub := SearchSubItem{
+		Id:         101,
+		Videoname:  "My Show S01E01 1080p WEB-DL-GROUP",
+		NativeName: "My Show S01E01 1080p WEB-DL-GROUP",
+	}
+
+	if shouldSkipAssrtCandidateForTarget(sub, nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false) == false {
+		t.Fatalf("expected wrong episode candidate to be skipped")
+	}
+}
+
+func TestShouldSkipAssrtCandidateForTargetKeepsSeasonPackAndUnknownEpisode(t *testing.T) {
+	seasonPack := SearchSubItem{
+		Id:         102,
+		Videoname:  "My Show S01 Complete Pack 1080p WEB-DL-GROUP",
+		NativeName: "My Show S01 Complete Pack 1080p WEB-DL-GROUP",
+	}
+	if shouldSkipAssrtCandidateForTarget(seasonPack, nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false) {
+		t.Fatalf("expected season pack candidate to be kept")
+	}
+
+	unknown := SearchSubItem{
+		Id:         103,
+		Videoname:  "My Show 1080p WEB-DL-GROUP",
+		NativeName: "My Show 1080p WEB-DL-GROUP",
+	}
+	if shouldSkipAssrtCandidateForTarget(unknown, nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false) {
+		t.Fatalf("expected unknown-episode candidate to be kept")
+	}
+}
+
+func TestShouldSkipAssrtCandidateForTargetSkipsWrongMovie(t *testing.T) {
+	sub := SearchSubItem{
+		Id:         104,
+		Videoname:  "The Owl House S01E01 1080p WEB-DL-GROUP",
+		NativeName: "The Owl House S01E01 1080p WEB-DL-GROUP",
+	}
+
+	if shouldSkipAssrtCandidateForTarget(sub, nil, filepath.Join("C:\\", "Media", "The.Kings.Warden.2026.1080p.WEB-DL-GROUP.mkv"), true) == false {
+		t.Fatalf("expected wrong movie candidate to be skipped")
+	}
+}
+
+func TestShouldSkipAssrtCandidateForTargetKeepsMatchingMovie(t *testing.T) {
+	sub := SearchSubItem{
+		Id:         105,
+		Videoname:  "The Kings Warden 2026 1080p WEB-DL-GROUP",
+		NativeName: "The Kings Warden 2026 1080p WEB-DL-GROUP",
+	}
+
+	if shouldSkipAssrtCandidateForTarget(sub, nil, filepath.Join("C:\\", "Media", "The.Kings.Warden.2026.1080p.WEB-DL-GROUP.mkv"), true) {
+		t.Fatalf("expected matching movie candidate to be kept")
+	}
+}
+
+func TestShouldSkipAssrtCandidateForTargetKeepsLocalizedMovieTitleVariants(t *testing.T) {
+	videoPath := filepath.Join("C:\\", "Media", "夜班 (2025) - 1080p.mkv")
+	mediaInfo := &models.MediaInfo{
+		TitleCn:       "夜班",
+		TitleEn:       "Late Shift",
+		OriginalTitle: "Heldin",
+	}
+
+	english := SearchSubItem{
+		Id:         106,
+		Videoname:  "Late Shift 2025 1080p WEB-DL-GROUP",
+		NativeName: "Late Shift 2025 1080p WEB-DL-GROUP",
+	}
+	if shouldSkipAssrtCandidateForTarget(english, mediaInfo, videoPath, true) {
+		t.Fatalf("expected english movie title variant to be kept")
+	}
+
+	original := SearchSubItem{
+		Id:         107,
+		Videoname:  "Heldin 2025 1080p WEB-DL-GROUP",
+		NativeName: "Heldin 2025 1080p WEB-DL-GROUP",
+	}
+	if shouldSkipAssrtCandidateForTarget(original, mediaInfo, videoPath, true) {
+		t.Fatalf("expected original movie title variant to be kept")
+	}
+}
+
+func TestSelectAssrtSearchKeywordAllowsFileFallbackWithoutMediaInfo(t *testing.T) {
+	videoPath := createAssrtEpisodeFixture(t, "My.Show.1080p.WEB-DL.mkv", 1, 2)
+
+	if _, err := selectAssrtSearchKeyword(nil, videoPath, false, "cn"); err == nil {
+		t.Fatalf("expected non-file keyword to fail without media info")
+	}
+
+	got, err := selectAssrtSearchKeyword(nil, videoPath, false, "file")
+	if err != nil {
+		t.Fatalf("expected file keyword fallback to work, got error: %v", err)
+	}
+	if got != "My Show S01E02" {
+		t.Fatalf("unexpected fallback keyword %q", got)
+	}
+}
+
+func TestSelectAssrtSearchKeywordUsesMediaInfoWhenAvailable(t *testing.T) {
+	videoPath := createAssrtEpisodeFixture(t, "Euphoria.1080p.WEB-DL.mkv", 1, 2)
+	mediaInfo := &models.MediaInfo{
+		TitleCn:       "亢奋",
+		TitleEn:       "Euphoria",
+		OriginalTitle: "Euphoria",
+	}
+
+	got, err := selectAssrtSearchKeyword(mediaInfo, videoPath, false, "cn")
+	if err != nil {
+		t.Fatalf("expected media-info keyword to work, got error: %v", err)
+	}
+	if got != "亢奋 S01E02" {
+		t.Fatalf("unexpected media-info keyword %q", got)
+	}
+}
+
+func createAssrtEpisodeFixture(t *testing.T, videoName string, season int, episode int) string {
+	t.Helper()
+
+	seasonDir := filepath.Join(t.TempDir(), "Season 1")
+	if err := os.MkdirAll(seasonDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	videoPath := filepath.Join(seasonDir, videoName)
+	if err := os.WriteFile(videoPath, []byte("video"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	nfoPath := filepath.Join(seasonDir, strings.TrimSuffix(videoName, filepath.Ext(videoName))+".nfo")
+	nfoBody := []byte(
+		"<episodedetails>" +
+			"<season>" + strconv.Itoa(season) + "</season>" +
+			"<episode>" + strconv.Itoa(episode) + "</episode>" +
+			"</episodedetails>",
+	)
+	if err := os.WriteFile(nfoPath, nfoBody, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	return videoPath
+}
+
 func TestGetSubByKeyWordAllowsArrayLanglist(t *testing.T) {
 	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
 	cfg := settings.Get()
@@ -233,5 +383,93 @@ func TestGetSubByKeyWordAllowsArrayLanglist(t *testing.T) {
 	}
 	if got.Sub.Subs[0].Id != 7 || got.Sub.Subs[0].VoteScore != 8 || got.Sub.Subs[0].Revision != 2 {
 		t.Fatalf("unexpected numeric fields: %#v", got.Sub.Subs[0])
+	}
+}
+
+func TestRememberBadDownloadSubIDOnlyForPermanentArchiveErrors(t *testing.T) {
+	supplier := &Supplier{}
+	subID := assrtFlexibleInt(42)
+
+	if supplier.rememberBadDownloadSubID(subID, errors.New("temporary timeout")) {
+		t.Fatalf("temporary error should not be remembered")
+	}
+	if supplier.shouldSkipBadDownloadSubID(subID) {
+		t.Fatalf("temporary error should not mark subtitle as bad")
+	}
+
+	err := errors.New("invalid archive payload for https://example.com/file.zip: zip: not a valid zip file")
+	if supplier.rememberBadDownloadSubID(subID, err) == false {
+		t.Fatalf("invalid archive error should be remembered")
+	}
+	if supplier.shouldSkipBadDownloadSubID(subID) == false {
+		t.Fatalf("remembered bad subtitle id should be skipped")
+	}
+}
+
+func TestIsPermanentAssrtDownloadError(t *testing.T) {
+	if isPermanentAssrtDownloadError(nil) {
+		t.Fatalf("nil error should not be permanent")
+	}
+	if isPermanentAssrtDownloadError(errors.New("invalid archive payload for https://example.com/file.zip: zip: not a valid zip file")) == false {
+		t.Fatalf("invalid archive payload should be treated as permanent")
+	}
+	if isPermanentAssrtDownloadError(errors.New("context deadline exceeded")) {
+		t.Fatalf("transient timeout should not be treated as permanent")
+	}
+}
+
+func TestRememberBadDownloadSubIDPersistsAcrossSupplierInstances(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "assrt_bad_download_sub_ids.json")
+	err := errors.New("invalid archive payload for https://example.com/file.zip: zip: not a valid zip file")
+
+	supplier := &Supplier{badDownloadSubIDsPath: cachePath}
+	if supplier.rememberBadDownloadSubID(assrtFlexibleInt(42), err) == false {
+		t.Fatalf("expected bad subtitle id to be remembered")
+	}
+	if supplier.shouldSkipBadDownloadSubID(assrtFlexibleInt(42)) == false {
+		t.Fatalf("expected remembered subtitle id to be skipped")
+	}
+
+	other := &Supplier{badDownloadSubIDsPath: cachePath}
+	other.loadPersistentBadDownloadSubIDs()
+	if other.shouldSkipBadDownloadSubID(assrtFlexibleInt(42)) == false {
+		t.Fatalf("expected persisted subtitle id to be skipped after reload")
+	}
+}
+
+func TestLoadPersistentBadDownloadSubIDsPrunesExpiredEntries(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "assrt_bad_download_sub_ids.json")
+	entries := []persistentBadDownloadSubID{
+		{ID: 11, UpdatedAt: time.Now().UTC().Add(-assrtBadDownloadSubIDTTL - time.Minute)},
+		{ID: 12, UpdatedAt: time.Now().UTC().Add(-time.Minute)},
+	}
+	body, err := json.Marshal(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(cachePath, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	supplier := &Supplier{badDownloadSubIDsPath: cachePath}
+	supplier.loadPersistentBadDownloadSubIDs()
+
+	if supplier.shouldSkipBadDownloadSubID(assrtFlexibleInt(11)) {
+		t.Fatalf("expired subtitle id should not be skipped")
+	}
+	if supplier.shouldSkipBadDownloadSubID(assrtFlexibleInt(12)) == false {
+		t.Fatalf("fresh subtitle id should be skipped")
+	}
+
+	prunedBody, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pruned []persistentBadDownloadSubID
+	if err = json.Unmarshal(prunedBody, &pruned); err != nil {
+		t.Fatal(err)
+	}
+	if len(pruned) != 1 || pruned[0].ID != 12 {
+		t.Fatalf("expected expired entries to be pruned, got %#v", pruned)
 	}
 }
