@@ -2,24 +2,25 @@ package pre_download_process
 
 import (
 	"errors"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/local_http_proxy_server"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/moviesubtitles"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/opensubtitles"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitle_best"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/tvsubtitles"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/local_http_proxy_server"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	subSupplier "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/assrt"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/moviesubtitles"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/opensubtitles"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/shooter"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitle_best"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/tvsubtitles"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/xunlei"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/notify_center"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/subtitle_best_api"
 	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/url_connectedness_helper"
 	"github.com/sirupsen/logrus"
@@ -61,7 +62,14 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 		codeProvider := subhd.NewSubtitleBestCodeProvider(p.fileDownloader)
 		updateTimeString, code, err := codeProvider.GetCode()
 		if err != nil {
-			p.log.Warningln("SubtitleBestCodeProvider.GetCode", err, "continue without shared code")
+			if errors.Is(err, subtitle_best_api.ErrAuthKeyNotSet) {
+				p.log.Warningln("SubtitleBestCodeProvider.GetCode auth key is not set continue without shared code")
+			} else {
+				notify_center.Notify.Add("GetSubhdCode", "GetCodeFromWeb,"+err.Error())
+				p.log.Errorln("SubtitleBestCodeProvider.GetCode", err)
+				p.log.Errorln("Skip Subhd download")
+			}
+			common2.SubhdCode = ""
 		} else {
 			codeTime, err := time.Parse("2006-01-02", updateTimeString)
 			if err != nil {
@@ -69,7 +77,11 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 			} else if codeTime.YearDay() != time.Now().YearDay() {
 				p.log.Warningln("SubtitleBestCodeProvider.GetCode, GetCodeTime:", updateTimeString, "NowTime:", time.Now().String(), "Skip")
 			} else {
-				p.log.Infoln("GetCode", updateTimeString, code)
+				if code == "" {
+					p.log.Warningln("SubtitleBestCodeProvider.GetCode returned empty code continue without shared code")
+				} else {
+					p.log.Infoln("GetCode", updateTimeString, code)
+				}
 				common2.SubhdCode = code
 			}
 		}
@@ -80,12 +92,22 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 			assrt.NewSupplier(p.fileDownloader),
 		)
 	} else {
-		suppliers := p.buildEnabledSuppliers()
-		if len(suppliers) == 0 {
+		enabledSuppliers := p.buildEnabledSuppliers()
+		if len(enabledSuppliers) == 0 {
 			p.gError = errors.New("no subtitle suppliers enabled")
 			return p
 		}
-		p.SubSupplierHub = subSupplier.NewSubSupplierHub(suppliers[0], suppliers[1:]...)
+		p.SubSupplierHub = subSupplier.NewSubSupplierHub(enabledSuppliers[0], enabledSuppliers[1:]...)
+		for _, englishFallbackSupplier := range p.buildEnglishFallbackSuppliers() {
+			switch englishFallbackSupplier.GetSupplierName() {
+			case common2.SubSiteSubDL:
+				p.SubSupplierHub.AddEnglishFallbackSupplier(englishFallbackSupplier, true, true)
+			case common2.SubSiteOpenSubtitles:
+				p.SubSupplierHub.AddEnglishFallbackSupplier(englishFallbackSupplier, true, true)
+			case common2.SubSiteMovieSubtitles:
+				p.SubSupplierHub.AddEnglishFallbackSupplier(englishFallbackSupplier, true, false)
+			}
+		}
 	}
 
 	err := pkg.ClearRodTmpRootFolder()
@@ -99,61 +121,66 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 }
 
 func (p *PreDownloadProcess) buildEnabledSuppliers() []ifaces.ISupplier {
-	suppliersByName := make(map[string]ifaces.ISupplier)
-
-	suppliersByName[common2.SubSiteXunLei] = xunlei.NewSupplier(p.fileDownloader)
-	suppliersByName[common2.SubSiteShooter] = shooter.NewSupplier(p.fileDownloader)
-
-	if settings.Get().SubtitleSources.AssrtSettings.Enabled &&
-		settings.Get().SubtitleSources.AssrtSettings.Token != "" {
-		suppliersByName[common2.SubSiteAssrt] = assrt.NewSupplier(p.fileDownloader)
-	}
-
-	if settings.Get().SubtitleSources.SubDLSettings.Enabled &&
-		settings.Get().SubtitleSources.SubDLSettings.Key != "" {
-		suppliersByName[common2.SubSiteSubDL] = subdl.NewSupplier(p.fileDownloader)
-	}
-
-	if settings.Get().SubtitleSources.SubtitleBestSettings.Enabled &&
-		settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
-		suppliersByName[common2.SubSiteSubtitleBest] = subtitle_best.NewSupplier(p.fileDownloader)
-	}
-
-	if settings.Get().SubtitleSources.OpenSubtitlesSettings.Enabled &&
-		settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey != "" &&
-		settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
-		settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
-		suppliersByName[common2.SubSiteOpenSubtitles] = opensubtitles.NewSupplier(p.fileDownloader)
-	}
-
-	if settings.Get().SubtitleSources.TVsubtitlesSettings.Enabled {
-		suppliersByName[common2.SubSiteTVSubtitles] = tvsubtitles.NewSupplier(p.fileDownloader)
-	}
-
-	if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled {
-		suppliersByName[common2.SubSiteMovieSubtitles] = moviesubtitles.NewSupplier(p.fileDownloader)
-	}
-
-	if pkg.LiteMode() == false && settings.Get().SubtitleSources.SubHDSettings.Enabled {
-		suppliersByName[common2.SubSiteSubHd] = subhd.NewSupplier(p.fileDownloader)
-	}
-
-	orderedNames := common2.OrderSubSiteNames(mapKeys(suppliersByName), common2.DefaultSubSiteSequence())
-	out := make([]ifaces.ISupplier, 0, len(orderedNames))
-	for _, name := range orderedNames {
-		oneSupplier, ok := suppliersByName[name]
-		if ok == false {
-			continue
+	out := make([]ifaces.ISupplier, 0, len(common2.DefaultSubSiteSequence()))
+	for _, siteName := range common2.DefaultSubSiteSequence() {
+		switch siteName {
+		case common2.SubSiteSubtitleBest:
+			if settings.Get().SubtitleSources.SubtitleBestSettings.Enabled &&
+				settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
+				out = append(out, subtitle_best.NewSupplier(p.fileDownloader))
+			}
+		case common2.SubSiteOpenSubtitles:
+			if settings.Get().SubtitleSources.OpenSubtitlesSettings.Enabled &&
+				settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey != "" &&
+				settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
+				settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
+				out = append(out, opensubtitles.NewSupplier(p.fileDownloader))
+			}
+		case common2.SubSiteTVSubtitles:
+			if settings.Get().SubtitleSources.TVsubtitlesSettings.Enabled {
+				out = append(out, tvsubtitles.NewSupplier(p.fileDownloader))
+			}
+		case common2.SubSiteMovieSubtitles:
+			if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled {
+				out = append(out, moviesubtitles.NewSupplier(p.fileDownloader))
+			}
+		case common2.SubSiteAssrt:
+			if settings.Get().SubtitleSources.AssrtSettings.Enabled &&
+				settings.Get().SubtitleSources.AssrtSettings.Token != "" {
+				out = append(out, assrt.NewSupplier(p.fileDownloader))
+			}
+		case common2.SubSiteSubDL:
+			if settings.Get().SubtitleSources.SubDLSettings.Enabled &&
+				settings.Get().SubtitleSources.SubDLSettings.Key != "" {
+				out = append(out, subdl.NewSupplier(p.fileDownloader))
+			}
+		case common2.SubSiteSubHd:
+			if pkg.LiteMode() == false && settings.Get().SubtitleSources.SubHDSettings.Enabled {
+				out = append(out, subhd.NewSupplier(p.fileDownloader))
+			}
+		case common2.SubSiteShooter:
+			out = append(out, shooter.NewSupplier(p.fileDownloader))
+		case common2.SubSiteXunLei:
+			out = append(out, xunlei.NewSupplier(p.fileDownloader))
 		}
-		out = append(out, oneSupplier)
 	}
 	return out
 }
 
-func mapKeys(items map[string]ifaces.ISupplier) []string {
-	out := make([]string, 0, len(items))
-	for key := range items {
-		out = append(out, key)
+func (p *PreDownloadProcess) buildEnglishFallbackSuppliers() []ifaces.ISupplier {
+	out := make([]ifaces.ISupplier, 0, 3)
+	if settings.Get().SubtitleSources.OpenSubtitlesSettings.Enabled &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey != "" &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
+		out = append(out, opensubtitles.NewEnglishSupplier(p.fileDownloader))
+	}
+	if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled {
+		out = append(out, moviesubtitles.NewEnglishSupplier(p.fileDownloader))
+	}
+	if settings.Get().SubtitleSources.SubDLSettings.Enabled &&
+		settings.Get().SubtitleSources.SubDLSettings.Key != "" {
+		out = append(out, subdl.NewEnglishSupplier(p.fileDownloader))
 	}
 	return out
 }

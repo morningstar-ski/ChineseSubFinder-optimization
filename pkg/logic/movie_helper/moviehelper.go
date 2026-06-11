@@ -19,14 +19,16 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/imdb_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
+	language2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/jinzhu/now"
 	"github.com/sirupsen/logrus"
 )
 
 // OneMovieDlSubInAllSite 一部电影在所有的网站下载相应的字幕
-func OneMovieDlSubInAllSite(logger *logrus.Logger, Suppliers []ifaces.ISupplier, oneVideoFullPath string, i int64) []supplier.SubInfo {
+func OneMovieDlSubInAllSite(logger *logrus.Logger, Suppliers []ifaces.ISupplier, oneVideoFullPath string, i int64, requireChinese bool) []supplier.SubInfo {
 
 	defer func() {
 		logger.Infoln(common.QueueName, i, "DlSub End", oneVideoFullPath)
@@ -52,7 +54,7 @@ func OneMovieDlSubInAllSite(logger *logrus.Logger, Suppliers []ifaces.ISupplier,
 			continue
 		}
 		outSUbInfos = append(outSUbInfos, subInfos...)
-		if hasUsableMovieSubtitle(logger, oneVideoFullPath, i, oneSupplier.GetSupplierName(), subInfos) {
+		if hasUsableMovieSubtitle(logger, oneVideoFullPath, i, oneSupplier.GetSupplierName(), subInfos, requireChinese) {
 			logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "usable subtitles found, stop fallback")
 			break
 		}
@@ -65,7 +67,7 @@ func OneMovieDlSubInAllSite(logger *logrus.Logger, Suppliers []ifaces.ISupplier,
 	return outSUbInfos
 }
 
-func hasUsableMovieSubtitle(logger *logrus.Logger, videoFullPath string, queueIndex int64, supplierName string, subInfos []supplier.SubInfo) bool {
+func hasUsableMovieSubtitle(logger *logrus.Logger, videoFullPath string, queueIndex int64, supplierName string, subInfos []supplier.SubInfo, requireChinese bool) bool {
 	tmpFolderName := sanitizeProviderProbeFolderName(filepath.Base(videoFullPath), queueIndex, supplierName)
 	_ = pkg.ClearTmpFolderByName(tmpFolderName)
 	defer func() {
@@ -77,9 +79,29 @@ func hasUsableMovieSubtitle(logger *logrus.Logger, videoFullPath string, queueIn
 		logger.Warningln(common.QueueName, queueIndex, supplierName, "probe organize failed", err)
 		return false
 	}
+	parserHub := sub_parser_hub.NewSubParserHub(logger, ass.NewParser(logger), srt.NewParser(logger))
 	for _, files := range organized {
-		if len(files) > 0 {
-			return true
+		for _, subFile := range files {
+			found, info, err := parserHub.DetermineFileTypeFromFile(subFile)
+			if err != nil {
+				logger.Warningln(common.QueueName, queueIndex, supplierName, "probe parse failed", subFile, err)
+				continue
+			}
+			if found == false || info == nil {
+				continue
+			}
+			if requireChinese {
+				if language.HasChineseLang(info.Lang) {
+					return true
+				}
+				continue
+			}
+			if language.HasChineseLang(info.Lang) {
+				continue
+			}
+			if info.Lang == language2.English || (len(info.OtherLines) > 0 && len(info.CHLines) == 0) {
+				return true
+			}
 		}
 	}
 	return false

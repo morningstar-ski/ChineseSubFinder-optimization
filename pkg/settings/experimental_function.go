@@ -2,15 +2,22 @@ package settings
 
 // ExperimentalFunction 实验性功能
 type ExperimentalFunction struct {
-	AutoChangeSubEncode  AutoChangeSubEncode  `json:"auto_change_sub_encode"`
-	ChsChtChanger        ChsChtChanger        `json:"chs_cht_changer"`
-	RemoteChromeSettings RemoteChromeSettings `json:"remote_chrome_settings"`
-	ApiKeySettings       ApiKeySettings       `json:"api_key_settings"`
-	LocalChromeSettings  LocalChromeSettings  `json:"local_chrome_settings"`
-	ShareSubSettings     ShareSubSettings     `json:"share_sub_settings"`
-	ExtendLog            ExtendLog            `json:"extend_log"`
+	AutoChangeSubEncode  AutoChangeSubEncode         `json:"auto_change_sub_encode"`
+	ChsChtChanger        ChsChtChanger               `json:"chs_cht_changer"`
+	RemoteChromeSettings RemoteChromeSettings        `json:"remote_chrome_settings"`
+	ApiKeySettings       ApiKeySettings              `json:"api_key_settings"`
+	LocalChromeSettings  LocalChromeSettings         `json:"local_chrome_settings"`
+	ShareSubSettings     ShareSubSettings            `json:"share_sub_settings"`
+	ExtendLog            ExtendLog                   `json:"extend_log"`
+	LLMSubtitleFallback  LLMSubtitleFallbackSettings `json:"llm_subtitle_fallback"`
 }
 
 func NewExperimentalFunction() *ExperimentalFunction {
-	return &ExperimentalFunction{}
+	return &ExperimentalFunction{
+		LLMSubtitleFallback: *NewLLMSubtitleFallbackSettings(),
+	}
+}
+
+func (e *ExperimentalFunction) ensureDefaults() {
+	e.LLMSubtitleFallback.ensureDefaults()
 }

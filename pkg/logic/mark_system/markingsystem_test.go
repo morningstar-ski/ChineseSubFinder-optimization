@@ -16,6 +16,15 @@ const testASSContent = "[Script Info]\n" +
 	"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,\u4f60\u597d\\NHello\n" +
 	"Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,\u518d\u89c1\\NBye\n"
 
+const testEnglishASSContent = "[Script Info]\n" +
+	"Title: English\n\n" +
+	"[Events]\n" +
+	"Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
+	"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello there\n" +
+	"Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,General Kenobi\n"
+
+const testEnglishSRTContent = "1\n00:00:01,000 --> 00:00:02,000\nHello there\n\n2\n00:00:03,000 --> 00:00:04,000\nGeneral Kenobi\n"
+
 func TestSelectOneSubFileSupportsSubhdOutsidePreferredSequence(t *testing.T) {
 	t.Parallel()
 
@@ -69,29 +78,50 @@ func TestSelectOneSubFilePrefersSubhdInDefaultSequence(t *testing.T) {
 	}
 }
 
-func TestSelectOneSubFilePrefersBetterReleaseMatchOverSitePriority(t *testing.T) {
+func TestSelectBestEnglishSubFilePrefersReleaseMatch(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
-	videoPath := filepath.Join(tmpDir, "Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL.mkv")
-	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
-		t.Fatalf("WriteFile(video) error = %v", err)
-	}
+	exactPath := filepath.Join(tmpDir, "[subdl]_0_My.Show.S01E03.1080p.WEB-DL-GROUP.en.srt")
+	wrongEpisodePath := filepath.Join(tmpDir, "[subdl]_1_My.Show.S01E04.1080p.WEB-DL-GROUP.en.srt")
 
-	highPriorityWrong := filepath.Join(tmpDir, "[opensubtitles]_0_The.Muppet.Show.2026.1080p.WEB-DL.srt")
-	lowerPriorityCorrect := filepath.Join(tmpDir, "[assrt]_0_Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL.srt")
-	for _, path := range []string{highPriorityWrong, lowerPriorityCorrect} {
-		if err := os.WriteFile(path, []byte(testASSContent), 0o600); err != nil {
-			t.Fatalf("WriteFile(%q) error = %v", path, err)
-		}
+	if err := os.WriteFile(exactPath, []byte(testEnglishSRTContent), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", exactPath, err)
+	}
+	if err := os.WriteFile(wrongEpisodePath, []byte(testEnglishSRTContent), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", wrongEpisodePath, err)
 	}
 
 	mk := NewMarkingSystem(log_helper.GetLogger4Tester(), common.DefaultSubSiteSequence(), 0)
-	got := mk.SelectOneSubFile([]string{highPriorityWrong, lowerPriorityCorrect}, videoPath)
+	got := mk.SelectBestEnglishSubFile([]string{wrongEpisodePath, exactPath}, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"))
 	if got == nil {
-		t.Fatal("SelectOneSubFile() returned nil")
+		t.Fatal("SelectBestEnglishSubFile() returned nil")
 	}
-	if got.FileFullPath != lowerPriorityCorrect {
-		t.Fatalf("SelectOneSubFile() FileFullPath = %q; want %q", got.FileFullPath, lowerPriorityCorrect)
+	if got.FileFullPath != exactPath {
+		t.Fatalf("SelectBestEnglishSubFile() FileFullPath = %q; want %q", got.FileFullPath, exactPath)
+	}
+}
+
+func TestSelectBestEnglishSubFilePrefersSRTOverASSWhenScoresClose(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	assPath := filepath.Join(tmpDir, "[subdl]_0_My.Show.S01E03.1080p.WEB-DL-GROUP.en.ass")
+	srtPath := filepath.Join(tmpDir, "[subdl]_1_My.Show.S01E03.1080p.WEB-DL-GROUP.en.srt")
+
+	if err := os.WriteFile(assPath, []byte(testEnglishASSContent), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", assPath, err)
+	}
+	if err := os.WriteFile(srtPath, []byte(testEnglishSRTContent), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", srtPath, err)
+	}
+
+	mk := NewMarkingSystem(log_helper.GetLogger4Tester(), common.DefaultSubSiteSequence(), 0)
+	got := mk.SelectBestEnglishSubFile([]string{assPath, srtPath}, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"))
+	if got == nil {
+		t.Fatal("SelectBestEnglishSubFile() returned nil")
+	}
+	if got.FileFullPath != srtPath {
+		t.Fatalf("SelectBestEnglishSubFile() FileFullPath = %q; want %q", got.FileFullPath, srtPath)
 	}
 }

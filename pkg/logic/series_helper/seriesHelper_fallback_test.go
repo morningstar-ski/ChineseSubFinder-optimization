@@ -50,17 +50,17 @@ func TestDownloadSubtitleInAllSiteByOneSeriesStopsWhenAllEpisodesCovered(t *test
 
 	firstCalls := 0
 	secondCalls := 0
-	episode1 := *supplier.NewSubInfo("subtitle_best", 0, "Show.S01E01.1080p.WEB-DL", language.ChineseSimple, "https://example.com/e01.srt", 0, 0, ".srt", []byte("1\n00:00:01,000 --> 00:00:02,000\nhello\n"))
+	episode1 := *supplier.NewSubInfo("subtitle_best", 0, "Show.S01E01.1080p.WEB-DL", language.ChineseSimple, "https://example.com/e01.srt", 0, 0, ".srt", []byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n"))
 	episode1.Season = 1
 	episode1.Episode = 1
-	episode2 := *supplier.NewSubInfo("subtitle_best", 0, "Show.S01E02.1080p.WEB-DL", language.ChineseSimple, "https://example.com/e02.srt", 0, 0, ".srt", []byte("1\n00:00:01,000 --> 00:00:02,000\nworld\n"))
+	episode2 := *supplier.NewSubInfo("subtitle_best", 0, "Show.S01E02.1080p.WEB-DL", language.ChineseSimple, "https://example.com/e02.srt", 0, 0, ".srt", []byte("1\n00:00:01,000 --> 00:00:02,000\n世界\n"))
 	episode2.Season = 1
 	episode2.Episode = 2
 
 	got := DownloadSubtitleInAllSiteByOneSeries(logrus.New(), []ifaces.ISupplier{
 		fakeSeriesSupplier{name: "subtitle_best", subInfos: []supplier.SubInfo{episode1, episode2}, callCount: &firstCalls},
 		fakeSeriesSupplier{name: "subhd", subInfos: []supplier.SubInfo{episode1}, callCount: &secondCalls},
-	}, seriesInfo, 1)
+	}, seriesInfo, 1, true)
 
 	if len(got) != 2 {
 		t.Fatalf("DownloadSubtitleInAllSiteByOneSeries() len = %d; want 2", len(got))

@@ -2,6 +2,7 @@ package opensubtitles
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,12 +10,19 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/cache_center"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/random_auth_key"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 	"github.com/go-resty/resty/v2"
+	"github.com/sirupsen/logrus"
 )
 
 func TestAPICheckAliveSuccess(t *testing.T) {
@@ -121,42 +129,6 @@ func TestAPIDownloadByFileID(t *testing.T) {
 	}
 }
 
-func TestFinalizeDownloadAttemptsReturnsLastDownloadError(t *testing.T) {
-	wantErr := errors.New("opensubtitles http 406: quota exceeded")
-
-	got, err := finalizeDownloadAttempts(nil, wantErr)
-	if err == nil {
-		t.Fatal("finalizeDownloadAttempts() error = nil, want quota error")
-	}
-	if err.Error() != wantErr.Error() {
-		t.Fatalf("finalizeDownloadAttempts() error = %q, want %q", err.Error(), wantErr.Error())
-	}
-	if got != nil {
-		t.Fatalf("finalizeDownloadAttempts() got %#v, want nil", got)
-	}
-}
-
-func TestFinalizeDownloadAttemptsPrefersDownloadedSubs(t *testing.T) {
-	want := []supplier.SubInfo{{Name: "subtitle.srt"}}
-
-	got, err := finalizeDownloadAttempts(want, errors.New("ignored"))
-	if err != nil {
-		t.Fatalf("finalizeDownloadAttempts() error = %v, want nil", err)
-	}
-	if len(got) != 1 || got[0].Name != want[0].Name {
-		t.Fatalf("finalizeDownloadAttempts() got %#v, want %#v", got, want)
-	}
-}
-
-func TestIsQuotaExceededOpenSubtitlesError(t *testing.T) {
-	if isQuotaExceededOpenSubtitlesError(errors.New("opensubtitles http 406: You have downloaded your allowed 20 subtitles for 24h")) == false {
-		t.Fatal("expected quota exceeded marker to be detected")
-	}
-	if isQuotaExceededOpenSubtitlesError(errors.New("opensubtitles login failed")) {
-		t.Fatal("unexpected quota exceeded marker for unrelated error")
-	}
-}
-
 func TestAPIReLoginAfterUnauthorized(t *testing.T) {
 	loginCalls := 0
 	searchCalls := 0
@@ -218,112 +190,120 @@ func TestBuildSearchQueriesOrder(t *testing.T) {
 	}
 }
 
-func TestOpenSubtitlesOrderedTitlesAddsYearlessFallback(t *testing.T) {
-	mediaInfo := &models.MediaInfo{
-		TitleEn:       "Nirvana the Band the Show the Movie 2026",
-		OriginalTitle: "Nirvana the Band the Show the Movie (2026)",
-		TitleCn:       "电影版 2026",
+func TestBuildSearchQueriesWithoutMediaInfoFallsBackToQueryTitle(t *testing.T) {
+	queries := buildSearchQueries(nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3)
+	if len(queries) == 0 {
+		t.Fatal("expected fallback query without media info")
 	}
-
-	got := openSubtitlesOrderedTitles(mediaInfo, filepath.Join("C:\\", "Media", "Nirvana.the.Band.the.Show.the.Movie.2026.1080p.WEB-DL.mkv"))
-	if len(got) < 5 {
-		t.Fatalf("openSubtitlesOrderedTitles() = %#v; want yearless fallbacks", got)
+	if queries[0]["query"] != "My Show" {
+		t.Fatalf("expected normalized title fallback, got %#v", queries[0])
 	}
-
-	want := map[string]bool{
-		"Nirvana the Band the Show the Movie 2026": false,
-		"Nirvana the Band the Show the Movie":      false,
-		"电影版 2026":                                 false,
-		"电影版":                                      false,
-	}
-	for _, title := range got {
-		if _, ok := want[title]; ok {
-			want[title] = true
-		}
-	}
-	for title, seen := range want {
-		if seen == false {
-			t.Fatalf("openSubtitlesOrderedTitles() missing %q in %#v", title, got)
-		}
+	if queries[0]["season_number"] != "1" || queries[0]["episode_number"] != "3" {
+		t.Fatalf("expected episode params in fallback query, got %#v", queries[0])
 	}
 }
 
-func TestBuildSearchQueriesDropsYearForYearlessMovieFallback(t *testing.T) {
+func TestOpenSubtitlesOrderedTitlesAddsPunctuationStrippedVariant(t *testing.T) {
 	mediaInfo := &models.MediaInfo{
-		TitleEn:       "The Gorge 2025",
-		OriginalTitle: "The Gorge (2025)",
-		Year:          "2025-01-01",
+		TitleEn: "Will & Harper",
 	}
 
-	queries := buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "The.Gorge.2025.1080p.WEB-DL.mkv"), true, 0, 0)
-	var foundWithYear bool
-	var foundWithoutYear bool
+	titles := openSubtitlesOrderedTitles(mediaInfo, filepath.Join("C:\\", "Media", "Will.&.Harper.2024.mkv"))
+	if len(titles) < 2 {
+		t.Fatalf("expected variants, got %#v", titles)
+	}
+	if titles[0] != "Will & Harper" {
+		t.Fatalf("expected original title first, got %#v", titles)
+	}
+	found := false
+	for _, title := range titles {
+		if title == "Will Harper" {
+			found = true
+			break
+		}
+	}
+	if found == false {
+		t.Fatalf("expected punctuation-stripped variant in %#v", titles)
+	}
+}
+
+func TestBuildSearchQueriesIncludesPunctuationStrippedMovieVariant(t *testing.T) {
+	mediaInfo := &models.MediaInfo{
+		TitleEn: "The King's Warden",
+		Year:    "2026-01-01",
+	}
+
+	queries := buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "The.Kings.Warden.2026.1080p.WEB-DL-GROUP.mkv"), true, 0, 0)
+	found := false
 	for _, query := range queries {
-		if query["query"] != "The Gorge" {
-			continue
-		}
-		if query["year"] == "2025" {
-			foundWithYear = true
-			continue
-		}
-		if query["year"] == "" {
-			foundWithoutYear = true
+		if query["query"] == "The Kings Warden" && query["year"] == "2026" {
+			found = true
+			break
 		}
 	}
-	if foundWithYear {
-		t.Fatalf("buildSearchQueries() should not keep year filter on yearless fallback: %#v", queries)
+	if found == false {
+		t.Fatalf("expected punctuation-stripped movie query in %#v", queries)
 	}
-	if foundWithoutYear == false {
-		t.Fatalf("buildSearchQueries() missing yearless fallback query in %#v", queries)
+}
+
+func TestShouldSkipOpenSubtitlesMovieCandidateSkipsWrongMovie(t *testing.T) {
+	candidate := subtitleCandidate{
+		FileID:       12537139,
+		Name:         "The Drama",
+		ReleaseNames: []string{"The Drama (2026)"},
+	}
+	mediaInfo := &models.MediaInfo{
+		TitleEn:       "The King's Warden",
+		OriginalTitle: "The King's Warden",
+	}
+
+	if shouldSkipOpenSubtitlesMovieCandidate(candidate, mediaInfo, filepath.Join("C:\\", "Media", "The.Kings.Warden.2026.1080p.WEB-DL-GROUP.mkv")) == false {
+		t.Fatalf("expected wrong movie candidate to be skipped")
+	}
+}
+
+func TestShouldSkipOpenSubtitlesMovieCandidateKeepsLocalizedVariant(t *testing.T) {
+	candidate := subtitleCandidate{
+		FileID:       668861,
+		Name:         "Late Shift",
+		ReleaseNames: []string{"Late.Shift.2025.GER.BluRay.720p.x264.DD.5.1-CMCT"},
+	}
+	mediaInfo := &models.MediaInfo{
+		TitleCn:       "夜班",
+		TitleEn:       "Late Shift",
+		OriginalTitle: "Heldin",
+	}
+
+	if shouldSkipOpenSubtitlesMovieCandidate(candidate, mediaInfo, filepath.Join("C:\\", "Media", "夜班 (2025) - 1080p.mkv")) {
+		t.Fatalf("expected localized movie candidate to be kept")
 	}
 }
 
 func TestBuildSearchQueriesSkipsTooShortNonASCIIQuery(t *testing.T) {
 	mediaInfo := &models.MediaInfo{
-		TitleEn: "Euphoria",
-		TitleCn: "亢奋",
-		Year:    "2019-01-01",
+		ImdbId:        "tt8772296",
+		TmdbId:        "85552",
+		TitleEn:       "Euphoria",
+		OriginalTitle: "Euphoria",
 	}
 
-	queries := buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "Euphoria.S01E01.1080p.WEB-DL.mkv"), false, 1, 1)
+	queries := buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "亢奋 - S01E01 - 第 1 集.mkv"), false, 1, 1)
 	for _, query := range queries {
 		if query["query"] == "亢奋" {
-			t.Fatalf("buildSearchQueries() should skip too-short non-ASCII query: %#v", queries)
+			t.Fatalf("unexpected short non-ascii query in %#v", queries)
 		}
 	}
 }
 
-func TestBuildSearchQueriesAddsAmpersandVariant(t *testing.T) {
-	mediaInfo := &models.MediaInfo{
-		TitleEn: "Will & Harper",
-		Year:    "2024-01-01",
+func TestIsOpenSubtitlesQuotaExceeded(t *testing.T) {
+	if isOpenSubtitlesQuotaExceeded(nil) != false {
+		t.Fatal("nil error should not be quota exhaustion")
 	}
-
-	queries := buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "Will.and.Harper.2024.1080p.WEB-DL.mkv"), true, 0, 0)
-	foundAndVariant := false
-	for _, query := range queries {
-		if query["query"] == "Will and Harper" {
-			foundAndVariant = true
-			break
-		}
+	if isOpenSubtitlesQuotaExceeded(errors.New("opensubtitles http 406: quota exceeded")) == false {
+		t.Fatal("http 406 should be treated as quota exhaustion")
 	}
-	if foundAndVariant == false {
-		t.Fatalf("buildSearchQueries() missing ampersand fallback in %#v", queries)
-	}
-}
-
-func TestTitlesRoughlyMatchTreatsAmpersandAsAnd(t *testing.T) {
-	if titlesRoughlyMatch("Will & Harper", "Will and Harper") == false {
-		t.Fatal("expected ampersand and and titles to match")
-	}
-}
-
-func TestIsIgnorableOpenSubtitlesSearchError(t *testing.T) {
-	if isIgnorableOpenSubtitlesSearchError(errors.New(`opensubtitles http 400: {"errors":["Query is too short"],"status":400}`)) == false {
-		t.Fatal("expected short-query error to be ignorable")
-	}
-	if isIgnorableOpenSubtitlesSearchError(errors.New("network timeout")) {
-		t.Fatal("did not expect generic error to be ignorable")
+	if isOpenSubtitlesQuotaExceeded(errors.New("opensubtitles http 403: blocked")) != false {
+		t.Fatal("http 403 should not be treated as quota exhaustion")
 	}
 }
 
@@ -355,7 +335,7 @@ func TestSelectCandidatesPrefersExactEpisode(t *testing.T) {
 		},
 	}
 
-	candidates := selectCandidates(items, nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0)
+	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0, subtitleLanguageChinese)
 	if len(candidates) != 2 {
 		t.Fatalf("expected 2 candidates, got %#v", candidates)
 	}
@@ -392,7 +372,7 @@ func TestSelectCandidatesRejectsWrongEpisodeDespiteCloserRelease(t *testing.T) {
 		},
 	}
 
-	candidates := selectCandidates(items, nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0)
+	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0, subtitleLanguageChinese)
 	if len(candidates) != 2 {
 		t.Fatalf("expected 2 candidates, got %#v", candidates)
 	}
@@ -401,61 +381,79 @@ func TestSelectCandidatesRejectsWrongEpisodeDespiteCloserRelease(t *testing.T) {
 	}
 }
 
-func TestSelectCandidatesRejectsWrongMovieTitle(t *testing.T) {
-	mediaInfo := &models.MediaInfo{
-		TitleEn:       "Nirvana the Band the Show the Movie",
-		OriginalTitle: "Nirvana the Band the Show the Movie",
-		Year:          "2026-01-01",
-	}
-
+func TestSelectCandidatesCanFilterEnglishFallback(t *testing.T) {
 	items := []SearchItem{
 		{
 			ID: "1",
 			Attributes: SearchItemAttribute{
 				Language:  "zh-cn",
-				Release:   "The.Muppet.Show.2026.1080p.WEB-DL-GROUP",
-				MovieName: "The Muppet Show",
+				Release:   "My.Show.S01E03.1080p.WEB-DL-GROUP",
 				SubFormat: "srt",
 				Files: []SearchFile{
-					{FileID: 10, FileName: "The.Muppet.Show.2026.1080p.WEB-DL-GROUP.srt"},
+					{FileID: 10, FileName: "My.Show.S01E03.1080p.WEB-DL-GROUP.zh.srt"},
 				},
-				FeatureDetails: FeatureDetails{Title: "The Muppet Show", Year: 2026},
+				FeatureDetails: FeatureDetails{SeasonNumber: 1, EpisodeNumber: 3},
+			},
+		},
+		{
+			ID: "2",
+			Attributes: SearchItemAttribute{
+				Language:  "en",
+				Release:   "My.Show.S01E03.1080p.WEB-DL-GROUP",
+				SubFormat: "srt",
+				Files: []SearchFile{
+					{FileID: 11, FileName: "My.Show.S01E03.1080p.WEB-DL-GROUP.en.srt"},
+				},
+				FeatureDetails: FeatureDetails{SeasonNumber: 1, EpisodeNumber: 3},
 			},
 		},
 	}
 
-	candidates := selectCandidates(items, mediaInfo, filepath.Join("C:\\", "Media", "尼瓦那乐队秀：电影版 (2026).mkv"), true, 0, 0, 5, 0)
-	if len(candidates) != 0 {
-		t.Fatalf("expected wrong movie title to be rejected, got %#v", candidates)
+	candidates := selectCandidates(items, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3, 5, 0, subtitleLanguageEnglish)
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 english candidate, got %#v", candidates)
+	}
+	if candidates[0].FileID != 11 {
+		t.Fatalf("expected english candidate first, got %#v", candidates[0])
 	}
 }
 
-func TestSelectCandidatesKeepsMatchingMovieTitle(t *testing.T) {
-	mediaInfo := &models.MediaInfo{
-		TitleEn:       "Nirvana the Band the Show the Movie",
-		OriginalTitle: "Nirvana the Band the Show the Movie",
-		Year:          "2026-01-01",
+func TestGetCachedSubInfoReturnsCachedSubtitle(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cacheName := "test_opensubtitles_cache_" + time.Now().Format("20060102150405.000000000")
+	cacheCenter := newOpenSubtitlesCacheCenterOrSkip(t, cacheName)
+	t.Cleanup(func() {
+		cacheCenter.Close()
+		cache_center.DelDb(cacheName)
+	})
+
+	downloader := file_downloader.NewFileDownloader(cacheCenter, random_auth_key.AuthKey{})
+	cachedSubInfo := supplier.NewSubInfo(
+		common.SubSiteOpenSubtitles,
+		0,
+		"cached.srt",
+		language.ChineseSimple,
+		"https://cdn.example.com/cached.srt",
+		0,
+		0,
+		".srt",
+		[]byte("1\n00:00:00,000 --> 00:00:01,000\ncached\n"),
+	)
+	cachedSubInfo.SetFileUrlSha256("opensubtitles-99")
+	if err := cacheCenter.DownloadFileAdd(cachedSubInfo); err != nil {
+		t.Fatalf("DownloadFileAdd() error = %v", err)
 	}
 
-	items := []SearchItem{
-		{
-			ID: "1",
-			Attributes: SearchItemAttribute{
-				Language:  "zh-cn",
-				Release:   "Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL-GROUP",
-				MovieName: "Nirvana the Band the Show the Movie",
-				SubFormat: "srt",
-				Files: []SearchFile{
-					{FileID: 11, FileName: "Nirvana.The.Band.The.Show.The.Movie.2026.1080p.WEB-DL-GROUP.srt"},
-				},
-				FeatureDetails: FeatureDetails{Title: "Nirvana the Band the Show the Movie", Year: 2026},
-			},
-		},
+	supplierInstance := &Supplier{fileDownloader: downloader, log: logrus.New()}
+	got, found, err := supplierInstance.getCachedSubInfo("opensubtitles-99")
+	if err != nil {
+		t.Fatalf("getCachedSubInfo() error = %v", err)
 	}
-
-	candidates := selectCandidates(items, mediaInfo, filepath.Join("C:\\", "Media", "尼瓦那乐队秀：电影版 (2026).mkv"), true, 0, 0, 5, 0)
-	if len(candidates) != 1 {
-		t.Fatalf("expected matching movie title to remain, got %#v", candidates)
+	if found == false {
+		t.Fatal("expected cached subtitle hit")
+	}
+	if got == nil || got.FileUrl != cachedSubInfo.FileUrl {
+		t.Fatalf("unexpected cached subtitle %#v", got)
 	}
 }
 
@@ -468,4 +466,21 @@ func newTestHTTPClient(t *testing.T) *resty.Client {
 	}
 	client.SetRetryCount(0)
 	return client
+}
+
+func newOpenSubtitlesCacheCenterOrSkip(t *testing.T, cacheName string) *cache_center.CacheCenter {
+	t.Helper()
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprint(r)
+			if strings.Contains(msg, "go-sqlite3 requires cgo to work") {
+				t.Skip("skip opensubtitles cache test: sqlite driver requires cgo in this environment")
+			}
+			panic(r)
+		}
+	}()
+
+	cache_center.DelDb(cacheName)
+	return cache_center.NewCacheCenter(cacheName, logrus.New())
 }

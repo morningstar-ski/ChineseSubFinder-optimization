@@ -1,13 +1,11 @@
 package subdl
 
 import (
-	"net/http"
-	"net/http/httptest"
+	"errors"
 	"path/filepath"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
-	"github.com/go-resty/resty/v2"
 )
 
 func TestBuildSearchQueries(t *testing.T) {
@@ -33,101 +31,66 @@ func TestBuildSearchQueries(t *testing.T) {
 	}
 }
 
-func TestOrderedSearchTitlesAddsYearlessFallbacksAndDedupes(t *testing.T) {
-	mediaInfo := &models.MediaInfo{
-		TitleEn:       "The Gorge 2025",
-		OriginalTitle: "The Gorge (2025)",
-		TitleCn:       "The Gorge",
-	}
+func TestBuildSearchQueriesWithoutMediaInfoFallsBackToFilmName(t *testing.T) {
+	supplier := &Supplier{topic: 1, api: NewApi("test-key")}
 
-	got := orderedSearchTitles(mediaInfo, filepath.Join("C:\\", "Media", "The.Gorge.2025.1080p.WEB-DL.mkv"))
-	foundYearless := false
-	for _, item := range got {
-		if item == "The Gorge" {
-			foundYearless = true
-			break
-		}
+	queries := supplier.buildSearchQueries(nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL.mkv"), false, 1, 3)
+	if len(queries) == 0 {
+		t.Fatal("expected fallback queries without media info")
 	}
-	if foundYearless == false {
-		t.Fatalf("orderedSearchTitles() = %#v; want yearless fallback", got)
+	if queries[0]["film_name"] != "My Show" {
+		t.Fatalf("expected file-name fallback query, got %#v", queries[0])
 	}
-	seen := make(map[string]struct{}, len(got))
-	for _, item := range got {
-		if _, ok := seen[item]; ok {
-			t.Fatalf("orderedSearchTitles() contains duplicate title %q in %#v", item, got)
-		}
-		seen[item] = struct{}{}
+	if queries[0]["season_number"] != "1" || queries[0]["episode_number"] != "3" {
+		t.Fatalf("expected episode params in fallback query, got %#v", queries[0])
 	}
 }
 
-func TestOrderedSearchTitlesAddsAmpersandVariant(t *testing.T) {
+func TestBuildSearchQueriesUsesEnglishLanguageForEnglishSupplier(t *testing.T) {
+	supplier := &Supplier{topic: 1, api: NewApi("test-key"), queryLanguage: subdlEnglishLanguage}
+
+	queries := supplier.buildSearchQueries(nil, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL.mkv"), false, 1, 3)
+	if len(queries) == 0 {
+		t.Fatal("expected fallback queries without media info")
+	}
+	if queries[0]["languages"] != subdlEnglishLanguage {
+		t.Fatalf("expected english language query, got %#v", queries[0])
+	}
+}
+
+func TestOrderedSearchTitlesAddsPunctuationStrippedVariant(t *testing.T) {
 	mediaInfo := &models.MediaInfo{
 		TitleEn: "Will & Harper",
 	}
 
-	got := orderedSearchTitles(mediaInfo, filepath.Join("C:\\", "Media", "Will.and.Harper.2024.1080p.WEB-DL.mkv"))
-	foundAmpersand := false
-	foundAnd := false
-	for _, item := range got {
-		if item == "Will & Harper" {
-			foundAmpersand = true
-		}
-		if item == "Will and Harper" {
-			foundAnd = true
-		}
+	titles := orderedSearchTitles(mediaInfo, filepath.Join("C:\\", "Media", "Will.&.Harper.2024.mkv"))
+	if len(titles) < 2 {
+		t.Fatalf("expected variants, got %#v", titles)
 	}
-	if foundAmpersand == false || foundAnd == false {
-		t.Fatalf("orderedSearchTitles() = %#v; want both ampersand and and variants", got)
+	if titles[0] != "Will & Harper" {
+		t.Fatalf("expected original title first, got %#v", titles)
 	}
-}
-
-func TestBuildSearchQueriesDropsYearForYearlessFallback(t *testing.T) {
-	supplier := &Supplier{topic: 1, api: NewApi("test-key")}
-	mediaInfo := &models.MediaInfo{
-		TitleEn:       "The Gorge 2025",
-		OriginalTitle: "The Gorge (2025)",
-		Year:          "2025-01-01",
-	}
-
-	queries := supplier.buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "The.Gorge.2025.1080p.WEB-DL.mkv"), true, 0, 0)
-	var foundWithYear bool
-	var foundWithoutYear bool
-	for _, query := range queries {
-		if query["film_name"] != "The Gorge" {
-			continue
-		}
-		if query["year"] == "2025" {
-			foundWithYear = true
-			continue
-		}
-		if query["year"] == "" {
-			foundWithoutYear = true
+	found := false
+	for _, title := range titles {
+		if title == "Will Harper" {
+			found = true
+			break
 		}
 	}
-	if foundWithYear {
-		t.Fatalf("buildSearchQueries() should not keep year filter on yearless fallback: %#v", queries)
-	}
-	if foundWithoutYear == false {
-		t.Fatalf("buildSearchQueries() missing yearless fallback query in %#v", queries)
+	if found == false {
+		t.Fatalf("expected punctuation-stripped variant in %#v", titles)
 	}
 }
 
-func TestBuildSearchQueriesDoesNotApplyYearToIDQueries(t *testing.T) {
-	supplier := &Supplier{topic: 1, api: NewApi("test-key")}
-	mediaInfo := &models.MediaInfo{
-		ImdbId: "tt1234567",
-		TmdbId: "1234",
-		Year:   "2025-01-01",
+func TestShouldTreatCheckAliveProbeAsHealthy(t *testing.T) {
+	if shouldTreatCheckAliveProbeAsHealthy(nil) == false {
+		t.Fatal("nil probe error should be treated as healthy")
 	}
-
-	queries := supplier.buildSearchQueries(mediaInfo, filepath.Join("C:\\", "Media", "The.Gorge.2025.1080p.WEB-DL.mkv"), true, 0, 0)
-	for _, query := range queries {
-		if query["imdb_id"] == "" && query["tmdb_id"] == "" {
-			continue
-		}
-		if query["year"] != "" {
-			t.Fatalf("buildSearchQueries() should not attach year to ID query: %#v", query)
-		}
+	if shouldTreatCheckAliveProbeAsHealthy(errSubdlStatusFalse) == false {
+		t.Fatal("status=false probe should be treated as healthy")
+	}
+	if shouldTreatCheckAliveProbeAsHealthy(errors.New("network down")) != false {
+		t.Fatal("network failure should not be treated as healthy")
 	}
 }
 
@@ -237,31 +200,5 @@ func TestSubdlCandidateMetadata(t *testing.T) {
 	}
 	if len(metadata.ReleaseNames) != 2 || metadata.ReleaseNames[0] != "Release.A" || metadata.ReleaseNames[1] != "Release.B" {
 		t.Fatalf("unexpected release names %#v", metadata.ReleaseNames)
-	}
-}
-
-func TestSearchSubtitlesTreatsStatusFalseAsEmptyResult(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":false,"results":[]}`))
-	}))
-	defer server.Close()
-
-	client := resty.New()
-	client.SetBaseURL(server.URL)
-
-	api := NewApi("test-key")
-	resp, err := api.SearchSubtitles(client, map[string]string{
-		"api_key": "test-key",
-		"type":    "tv",
-	})
-	if err != nil {
-		t.Fatalf("SearchSubtitles() error = %v", err)
-	}
-	if resp == nil {
-		t.Fatal("SearchSubtitles() response is nil")
-	}
-	if len(resp.Results) != 0 {
-		t.Fatalf("SearchSubtitles() results len = %d; want 0", len(resp.Results))
 	}
 }

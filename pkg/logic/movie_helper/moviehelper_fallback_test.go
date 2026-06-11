@@ -56,13 +56,13 @@ func TestOneMovieDlSubInAllSiteStopsAfterUsableProvider(t *testing.T) {
 		0,
 		0,
 		".srt",
-		[]byte("1\n00:00:01,000 --> 00:00:02,000\nhello\n"),
+		[]byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n"),
 	)
 
 	got := OneMovieDlSubInAllSite(logrus.New(), []ifaces.ISupplier{
 		fakeMovieSupplier{name: "subdl", subInfos: []supplier.SubInfo{usableSub}, callCount: &firstCalls},
 		fakeMovieSupplier{name: "subhd", subInfos: []supplier.SubInfo{usableSub}, callCount: &secondCalls},
-	}, videoPath, 1)
+	}, videoPath, 1, true)
 
 	if len(got) != 1 {
 		t.Fatalf("OneMovieDlSubInAllSite() len = %d; want 1", len(got))

@@ -54,13 +54,14 @@
         <q-item-section>
           <q-item-label>远程Chrome</q-item-label>
           <q-item-label caption>
-            本功能能够将本程序使用的 Chrome 操作移到一个有算力和资源的硬件上，这样部署本程序的资源要求进一步降低。<br />
+            本功能用于把依赖 Chrome
+            的实验性抓取流程移到一台算力和资源更充足的机器上。当前默认字幕链路不依赖它，只有在明确启用相关实验性方案时才需要配置。<br />
             需要自行参看<a
               class="text-primary"
               href="https://go-rod.github.io/i18n/zh-CN/#/custom-launch?id=远程管理启动器"
               target="_blank"
               >https://go-rod.github.io/i18n/zh-CN/#/custom-launch?id=远程管理启动器</a
-            >文档部署实验性功能，可用性和稳定性存疑，未必会继续支持更新。除非 go-rod 更新。
+            >文档部署。该功能仍属实验性质，可用性和稳定性都没有保证，后续也可能随 go-rod 变化而调整。
           </q-item-label>
         </q-item-section>
         <q-item-section avatar>
@@ -103,22 +104,9 @@
 
       <q-item>
         <q-item-section>
-          <q-item-label>本地Chrome（可选覆盖）</q-item-label>
+          <q-item-label>本地Chrome</q-item-label>
           <q-item-label caption>
-            标准版 Docker 镜像现在已内置 Chromium，程序会自动探测
-            <code>/usr/bin/chromium</code>、<code>/usr/bin/chromium-browser</code>
-            等常见路径，一般不需要开启这个开关，也不需要手填路径。只有你想强制指定另一个浏览器可执行文件时，才需要在这里填写。注意以下几点：
-            <div>
-              <ol>
-                <li>
-                  如果你自己额外挂载了浏览器，可填写容器内完整路径，比如
-                  <code>/app/cache/Plugin/Chrome/chrome</code>
-                </li>
-                <li>如果是 Windows 用户，那么就是你 Chrome.exe 的完整路径</li>
-                <li>Chrome 版本不要太低</li>
-                <li>请确认指定的chrome和对应平台、CPU架构一致</li>
-              </ol>
-            </div>
+            开启后程序会优先使用内置自动探测到的本机 Chrome，可执行文件路径不再需要手动填写。
           </q-item-label>
         </q-item-section>
         <q-item-section avatar top>
@@ -129,15 +117,148 @@
       <template v-if="form.local_chrome_settings.enabled">
         <q-item>
           <q-item-section>
+            <q-item-label caption>当前模式下将自动探测本机 Chrome，无需额外配置路径。</q-item-label>
+          </q-item-section>
+        </q-item>
+      </template>
+
+      <q-separator spaced inset />
+
+      <q-item>
+        <q-item-section>
+          <q-item-label>英文字幕翻译保底</q-item-label>
+          <q-item-label caption>
+            只在中文字幕阶段失败后触发，改走英文字幕源并调用 LLM 翻译。当前仅对单字幕保存模式生效。
+          </q-item-label>
+        </q-item-section>
+        <q-item-section avatar top>
+          <q-toggle v-model="form.llm_subtitle_fallback.enable" />
+        </q-item-section>
+      </q-item>
+
+      <template v-if="form.llm_subtitle_fallback.enable">
+        <q-item>
+          <q-item-section>
+            <q-item-label>Provider</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.provider" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Base URL</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
             <q-input
-              v-model="form.local_chrome_settings.local_chrome_exe_f_path"
-              label="Chrome(.exe) 的完整路径（可留空自动探测）"
-              placeholder="/usr/bin/chromium"
+              v-model="form.llm_subtitle_fallback.base_url"
+              placeholder="OpenAI-compatible base URL，可留空走 Gemini 原生"
               standout
               dense
-              hint="标准版 Docker 留空会自动使用容器内已安装的 Chromium"
-              persistent-hint
             />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>API key</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input
+              v-model="form.llm_subtitle_fallback.api_key"
+              type="password"
+              placeholder="留空则回退到 subflow 本地配置或环境变量"
+              standout
+              dense
+            />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Model</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.model" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Python executable</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input
+              v-model="form.llm_subtitle_fallback.python_executable"
+              placeholder="留空使用环境默认 python"
+              standout
+              dense
+            />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Subflow root</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.subflow_root_dir" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Log dir</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.log_dir" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Source language</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.source_language" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Target language</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.target_language" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>Translate style</q-item-label>
+          </q-item-section>
+          <q-item-section avatar>
+            <q-input v-model="form.llm_subtitle_fallback.translate_style" placeholder="可留空" standout dense />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>仅在无中文候选时触发</q-item-label>
+            <q-item-label caption>当前运行时就是这个语义，这里保留显式开关。</q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.llm_subtitle_fallback.only_when_no_chinese_candidate" />
+          </q-item-section>
+        </q-item>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label>保留英文源字幕副本</q-item-label>
+          </q-item-section>
+          <q-item-section avatar top>
+            <q-toggle v-model="form.llm_subtitle_fallback.keep_english_source_copy" />
           </q-item-section>
         </q-item>
       </template>
@@ -148,7 +269,7 @@
         <q-item-section>
           <q-item-label>API key</q-item-label>
           <q-item-label caption>
-            本程序提供一些接口给开发者使用，通过API key鉴权，具体参见
+            本程序提供了一些面向开发者的接口，通过 API key 鉴权。具体参见
             <!-- eslint-disable -->
             <a
               href="https://github.com/ChineseSubFinder/ChineseSubFinder/blob/docs/DesignFile/ApiKey%E8%AE%BE%E8%AE%A1/ApiKey%E8%AE%BE%E8%AE%A1.md"

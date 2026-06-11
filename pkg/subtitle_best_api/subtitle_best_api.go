@@ -20,12 +20,14 @@ type SubtitleBestApi struct {
 	randomAuthKey *random_auth_key.RandomAuthKey
 }
 
+var ErrAuthKeyNotSet = errors.New("auth key is not set")
+
 func (s *SubtitleBestApi) validateAuthKey() error {
 	if s.authKey.BaseKey == "" || s.authKey.AESKey16 == "" || s.authKey.AESIv16 == "" {
-		return errors.New("auth key is not set")
+		return ErrAuthKeyNotSet
 	}
 	if s.authKey.BaseKey == random_auth_key.BaseKey || s.authKey.AESKey16 == random_auth_key.AESKey16 || s.authKey.AESIv16 == random_auth_key.AESIv16 {
-		return errors.New("auth key is not set")
+		return ErrAuthKeyNotSet
 	}
 	if len(s.authKey.AESKey16) != 16 {
 		return errors.New(fmt.Sprintf("AESKey16 is not set, %s", s.authKey.AESKey16))

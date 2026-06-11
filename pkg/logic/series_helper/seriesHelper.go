@@ -24,8 +24,10 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/imdb_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
+	language2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/emirpasic/gods/maps/treemap"
 	"github.com/jinzhu/now"
 	"github.com/sirupsen/logrus"
@@ -179,7 +181,7 @@ func SkipChineseSeries(dealers *media_info_dealers.Dealers, seriesRootPath strin
 }
 
 // DownloadSubtitleInAllSiteByOneSeries 一部连续剧，在所有的网站，下载相应的字幕
-func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifaces.ISupplier, seriesInfo *series.SeriesInfo, i int64) []supplier.SubInfo {
+func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifaces.ISupplier, seriesInfo *series.SeriesInfo, i int64, requireChinese bool) []supplier.SubInfo {
 
 	defer func() {
 		logger.Infoln(common.QueueName, i, "DlSub End", seriesInfo.DirPath)
@@ -222,14 +224,14 @@ func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifa
 			sub_helper.ChangeVideoExt2SubExt(subInfos)
 
 			outSUbInfos = append(outSUbInfos, subInfos...)
-			if hasCoveredAllNeededEpisodes(logger, seriesInfo, i, oneSupplier.GetSupplierName(), outSUbInfos) {
+			if hasCoveredAllNeededEpisodes(logger, seriesInfo, i, oneSupplier.GetSupplierName(), outSUbInfos, requireChinese) {
 				logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "all needed episodes covered, stop fallback")
 				return
 			}
 		}
 
 		oneSupplierFunc()
-		if hasCoveredAllNeededEpisodes(logger, seriesInfo, i, oneSupplier.GetSupplierName(), outSUbInfos) {
+		if hasCoveredAllNeededEpisodes(logger, seriesInfo, i, oneSupplier.GetSupplierName(), outSUbInfos, requireChinese) {
 			break
 		}
 	}
@@ -237,7 +239,7 @@ func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifa
 	return outSUbInfos
 }
 
-func hasCoveredAllNeededEpisodes(logger *logrus.Logger, seriesInfo *series.SeriesInfo, queueIndex int64, supplierName string, subInfos []supplier.SubInfo) bool {
+func hasCoveredAllNeededEpisodes(logger *logrus.Logger, seriesInfo *series.SeriesInfo, queueIndex int64, supplierName string, subInfos []supplier.SubInfo, requireChinese bool) bool {
 	if seriesInfo == nil || len(seriesInfo.NeedDlEpsKeyList) == 0 || len(subInfos) == 0 {
 		return false
 	}
@@ -254,8 +256,38 @@ func hasCoveredAllNeededEpisodes(logger *logrus.Logger, seriesInfo *series.Serie
 		return false
 	}
 
+	parserHub := sub_parser_hub.NewSubParserHub(logger, ass.NewParser(logger), srt.NewParser(logger))
 	for epsKey := range seriesInfo.NeedDlEpsKeyList {
-		if len(organized[epsKey]) == 0 {
+		files := organized[epsKey]
+		if len(files) == 0 {
+			return false
+		}
+		foundUsable := false
+		for _, subFile := range files {
+			found, info, err := parserHub.DetermineFileTypeFromFile(subFile)
+			if err != nil {
+				logger.Warningln(common.QueueName, queueIndex, supplierName, "probe parse failed", subFile, err)
+				continue
+			}
+			if found == false || info == nil {
+				continue
+			}
+			if requireChinese {
+				if language.HasChineseLang(info.Lang) {
+					foundUsable = true
+					break
+				}
+				continue
+			}
+			if language.HasChineseLang(info.Lang) {
+				continue
+			}
+			if info.Lang == language2.English || (len(info.OtherLines) > 0 && len(info.CHLines) == 0) {
+				foundUsable = true
+				break
+			}
+		}
+		if foundUsable == false {
 			return false
 		}
 	}

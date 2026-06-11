@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -32,6 +33,7 @@ type Supplier struct {
 	fileDownloader *file_downloader.FileDownloader
 	topic          int
 	isAlive        bool
+	languageMode   subtitleLanguageMode
 }
 
 type movieSearchResult struct {
@@ -49,12 +51,30 @@ type subtitleCandidate struct {
 	AuthorityScore  int
 }
 
+const movieSubtitlesSearchRetryCount = 2
+
+type subtitleLanguageMode string
+
+const (
+	movieSubtitlesChinese subtitleLanguageMode = "chinese"
+	movieSubtitlesEnglish subtitleLanguageMode = "english"
+)
+
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
+	return newSupplier(fileDownloader, movieSubtitlesChinese)
+}
+
+func NewEnglishSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
+	return newSupplier(fileDownloader, movieSubtitlesEnglish)
+}
+
+func newSupplier(fileDownloader *file_downloader.FileDownloader, languageMode subtitleLanguageMode) *Supplier {
 	sup := Supplier{}
 	sup.log = fileDownloader.Log
 	sup.fileDownloader = fileDownloader
 	sup.topic = subCommon.DownloadSubsPerSite
 	sup.isAlive = true
+	sup.languageMode = languageMode
 
 	if settings.Get().AdvancedSettings.Topic > 0 && settings.Get().AdvancedSettings.Topic != sup.topic {
 		sup.topic = settings.Get().AdvancedSettings.Topic
@@ -167,14 +187,10 @@ func (s *Supplier) getSubListFromFile(videoFPath string) ([]supplier.SubInfo, er
 		}
 
 		cacheKey := fmt.Sprintf("%s-%s", s.GetSupplierName(), finalDownloadURL)
-		subName := candidate.Name
-		if strings.TrimSpace(subName) == "" {
-			subName = videoFileName
-		}
 		subInfo, err := s.fileDownloader.Get(
 			s.GetSupplierName(),
 			int64(index),
-			subName,
+			videoFileName,
 			finalDownloadURL,
 			0,
 			0,
@@ -224,6 +240,10 @@ func (s *Supplier) resolveCandidatesWithFallback(client *resty.Client, mediaInfo
 }
 
 func (s *Supplier) searchMovies(client *resty.Client, keyword string) ([]movieSearchResult, error) {
+	restoreRetryCount := client.RetryCount
+	client.SetRetryCount(movieSubtitlesSearchRetryCount)
+	defer client.SetRetryCount(restoreRetryCount)
+
 	resp, err := client.R().
 		SetFormData(map[string]string{"q": keyword}).
 		Post(settings.Get().AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl + settings.Get().AdvancedSettings.SuppliersSettings.MovieSubtitles.SearchUrl)
@@ -240,7 +260,7 @@ func (s *Supplier) fetchMovieCandidates(client *resty.Client, movieURL string, v
 		return nil, err
 	}
 
-	candidates, err := parseMoviePage(resp.String())
+	candidates, err := parseMoviePage(resp.String(), s.languageMode)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +358,7 @@ func parseSearchResults(html string) ([]movieSearchResult, error) {
 	return dedupeMovies(out), nil
 }
 
-func parseMoviePage(html string) ([]subtitleCandidate, error) {
+func parseMoviePage(html string, languageMode subtitleLanguageMode) ([]subtitleCandidate, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return nil, err
@@ -354,7 +374,7 @@ func parseMoviePage(html string) ([]subtitleCandidate, error) {
 			return
 		}
 
-		if isChineseLanguage(currentLanguage) == false {
+		if matchesMovieSubtitlesLanguage(currentLanguage, languageMode) == false {
 			return
 		}
 
@@ -495,15 +515,11 @@ func parseCandidateFields(block *goquery.Selection) map[string]string {
 }
 
 func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string) []string {
-	videoTitle := normalizeVideoTitle(videoFPath)
-	return mix_media_info.ExpandSearchKeywords(
+	return expandSearchKeywordVariants([]string{
 		mediaInfo.TitleEn,
 		mediaInfo.OriginalTitle,
-		videoTitle,
-		stripTrailingYear(mediaInfo.TitleEn),
-		stripTrailingYear(mediaInfo.OriginalTitle),
-		stripTrailingYear(videoTitle),
-	)
+		normalizeVideoTitle(videoFPath),
+	})
 }
 
 func normalizeVideoTitle(videoFPath string) string {
@@ -513,28 +529,6 @@ func normalizeVideoTitle(videoFPath string) string {
 	}
 	fileName = pkg.ReplaceSpecString(fileName, " ")
 	return strings.Join(strings.Fields(fileName), " ")
-}
-
-func stripTrailingYear(title string) string {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return ""
-	}
-	replacer := strings.NewReplacer(
-		"(", " ", ")", " ",
-		"[", " ", "]", " ",
-	)
-	parts := strings.Fields(replacer.Replace(title))
-	if len(parts) == 0 {
-		return ""
-	}
-	last := parts[len(parts)-1]
-	if len(last) == 4 {
-		if _, err := strconv.Atoi(last); err == nil {
-			return strings.TrimSpace(strings.Join(parts[:len(parts)-1], " "))
-		}
-	}
-	return title
 }
 
 func absoluteURL(rootURL string, href string) string {
@@ -569,6 +563,18 @@ func isChineseLanguage(language string) bool {
 	return strings.Contains(language, "chinese") || strings.Contains(language, "china")
 }
 
+func isEnglishLanguage(language string) bool {
+	language = strings.ToLower(normalizeWhitespace(language))
+	return strings.Contains(language, "english")
+}
+
+func matchesMovieSubtitlesLanguage(language string, languageMode subtitleLanguageMode) bool {
+	if languageMode == movieSubtitlesEnglish {
+		return isEnglishLanguage(language)
+	}
+	return isChineseLanguage(language)
+}
+
 func normalizeYear(year string) string {
 	if len(year) >= 4 {
 		return year[:4]
@@ -578,6 +584,50 @@ func normalizeYear(year string) string {
 
 func normalizeWhitespace(input string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(input)), " ")
+}
+
+func expandSearchKeywordVariants(items []string) []string {
+	out := make([]string, 0, len(items)*2)
+	seen := make(map[string]struct{})
+	for _, item := range items {
+		for _, variant := range keywordVariants(item) {
+			key := strings.ToLower(strings.TrimSpace(variant))
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, variant)
+		}
+	}
+	return out
+}
+
+func keywordVariants(input string) []string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil
+	}
+
+	variants := []string{input}
+	normalized := normalizeWhitespace(stripKeywordPunctuation(input))
+	if normalized != "" && strings.EqualFold(normalized, input) == false {
+		variants = append(variants, normalized)
+	}
+	return variants
+}
+
+func stripKeywordPunctuation(input string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r), unicode.IsNumber(r), unicode.IsSpace(r):
+			return r
+		default:
+			return ' '
+		}
+	}, input)
 }
 
 func extractNumericID(input string, pattern string) (int, bool) {
@@ -612,7 +662,8 @@ func scoreMovieTitle(movieTitle string, candidate string) int {
 
 func normalizeComparableTitle(title string) string {
 	baseTitle, _ := splitMovieTitleAndYear(title)
-	return mix_media_info.NormalizeComparableTitle(baseTitle)
+	baseTitle = pkg.ReplaceSpecString(baseTitle, " ")
+	return strings.ToLower(strings.Join(strings.Fields(baseTitle), " "))
 }
 
 func scoreAuthority(downloads string) int {
