@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/local_http_proxy_server"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	subSupplier "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier"
@@ -31,6 +32,12 @@ type PreDownloadProcess struct {
 	log            *logrus.Logger
 	fileDownloader *file_downloader.FileDownloader
 	SubSupplierHub *subSupplier.SubSupplierHub
+}
+
+type supplierPlan struct {
+	siteName            string
+	supplierFactory     func() ifaces.ISupplier
+	addEnglishFallbacks func(*subSupplier.SubSupplierHub)
 }
 
 func NewPreDownloadProcess(fileDownloader *file_downloader.FileDownloader) *PreDownloadProcess {
@@ -91,47 +98,7 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 			assrt.NewSupplier(p.fileDownloader),
 		)
 	} else {
-		p.SubSupplierHub = subSupplier.NewSubSupplierHub(
-			xunlei.NewSupplier(p.fileDownloader),
-			shooter.NewSupplier(p.fileDownloader),
-		)
-
-		if settings.Get().SubtitleSources.AssrtSettings.Enabled &&
-			settings.Get().SubtitleSources.AssrtSettings.Token != "" {
-			p.SubSupplierHub.AddSubSupplier(assrt.NewSupplier(p.fileDownloader))
-		}
-
-		if settings.Get().SubtitleSources.SubDLSettings.Enabled &&
-			settings.Get().SubtitleSources.SubDLSettings.Key != "" {
-			p.SubSupplierHub.AddSubSupplier(subdl.NewSupplier(p.fileDownloader))
-			p.SubSupplierHub.AddEnglishFallbackSupplier(subdl.NewEnglishSupplier(p.fileDownloader), true, true)
-		}
-
-		if settings.Get().SubtitleSources.SubtitleBestSettings.Enabled &&
-			settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
-			p.SubSupplierHub.AddSubSupplier(subtitle_best.NewSupplier(p.fileDownloader))
-		}
-
-		if settings.Get().SubtitleSources.OpenSubtitlesSettings.Enabled &&
-			settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey != "" &&
-			settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
-			settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
-			p.SubSupplierHub.AddSubSupplier(opensubtitles.NewSupplier(p.fileDownloader))
-			p.SubSupplierHub.AddEnglishFallbackSupplier(opensubtitles.NewEnglishSupplier(p.fileDownloader), true, true)
-		}
-
-		if settings.Get().SubtitleSources.TVsubtitlesSettings.Enabled {
-			p.SubSupplierHub.AddSubSupplier(tvsubtitles.NewSupplier(p.fileDownloader))
-		}
-
-		if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled {
-			p.SubSupplierHub.AddSubSupplier(moviesubtitles.NewSupplier(p.fileDownloader))
-			p.SubSupplierHub.AddEnglishFallbackSupplier(moviesubtitles.NewEnglishSupplier(p.fileDownloader), true, false)
-		}
-
-		if pkg.LiteMode() == false && settings.Get().SubtitleSources.SubHDSettings.Enabled {
-			p.SubSupplierHub.AddSubSupplier(subhd.NewSupplier(p.fileDownloader))
-		}
+		p.SubSupplierHub = buildSubSupplierHub(collectSupplierPlans(p.fileDownloader))
 	}
 
 	err := pkg.ClearRodTmpRootFolder()
@@ -142,6 +109,125 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 
 	p.log.Infoln("ClearRodTmpRootFolder Done")
 	return p
+}
+
+func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[string]supplierPlan {
+	plans := map[string]supplierPlan{
+		common2.SubSiteXunLei: {
+			siteName:        common2.SubSiteXunLei,
+			supplierFactory: func() ifaces.ISupplier { return xunlei.NewSupplier(fileDownloader) },
+		},
+		common2.SubSiteShooter: {
+			siteName:        common2.SubSiteShooter,
+			supplierFactory: func() ifaces.ISupplier { return shooter.NewSupplier(fileDownloader) },
+		},
+	}
+
+	if settings.Get().SubtitleSources.AssrtSettings.Enabled &&
+		settings.Get().SubtitleSources.AssrtSettings.Token != "" {
+		plans[common2.SubSiteAssrt] = supplierPlan{
+			siteName:        common2.SubSiteAssrt,
+			supplierFactory: func() ifaces.ISupplier { return assrt.NewSupplier(fileDownloader) },
+		}
+	}
+
+	if settings.Get().SubtitleSources.SubDLSettings.Enabled &&
+		settings.Get().SubtitleSources.SubDLSettings.Key != "" {
+		plans[common2.SubSiteSubDL] = supplierPlan{
+			siteName:        common2.SubSiteSubDL,
+			supplierFactory: func() ifaces.ISupplier { return subdl.NewSupplier(fileDownloader) },
+			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
+				hub.AddEnglishFallbackSupplier(subdl.NewEnglishSupplier(fileDownloader), true, true)
+			},
+		}
+	}
+
+	if settings.Get().SubtitleSources.SubtitleBestSettings.Enabled &&
+		settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
+		plans[common2.SubSiteSubtitleBest] = supplierPlan{
+			siteName:        common2.SubSiteSubtitleBest,
+			supplierFactory: func() ifaces.ISupplier { return subtitle_best.NewSupplier(fileDownloader) },
+		}
+	}
+
+	if settings.Get().SubtitleSources.OpenSubtitlesSettings.Enabled &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey != "" &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.Username != "" &&
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.Password != "" {
+		plans[common2.SubSiteOpenSubtitles] = supplierPlan{
+			siteName:        common2.SubSiteOpenSubtitles,
+			supplierFactory: func() ifaces.ISupplier { return opensubtitles.NewSupplier(fileDownloader) },
+			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
+				hub.AddEnglishFallbackSupplier(opensubtitles.NewEnglishSupplier(fileDownloader), true, true)
+			},
+		}
+	}
+
+	if settings.Get().SubtitleSources.TVsubtitlesSettings.Enabled {
+		plans[common2.SubSiteTVSubtitles] = supplierPlan{
+			siteName:        common2.SubSiteTVSubtitles,
+			supplierFactory: func() ifaces.ISupplier { return tvsubtitles.NewSupplier(fileDownloader) },
+		}
+	}
+
+	if settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled {
+		plans[common2.SubSiteMovieSubtitles] = supplierPlan{
+			siteName:        common2.SubSiteMovieSubtitles,
+			supplierFactory: func() ifaces.ISupplier { return moviesubtitles.NewSupplier(fileDownloader) },
+			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
+				hub.AddEnglishFallbackSupplier(moviesubtitles.NewEnglishSupplier(fileDownloader), true, false)
+			},
+		}
+	}
+
+	if pkg.LiteMode() == false && settings.Get().SubtitleSources.SubHDSettings.Enabled {
+		plans[common2.SubSiteSubHd] = supplierPlan{
+			siteName:        common2.SubSiteSubHd,
+			supplierFactory: func() ifaces.ISupplier { return subhd.NewSupplier(fileDownloader) },
+		}
+	}
+
+	return plans
+}
+
+func buildSubSupplierHub(plans map[string]supplierPlan) *subSupplier.SubSupplierHub {
+	orderedPlans := orderSupplierPlans(plans)
+	if len(orderedPlans) == 0 {
+		return nil
+	}
+
+	hub := subSupplier.NewSubSupplierHub(orderedPlans[0].supplierFactory())
+	if orderedPlans[0].addEnglishFallbacks != nil {
+		orderedPlans[0].addEnglishFallbacks(hub)
+	}
+
+	for _, plan := range orderedPlans[1:] {
+		hub.AddSubSupplier(plan.supplierFactory())
+		if plan.addEnglishFallbacks != nil {
+			plan.addEnglishFallbacks(hub)
+		}
+	}
+
+	return hub
+}
+
+func orderSupplierPlans(plans map[string]supplierPlan) []supplierPlan {
+	if len(plans) == 0 {
+		return nil
+	}
+
+	siteNames := make([]string, 0, len(plans))
+	for siteName := range plans {
+		siteNames = append(siteNames, siteName)
+	}
+
+	orderedSiteNames := common2.OrderSubSiteNames(siteNames, common2.DefaultSubSiteSequence())
+	orderedPlans := make([]supplierPlan, 0, len(orderedSiteNames))
+	for _, siteName := range orderedSiteNames {
+		orderedPlans = append(orderedPlans, plans[siteName])
+	}
+
+	return orderedPlans
 }
 
 func (p *PreDownloadProcess) Check() *PreDownloadProcess {
