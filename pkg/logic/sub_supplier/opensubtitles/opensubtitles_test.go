@@ -307,6 +307,56 @@ func TestIsOpenSubtitlesQuotaExceeded(t *testing.T) {
 	}
 }
 
+func TestOverDailyDownloadLimitTreatsQuotaExhaustedAsExceeded(t *testing.T) {
+	supplierInstance := &Supplier{
+		log:            logrus.New(),
+		quotaExhausted: true,
+	}
+
+	if supplierInstance.OverDailyDownloadLimit() == false {
+		t.Fatal("expected quotaExhausted supplier to report daily limit reached")
+	}
+}
+
+func TestGetSubListFromFileSkipsSearchWhenQuotaExhausted(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	oldApiKey := settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey
+	oldUsername := settings.Get().SubtitleSources.OpenSubtitlesSettings.Username
+	oldPassword := settings.Get().SubtitleSources.OpenSubtitlesSettings.Password
+	settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey = "api-key"
+	settings.Get().SubtitleSources.OpenSubtitlesSettings.Username = "user"
+	settings.Get().SubtitleSources.OpenSubtitlesSettings.Password = "pass"
+	defer func() {
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.ApiKey = oldApiKey
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.Username = oldUsername
+		settings.Get().SubtitleSources.OpenSubtitlesSettings.Password = oldPassword
+	}()
+
+	searchCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		searchCalls++
+		t.Fatalf("unexpected http call for quota exhausted supplier: %s", r.URL.Path)
+	}))
+	defer server.Close()
+
+	supplierInstance := &Supplier{
+		log:            logrus.New(),
+		quotaExhausted: true,
+		api:            NewApi(server.URL, "api-key", "user", "pass"),
+	}
+
+	subInfos, err := supplierInstance.getSubListFromFile(filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3)
+	if err != nil {
+		t.Fatalf("getSubListFromFile() error = %v", err)
+	}
+	if subInfos != nil {
+		t.Fatalf("expected nil subtitles when quota exhausted, got %#v", subInfos)
+	}
+	if searchCalls != 0 {
+		t.Fatalf("searchCalls = %d; want 0", searchCalls)
+	}
+}
+
 func TestSelectCandidatesPrefersExactEpisode(t *testing.T) {
 	items := []SearchItem{
 		{

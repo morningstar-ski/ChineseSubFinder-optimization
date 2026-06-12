@@ -101,6 +101,9 @@ func (s *Supplier) IsAlive() bool {
 }
 
 func (s *Supplier) OverDailyDownloadLimit() bool {
+	if s.quotaExhausted {
+		return true
+	}
 	if settings.Get().AdvancedSettings.SuppliersSettings.OpenSubtitles.DailyDownloadLimit == 0 {
 		s.log.Warningln(s.GetSupplierName(), "DailyDownloadLimit is 0, will Skip Download")
 		return true
@@ -172,6 +175,9 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 		s.log.Debugln(s.GetSupplierName(), videoFPath, "End...")
 	}()
 	s.log.Debugln(s.GetSupplierName(), videoFPath, "Start...")
+	if s.quotaExhausted {
+		return nil, nil
+	}
 
 	mediaInfo, err := mix_media_info.GetMixMediaInfo(s.fileDownloader.MediaInfoDealers, videoFPath, isMovie)
 	if err != nil {
