@@ -2,10 +2,14 @@ package subdl
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
+	"github.com/sirupsen/logrus"
 )
 
 func TestBuildSearchQueries(t *testing.T) {
@@ -91,6 +95,49 @@ func TestShouldTreatCheckAliveProbeAsHealthy(t *testing.T) {
 	}
 	if shouldTreatCheckAliveProbeAsHealthy(errors.New("network down")) != false {
 		t.Fatal("network failure should not be treated as healthy")
+	}
+}
+
+func TestSearchCandidatesWithFallbackContinuesAfterStatusFalse(t *testing.T) {
+	var gotTitles []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTitles = append(gotTitles, r.URL.Query().Get("film_name"))
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("film_name") {
+		case "English Title":
+			_, _ = w.Write([]byte(`{"status":false,"error":"can't find movie or tv"}`))
+		case "中文标题":
+			_, _ = w.Write([]byte(`{"status":true,"subtitles":[{"name":"Exact Match","url":"/subtitle/exact.zip","season":1,"episode":3,"release_name":"My.Show.S01E03.1080p.WEB-DL-GROUP"}],"totalPages":1,"currentPage":1}`))
+		default:
+			_, _ = w.Write([]byte(`{"status":true,"subtitles":[],"totalPages":0,"currentPage":1}`))
+		}
+	}))
+	defer server.Close()
+
+	supplier := &Supplier{
+		log:           logrus.New(),
+		topic:         1,
+		api:           &Api{apiKey: "test-key", rootURL: server.URL},
+		queryLanguage: subdlDefaultLanguage,
+	}
+	mediaInfo := &models.MediaInfo{
+		TitleEn: "English Title",
+		TitleCn: "中文标题",
+	}
+
+	got, err := supplier.searchCandidatesWithFallback(mediaInfo, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"), false, 1, 3)
+	if err != nil {
+		t.Fatalf("searchCandidatesWithFallback() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("searchCandidatesWithFallback() len = %d; want 1", len(got))
+	}
+	if got[0].DownloadURL != "https://dl.subdl.com/subtitle/exact.zip" {
+		t.Fatalf("searchCandidatesWithFallback() downloadURL = %q; want %q", got[0].DownloadURL, "https://dl.subdl.com/subtitle/exact.zip")
+	}
+	wantTitles := []string{"English Title", "中文标题"}
+	if !reflect.DeepEqual(gotTitles, wantTitles) {
+		t.Fatalf("searchCandidatesWithFallback() titles = %#v; want %#v", gotTitles, wantTitles)
 	}
 }
 

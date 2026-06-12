@@ -12,17 +12,18 @@ import (
 var errSubdlStatusFalse = errors.New("subdl search returned status=false")
 
 type Api struct {
-	apiKey string
+	apiKey  string
+	rootURL string
 }
 
 func NewApi(apiKey string) *Api {
-	return &Api{apiKey: apiKey}
+	return &Api{apiKey: apiKey, rootURL: common.SubSubDLRootUrlDef}
 }
 
 func (a *Api) SearchSubtitles(client *resty.Client, queryParams map[string]string) (*SearchResponse, error) {
 	resp, err := client.R().
 		SetQueryParams(queryParams).
-		Get(common.SubSubDLRootUrlDef + common.SubSubDLSearchUrl)
+		Get(a.searchURL())
 	if err != nil {
 		return nil, err
 	}
@@ -37,4 +38,12 @@ func (a *Api) SearchSubtitles(client *resty.Client, queryParams map[string]strin
 	}
 
 	return &searchResponse, nil
+}
+
+func (a *Api) searchURL() string {
+	rootURL := a.rootURL
+	if rootURL == "" {
+		rootURL = common.SubSubDLRootUrlDef
+	}
+	return rootURL + common.SubSubDLSearchUrl
 }

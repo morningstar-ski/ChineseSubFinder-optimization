@@ -230,6 +230,10 @@ func (s *Supplier) searchCandidatesWithFallback(mediaInfo *models.MediaInfo, vid
 		s.log.Infoln(s.GetSupplierName(), videoFileName, "Try Search Query", query)
 		searchResponse, err := s.api.SearchSubtitles(httpClient, query)
 		if err != nil {
+			if errors.Is(err, errSubdlStatusFalse) {
+				s.log.Infoln(s.GetSupplierName(), videoFileName, "No subtitle found for query", query)
+				continue
+			}
 			s.log.Errorln(s.GetSupplierName(), videoFileName, "SearchSubtitles", err)
 			return nil, err
 		}

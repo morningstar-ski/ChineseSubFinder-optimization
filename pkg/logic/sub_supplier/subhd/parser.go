@@ -2,6 +2,8 @@ package subhd
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -38,6 +40,9 @@ func parseSearchResults(pageHTML string) ([]searchResultItem, int, error) {
 
 	imgSelection := doc.Find("img.rounded-start")
 	if len(imgSelection.Nodes) < 1 {
+		if count, ok := parseSearchResultCount(doc); ok && count == 0 {
+			return []searchResultItem{}, 0, nil
+		}
 		return nil, 0, common2.SubHDStep0ImgParentLessThan1
 	}
 
@@ -143,4 +148,25 @@ func normalizeSearchResultTitle(title string) string {
 		return ""
 	}
 	return strings.Join(strings.Fields(title), " ")
+}
+
+var searchResultCountPattern = regexp.MustCompile(`共\s*(\d+)\s*条`)
+
+func parseSearchResultCount(doc *goquery.Document) (int, bool) {
+	if doc == nil {
+		return 0, false
+	}
+	headerText := strings.Join(strings.Fields(doc.Find("h4").First().Text()), " ")
+	if headerText == "" {
+		return 0, false
+	}
+	matches := searchResultCountPattern.FindStringSubmatch(headerText)
+	if len(matches) != 2 {
+		return 0, false
+	}
+	count, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, false
+	}
+	return count, true
 }

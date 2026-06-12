@@ -273,3 +273,24 @@ func TestParseSearchResultsKeepsPageOrderAndDeduplicatesURL(t *testing.T) {
 		t.Fatalf("parseSearchResults() urls = %v; want [/detail-b /detail-a]", []string{got[0].URL, got[1].URL})
 	}
 }
+
+func TestParseSearchResultsTreatsZeroResultPageAsMiss(t *testing.T) {
+	html := `
+<html><body>
+  <h4 class="py-4">
+    洛佩兹一家+第三季 的搜索结果
+    <span class="f13 ps-3 text-secondary">共 0 条 当前第 1 页</span>
+  </h4>
+</body></html>`
+
+	got, count, err := parseSearchResults(html)
+	if err != nil {
+		t.Fatalf("parseSearchResults() error = %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("parseSearchResults() count = %d; want 0", count)
+	}
+	if len(got) != 0 {
+		t.Fatalf("parseSearchResults() len = %d; want 0", len(got))
+	}
+}
