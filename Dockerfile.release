@@ -124,7 +124,7 @@ RUN apt-get update \
     && rm -f /tmp/s6-overlay-*.tar.xz \
     && rm -rf /var/lib/apt/lists/*
 COPY third_party/subflow/ /opt/subflow/
-RUN python3 -m pip install --no-cache-dir --break-system-packages -r /opt/subflow/requirements-translate.txt
+RUN python3 -m pip install --no-cache-dir -r /opt/subflow/requirements-translate.txt
 COPY --from=backend-builder /out/chinesesubfinder /usr/bin/chinesesubfinder
 COPY docker/full-rootfs/ /
 RUN sed -i 's/\r$//' /etc/cont-init.d/10-fixuser /etc/services.d/chinesesubfinder/run /etc/services.d/xvfb/run \
