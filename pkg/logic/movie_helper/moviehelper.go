@@ -47,6 +47,10 @@ func OneMovieDlSubInAllSite(logger *logrus.Logger, Suppliers []ifaces.ISupplier,
 			continue
 		}
 		outSUbInfos = append(outSUbInfos, subInfos...)
+		if len(subInfos) > 0 {
+			logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "Stop supplier fallback after usable subtitles found")
+			break
+		}
 	}
 
 	for index, info := range outSUbInfos {

@@ -194,6 +194,7 @@ func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifa
 	}
 
 	for _, oneSupplier := range Suppliers {
+		stopFallback := false
 
 		oneSupplierFunc := func() {
 			defer func() {
@@ -220,12 +221,49 @@ func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifa
 			sub_helper.ChangeVideoExt2SubExt(subInfos)
 
 			outSUbInfos = append(outSUbInfos, subInfos...)
+			if seriesSubtitlesCoverNeedDlEpisodes(seriesInfo, subInfos) {
+				logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "Stop supplier fallback after covering all needed episodes")
+				stopFallback = true
+			}
 		}
 
 		oneSupplierFunc()
+		if stopFallback {
+			break
+		}
 	}
 
 	return outSUbInfos
+}
+
+func seriesSubtitlesCoverNeedDlEpisodes(seriesInfo *series.SeriesInfo, subInfos []supplier.SubInfo) bool {
+	if seriesInfo == nil || len(seriesInfo.NeedDlEpsKeyList) == 0 {
+		return false
+	}
+	if len(subInfos) == 0 {
+		return false
+	}
+
+	covered := make(map[string]struct{}, len(seriesInfo.NeedDlEpsKeyList))
+	for _, subInfo := range subInfos {
+		if subInfo.Season <= 0 {
+			continue
+		}
+		if subInfo.IsFullSeason || subInfo.Episode == 0 {
+			for epsKey, epsInfo := range seriesInfo.NeedDlEpsKeyList {
+				if epsInfo.Season == subInfo.Season {
+					covered[epsKey] = struct{}{}
+				}
+			}
+			continue
+		}
+		epsKey := pkg.GetEpisodeKeyName(subInfo.Season, subInfo.Episode)
+		if _, ok := seriesInfo.NeedDlEpsKeyList[epsKey]; ok {
+			covered[epsKey] = struct{}{}
+		}
+	}
+
+	return len(covered) == len(seriesInfo.NeedDlEpsKeyList)
 }
 
 // GetSeriesListFromDirs 获取这个目录下的所有文件夹名称，默认为一个连续剧的目录的List
