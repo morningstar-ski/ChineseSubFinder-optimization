@@ -62,13 +62,23 @@ func TestCacheCenter_DownloadFileGetExpiredCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bok {
-		t.Fatal("expected expired cache miss")
+	if bok == false {
+		t.Fatal("expected expired cache to be revalidated")
 	}
-	if getSubInfo != nil {
-		t.Fatal("expected nil sub info for expired cache")
+	if getSubInfo == nil {
+		t.Fatal("expected sub info for revalidated cache")
 	}
-	assertCacheDeleted(t, cc, subInfo.GetUID())
+	if getSubInfo.FileUrl != subInfo.FileUrl {
+		t.Fatalf("revalidated FileUrl = %q, want %q", getSubInfo.FileUrl, subInfo.FileUrl)
+	}
+
+	var refreshed models.DownloadFileInfo
+	if err := cc.db.Where("uid = ?", subInfo.GetUID()).First(&refreshed).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.ExpirationTime.Before(time.Now()) {
+		t.Fatal("expected expiration time to be refreshed")
+	}
 }
 
 func TestCacheCenter_DownloadFileGetInvalidCacheByValidator(t *testing.T) {

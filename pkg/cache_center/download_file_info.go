@@ -31,12 +31,7 @@ func (c *CacheCenter) downloadFileAddLocked(subInfo *supplier.SubInfo) error {
 	}
 
 	// 只支持秒或者小时为单位
-	tmpTTL := time.Duration(settings.Get().AdvancedSettings.DownloadFileCache.TTL) * time.Second
-	if settings.Get().AdvancedSettings.DownloadFileCache.Unit == "hour" {
-		tmpTTL = time.Duration(settings.Get().AdvancedSettings.DownloadFileCache.TTL) * time.Hour
-	} else {
-		tmpTTL = time.Duration(settings.Get().AdvancedSettings.DownloadFileCache.TTL) * time.Second
-	}
+	tmpTTL := downloadFileCacheTTL()
 
 	b, err := json.Marshal(subInfo)
 	if err != nil {
@@ -89,9 +84,16 @@ func (c *CacheCenter) DownloadFileGet(fileUrlUID string, validators ...DownloadF
 	df := dfs[0]
 	localFileFPath := filepath.Join(c.downloadFileSaveRootPath, df.RelPath)
 	if df.ExpirationTime.Before(time.Now()) {
-		c.Log.Infoln("DownloadFileGet", fileUrlUID, "cache_expired")
-		c.deleteDownloadFileCacheLocked(df, localFileFPath)
-		return false, nil, nil
+		subInfo, err := c.readDownloadSubInfoLocked(localFileFPath, validators...)
+		if err != nil {
+			c.Log.Warningln("DownloadFileGet", fileUrlUID, "cache_invalid", err)
+			c.deleteDownloadFileCacheLocked(df, localFileFPath)
+			return false, nil, nil
+		}
+		df.ExpirationTime = time.Now().Add(downloadFileCacheTTL())
+		c.db.Save(&df)
+		c.Log.Infoln("DownloadFileGet", fileUrlUID, "cache_revalidated")
+		return true, subInfo, nil
 	}
 	if pkg.IsFile(localFileFPath) == false {
 		c.Log.Warningln("DownloadFileGet", fileUrlUID, "cache_invalid", "file missing")
@@ -209,4 +211,15 @@ func (c *CacheCenter) deleteDownloadFileCacheLocked(df models.DownloadFileInfo, 
 		}
 	}
 	c.db.Where("uid = ?", df.UID).Delete(&models.DownloadFileInfo{})
+}
+
+func downloadFileCacheTTL() time.Duration {
+	cache := settings.Get().AdvancedSettings.DownloadFileCache
+	if cache == nil {
+		return 4320 * time.Hour
+	}
+	if cache.Unit == "hour" {
+		return time.Duration(cache.TTL) * time.Hour
+	}
+	return time.Duration(cache.TTL) * time.Second
 }
