@@ -74,3 +74,51 @@ func TestOneMovieDlSubInAllSiteStopsAfterUsableProvider(t *testing.T) {
 		t.Fatalf("second supplier calls = %d; want 0 after early stop", secondCalls)
 	}
 }
+
+func TestOneMovieDlSubInAllSiteDoesNotStopOnMismatchedChineseSubtitle(t *testing.T) {
+	tmpRoot := t.TempDir()
+	videoPath := filepath.Join(tmpRoot, "Movie.2025.1080p.WEB-DL.mkv")
+	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	firstCalls := 0
+	secondCalls := 0
+	wrongSub := *supplier.NewSubInfo(
+		"assrt",
+		0,
+		"Different.Movie.2024.1080p.WEB-DL",
+		language.ChineseSimple,
+		"https://example.com/wrong.srt",
+		0,
+		0,
+		".srt",
+		[]byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n"),
+	)
+	rightSub := *supplier.NewSubInfo(
+		"subhd",
+		0,
+		"Movie.2025.1080p.WEB-DL",
+		language.ChineseSimple,
+		"https://example.com/right.srt",
+		0,
+		0,
+		".srt",
+		[]byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n"),
+	)
+
+	got := OneMovieDlSubInAllSite(logrus.New(), []ifaces.ISupplier{
+		fakeMovieSupplier{name: "assrt", subInfos: []supplier.SubInfo{wrongSub}, callCount: &firstCalls},
+		fakeMovieSupplier{name: "subhd", subInfos: []supplier.SubInfo{rightSub}, callCount: &secondCalls},
+	}, videoPath, 1, true)
+
+	if len(got) != 2 {
+		t.Fatalf("OneMovieDlSubInAllSite() len = %d; want 2 accumulated candidates", len(got))
+	}
+	if firstCalls != 1 {
+		t.Fatalf("first supplier calls = %d; want 1", firstCalls)
+	}
+	if secondCalls != 1 {
+		t.Fatalf("second supplier calls = %d; want 1 after mismatched subtitle", secondCalls)
+	}
+}

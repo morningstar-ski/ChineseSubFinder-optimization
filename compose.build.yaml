@@ -1,17 +1,15 @@
 services:
   chinesesubfinder:
-    # Legacy compatibility override for users already calling
-    # `docker compose -f compose.yaml -f compose.browser.yaml`.
     build:
       context: .
       dockerfile: Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-dev}
-        LITE_MODE: "false"
-        INSTALL_BROWSER: "true"
+        LITE_MODE: ${LITE_MODE:-false}
+        INSTALL_BROWSER: ${INSTALL_BROWSER:-true}
         GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
         HTTP_PROXY: ${HTTP_PROXY:-}
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         NO_PROXY: ${NO_PROXY:-}
         NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-}
-    image: ${CSF_BROWSER_IMAGE:-weishaw/chinesesubfinder:local-browser}
+    image: ${CSF_IMAGE:-weishaw/chinesesubfinder:local}

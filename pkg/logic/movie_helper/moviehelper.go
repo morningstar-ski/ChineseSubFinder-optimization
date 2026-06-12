@@ -19,10 +19,9 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/imdb_helper"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
+	markSystem "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/mark_system"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
-	language2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/jinzhu/now"
 	"github.com/sirupsen/logrus"
 )
@@ -79,32 +78,26 @@ func hasUsableMovieSubtitle(logger *logrus.Logger, videoFullPath string, queueIn
 		logger.Warningln(common.QueueName, queueIndex, supplierName, "probe organize failed", err)
 		return false
 	}
-	parserHub := sub_parser_hub.NewSubParserHub(logger, ass.NewParser(logger), srt.NewParser(logger))
-	for _, files := range organized {
-		for _, subFile := range files {
-			found, info, err := parserHub.DetermineFileTypeFromFile(subFile)
-			if err != nil {
-				logger.Warningln(common.QueueName, queueIndex, supplierName, "probe parse failed", subFile, err)
-				continue
-			}
-			if found == false || info == nil {
-				continue
-			}
-			if requireChinese {
-				if language.HasChineseLang(info.Lang) {
-					return true
-				}
-				continue
-			}
-			if language.HasChineseLang(info.Lang) {
-				continue
-			}
-			if info.Lang == language2.English || (len(info.OtherLines) > 0 && len(info.CHLines) == 0) {
-				return true
-			}
-		}
+	files := flattenOrganizedSubtitleFiles(organized)
+	if len(files) == 0 {
+		return false
 	}
-	return false
+	mk := markSystem.NewMarkingSystem(logger, common.DefaultSubSiteSequence(), 0)
+	if requireChinese {
+		return mk.SelectOneSubFileWithVideo(files, videoFullPath) != nil
+	}
+	return mk.SelectBestEnglishSubFile(files, videoFullPath) != nil
+}
+
+func flattenOrganizedSubtitleFiles(organized map[string][]string) []string {
+	if len(organized) == 0 {
+		return nil
+	}
+	out := make([]string, 0)
+	for _, files := range organized {
+		out = append(out, files...)
+	}
+	return out
 }
 
 func sanitizeProviderProbeFolderName(base string, queueIndex int64, supplierName string) string {

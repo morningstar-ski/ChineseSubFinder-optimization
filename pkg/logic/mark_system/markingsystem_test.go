@@ -141,3 +141,19 @@ func TestSelectOneSubFileWithVideoRejectsMismatchedChineseCandidate(t *testing.T
 		t.Fatalf("SelectOneSubFileWithVideo() returned %q; want nil for mismatched subtitle", got.FileFullPath)
 	}
 }
+
+func TestSelectOneSubFileWithVideoRejectsMismatchedChineseMovieCandidate(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	badChinesePath := filepath.Join(tmpDir, "[assrt]_0_Different.Movie.2024.1080p.WEB-DL.chs.srt")
+	if err := os.WriteFile(badChinesePath, []byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", badChinesePath, err)
+	}
+
+	mk := NewMarkingSystem(log_helper.GetLogger4Tester(), common.DefaultSubSiteSequence(), 0)
+	got := mk.SelectOneSubFileWithVideo([]string{badChinesePath}, filepath.Join("C:\\", "Media", "Movie.2025.1080p.WEB-DL-GROUP.mkv"))
+	if got != nil {
+		t.Fatalf("SelectOneSubFileWithVideo() returned %q; want nil for mismatched movie subtitle", got.FileFullPath)
+	}
+}

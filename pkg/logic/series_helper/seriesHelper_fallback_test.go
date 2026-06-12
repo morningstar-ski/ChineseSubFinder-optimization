@@ -72,3 +72,37 @@ func TestDownloadSubtitleInAllSiteByOneSeriesStopsWhenAllEpisodesCovered(t *test
 		t.Fatalf("second supplier calls = %d; want 0 after full coverage", secondCalls)
 	}
 }
+
+func TestDownloadSubtitleInAllSiteByOneSeriesDoesNotStopOnMismatchedChineseSubtitle(t *testing.T) {
+	seriesInfo := &series.SeriesInfo{
+		Name:    "Show",
+		DirPath: filepath.Join("C:\\", "Media", "Show"),
+		NeedDlEpsKeyList: map[string]series.EpisodeInfo{
+			pkg.GetEpisodeKeyName(1, 1): {Season: 1, Episode: 1, FileFullPath: filepath.Join("C:\\", "Media", "Show", "Show.S01E01.1080p.WEB-DL.mkv")},
+		},
+	}
+
+	firstCalls := 0
+	secondCalls := 0
+	wrongEpisode := *supplier.NewSubInfo("assrt", 0, "Different.Show.S01E09.1080p.WEB-DL", language.ChineseSimple, "https://example.com/wrong.srt", 0, 0, ".srt", []byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n"))
+	wrongEpisode.Season = 1
+	wrongEpisode.Episode = 1
+	rightEpisode := *supplier.NewSubInfo("subhd", 0, "Show.S01E01.1080p.WEB-DL", language.ChineseSimple, "https://example.com/right.srt", 0, 0, ".srt", []byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n"))
+	rightEpisode.Season = 1
+	rightEpisode.Episode = 1
+
+	got := DownloadSubtitleInAllSiteByOneSeries(logrus.New(), []ifaces.ISupplier{
+		fakeSeriesSupplier{name: "assrt", subInfos: []supplier.SubInfo{wrongEpisode}, callCount: &firstCalls},
+		fakeSeriesSupplier{name: "subhd", subInfos: []supplier.SubInfo{rightEpisode}, callCount: &secondCalls},
+	}, seriesInfo, 1, true)
+
+	if len(got) != 2 {
+		t.Fatalf("DownloadSubtitleInAllSiteByOneSeries() len = %d; want 2 accumulated candidates", len(got))
+	}
+	if firstCalls != 1 {
+		t.Fatalf("first supplier calls = %d; want 1", firstCalls)
+	}
+	if secondCalls != 1 {
+		t.Fatalf("second supplier calls = %d; want 1 after mismatched subtitle", secondCalls)
+	}
+}

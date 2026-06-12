@@ -357,9 +357,6 @@ func hasExplicitTitleMismatch(targetName string, targetParsedTitle string, relea
 		if err != nil || parsed == nil || parsed.Title == "" {
 			continue
 		}
-		if parsed.Season == 0 && parsed.Episode == 0 {
-			continue
-		}
 		candidateTitle := normalizeSubtitleTitle(parsed.Title)
 		if targetTitle != "" && candidateTitle != "" && targetTitle != candidateTitle {
 			return true

@@ -42,6 +42,15 @@ func makeASSContent(label string) string {
 		"Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,再见\\N" + label + "\n"
 }
 
+func makeMatchedChineseASSContent(label string) string {
+	return "[Script Info]\n" +
+		"Title: " + label + "\n\n" +
+		"[Events]\n" +
+		"Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
+		"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,\u4f60\u597d\\N" + label + "\n" +
+		"Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,\u518d\u89c1\\N" + label + "\n"
+}
+
 type fallbackTranslatorStub struct {
 	output string
 	err    error
@@ -64,14 +73,14 @@ func TestOneVideoSelectBestSubPrefersSubhdAndWritesSubtitle(t *testing.T) {
 	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
 
 	videoDir := t.TempDir()
-	videoPath := filepath.Join(videoDir, "Movie.mkv")
+	videoPath := filepath.Join(videoDir, "Movie.2025.1080p.WEB-DL-GROUP.mkv")
 	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
 		t.Fatalf("WriteFile(video) error = %v", err)
 	}
 
 	downloadDir := t.TempDir()
-	shooterPath := filepath.Join(downloadDir, "[shooter]_0_test.ass")
-	subhdPath := filepath.Join(downloadDir, "[subhd]_0_test.ass")
+	shooterPath := filepath.Join(downloadDir, "[shooter]_0_Movie.2025.1080p.WEB-DL-GROUP.chs.ass")
+	subhdPath := filepath.Join(downloadDir, "[subhd]_0_Movie.2025.1080p.WEB-DL-GROUP.chs.ass")
 	if err := os.WriteFile(shooterPath, []byte(shooterASSContent), 0o600); err != nil {
 		t.Fatalf("WriteFile(shooter) error = %v", err)
 	}
@@ -164,7 +173,7 @@ func TestOneVideoSelectBestSubUsesCurrentDefaultSourcePriority(t *testing.T) {
 	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
 
 	videoDir := t.TempDir()
-	videoPath := filepath.Join(videoDir, "Episode.mkv")
+	videoPath := filepath.Join(videoDir, "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv")
 	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
 		t.Fatalf("WriteFile(video) error = %v", err)
 	}
@@ -174,20 +183,20 @@ func TestOneVideoSelectBestSubUsesCurrentDefaultSourcePriority(t *testing.T) {
 		site    string
 		content string
 	}{
-		{site: common2.SubSiteXunLei, content: makeASSContent("xunlei")},
-		{site: common2.SubSiteShooter, content: makeASSContent("shooter")},
-		{site: common2.SubSiteSubHd, content: makeASSContent("subhd")},
-		{site: common2.SubSiteSubDL, content: makeASSContent("subdl")},
-		{site: common2.SubSiteAssrt, content: makeASSContent("assrt")},
-		{site: common2.SubSiteMovieSubtitles, content: makeASSContent("moviesubtitles")},
-		{site: common2.SubSiteTVSubtitles, content: makeASSContent("tvsubtitles")},
-		{site: common2.SubSiteOpenSubtitles, content: makeASSContent("opensubtitles")},
-		{site: common2.SubSiteSubtitleBest, content: makeASSContent("subtitle_best")},
+		{site: common2.SubSiteXunLei, content: makeMatchedChineseASSContent("xunlei")},
+		{site: common2.SubSiteShooter, content: makeMatchedChineseASSContent("shooter")},
+		{site: common2.SubSiteSubHd, content: makeMatchedChineseASSContent("subhd")},
+		{site: common2.SubSiteSubDL, content: makeMatchedChineseASSContent("subdl")},
+		{site: common2.SubSiteAssrt, content: makeMatchedChineseASSContent("assrt")},
+		{site: common2.SubSiteMovieSubtitles, content: makeMatchedChineseASSContent("moviesubtitles")},
+		{site: common2.SubSiteTVSubtitles, content: makeMatchedChineseASSContent("tvsubtitles")},
+		{site: common2.SubSiteOpenSubtitles, content: makeMatchedChineseASSContent("opensubtitles")},
+		{site: common2.SubSiteSubtitleBest, content: makeMatchedChineseASSContent("subtitle_best")},
 	}
 
 	subFiles := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
-		path := filepath.Join(downloadDir, "["+candidate.site+"]_0_test.ass")
+		path := filepath.Join(downloadDir, "["+candidate.site+"]_0_My.Show.S01E03.1080p.WEB-DL-GROUP.chs.ass")
 		if err := os.WriteFile(path, []byte(candidate.content), 0o600); err != nil {
 			t.Fatalf("WriteFile(%q) error = %v", path, err)
 		}
@@ -227,7 +236,7 @@ func TestOneVideoSelectBestSubUsesCurrentDefaultSourcePriority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile(savedPath) error = %v", err)
 	}
-	if string(savedContent) != makeASSContent("subtitle_best") {
+	if string(savedContent) != makeMatchedChineseASSContent("subtitle_best") {
 		t.Fatalf("saved subtitle content did not come from highest-priority current source")
 	}
 }
@@ -242,7 +251,7 @@ func TestOneVideoSelectBestSubSkipsAbsurdTimelineSubtitle(t *testing.T) {
 	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
 
 	videoDir := t.TempDir()
-	videoPath := filepath.Join(videoDir, "Episode.mkv")
+	videoPath := filepath.Join(videoDir, "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv")
 	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
 		t.Fatalf("WriteFile(video) error = %v", err)
 	}
@@ -265,6 +274,29 @@ func TestOneVideoSelectBestSubSkipsAbsurdTimelineSubtitle(t *testing.T) {
 		"1",
 		"00:00:05,000 --> 00:00:07,000",
 		"这是正常字幕",
+		"",
+		"2",
+		"00:00:08,000 --> 00:00:10,000",
+		"Second line",
+		"",
+	}, "\n")
+
+	invalidPath = filepath.Join(downloadDir, "["+common2.SubSiteSubtitleBest+"]_0_My.Show.S01E03.1080p.WEB-DL-GROUP.chs.srt")
+	validPath = filepath.Join(downloadDir, "["+common2.SubSiteSubDL+"]_0_My.Show.S01E03.1080p.WEB-DL-GROUP.chs.srt")
+	invalidContent = strings.Join([]string{
+		"1",
+		"23:59:57,000 --> 23:59:58,000",
+		"garbled line",
+		"",
+		"2",
+		"00:00:05,000 --> 00:00:07,000",
+		"\u8fd9\u4e0d\u662f\u6b63\u5e38\u65f6\u95f4\u8f74",
+		"",
+	}, "\n")
+	validContent = strings.Join([]string{
+		"1",
+		"00:00:05,000 --> 00:00:07,000",
+		"\u8fd9\u662f\u6b63\u5e38\u5b57\u5e55",
 		"",
 		"2",
 		"00:00:08,000 --> 00:00:10,000",

@@ -30,22 +30,23 @@ ChineseSubFinder 是一个面向电影与剧集媒体库的中文字幕自动检
 
 ### Docker 一键部署
 
-当前仓库已经提供源码直出镜像的默认链路，直接在仓库根目录执行：
+当前仓库默认提供 GHCR 成品镜像部署链路，直接在仓库根目录执行：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 默认会：
 
-- 使用仓库当前源码构建前端和后端
-- 生成你自己的 `chinesesubfinder` 镜像，而不是下载上游官方 release
+- 直接拉取 GHCR 中的成品镜像
+- 避免在远端机器现场构建前端、后端和运行环境
 - 启动容器 `chinesesubfinder`
 
 可选构建参数：
 
 ```bash
-APP_VERSION=v0.55.4-local GOPROXY=https://goproxy.cn,direct docker compose up -d --build
+CSF_IMAGE=ghcr.io/morningstar-ski/chinesesubfinder-optimization:v0.55.4-provider.10 docker compose up -d
 ```
 
 运行配置见根目录 [compose.yaml](compose.yaml)。
@@ -93,11 +94,12 @@ npm run build
 
 ## Docker 说明
 
-- 根目录 `Dockerfile` 是当前仓库推荐的可部署构建链路，默认构建 **非 Lite** 标准版，并安装 Chromium
-- 根目录 `compose.yaml` 是默认启动入口，默认会得到可直接使用浏览器型字幕源的镜像
+- 根目录 `compose.yaml` 是默认远端部署入口，默认直接拉取 `ghcr.io/morningstar-ski/chinesesubfinder-optimization:latest`
+- 根目录 `compose.build.yaml` 是本地源码构建覆盖文件，只有在需要本地 build 时才叠加使用
+- 根目录 `Dockerfile` 仍保留为 GHCR 镜像构建链路，默认构建 **非 Lite** 标准版，并安装 Chromium
 - 运行时会自动探测 `/usr/bin/chromium` 等常见路径，一般不需要再到实验室里手填本地 Chrome 路径
-- 如需显式退回轻量模式，请自行传入 `LITE_MODE=true` 和 `INSTALL_BROWSER=false`
-- `docker/full-release.Dockerfile` 仍保留作历史文件，不适合本仓库源码直出部署
+- 如需本地源码构建，请使用 `docker compose -f compose.yaml -f compose.build.yaml up -d --build`
+- `docker/full-release.Dockerfile` 仍保留作历史文件，不适合这个仓库的默认部署路径
 
 ## 说明
 

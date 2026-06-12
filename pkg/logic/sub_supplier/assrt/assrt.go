@@ -16,12 +16,15 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
 
 	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
+	assparser "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/ass"
+	srtparser "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/srt"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/ranking"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
@@ -31,6 +34,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/notify_center"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
 	"github.com/sirupsen/logrus"
 )
 
@@ -503,7 +507,7 @@ func assrtDownloadedSubtitleUsable(log *logrus.Logger, videoFPath string, isMovi
 
 	if isMovie {
 		for _, files := range organized {
-			if len(files) > 0 {
+			if organizedChineseSubtitleExists(log, files) {
 				return true
 			}
 		}
@@ -514,7 +518,32 @@ func assrtDownloadedSubtitleUsable(log *logrus.Logger, videoFPath string, isMovi
 		return false
 	}
 
-	return len(organized[pkg.GetEpisodeKeyName(subInfo.Season, subInfo.Episode)]) > 0
+	return organizedChineseSubtitleExists(log, organized[pkg.GetEpisodeKeyName(subInfo.Season, subInfo.Episode)])
+}
+
+func organizedChineseSubtitleExists(log *logrus.Logger, subtitlePaths []string) bool {
+	if len(subtitlePaths) == 0 {
+		return false
+	}
+
+	parserHub := sub_parser_hub.NewSubParserHub(log, assparser.NewParser(log), srtparser.NewParser(log))
+	for _, subtitlePath := range subtitlePaths {
+		found, fileInfo, err := parserHub.DetermineFileTypeFromFile(subtitlePath)
+		if err != nil {
+			if log != nil {
+				log.Warningln("organizedChineseSubtitleExists", filepath.Base(subtitlePath), err)
+			}
+			continue
+		}
+		if found == false || fileInfo == nil {
+			continue
+		}
+		if language.HasChineseLang(fileInfo.Lang) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func sanitizeAssrtProbeFolderName(videoFPath string, subInfo supplier.SubInfo) string {

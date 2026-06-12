@@ -356,6 +356,20 @@ func TestAssrtDetailSubsAllowsSingleObjectPayload(t *testing.T) {
 	}
 }
 
+func TestAssrtDetailSubsAllowsEmptyObjectPayload(t *testing.T) {
+	var got OneSubDetail
+	payload := `{"errmsg":"subtitle not found","sub":{"result":"failed","subs":{},"action":"detail"},"status":20900}`
+	if err := json.Unmarshal([]byte(payload), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(got.Sub.Subs) != 0 {
+		t.Fatalf("unexpected detail subs %#v", got.Sub.Subs)
+	}
+	if got.Status != 20900 || got.Sub.Result != "failed" {
+		t.Fatalf("unexpected payload %#v", got)
+	}
+}
+
 func TestBuildAssrtDownloadCandidatesIncludesAllDistinctDetailURLs(t *testing.T) {
 	candidates := buildAssrtDownloadCandidates(
 		"Episode.mkv",
@@ -411,7 +425,7 @@ func TestFirstUsableAssrtDownloadSkipsBadArchiveCandidate(t *testing.T) {
 		"README.txt": "not subtitle",
 	}))
 	goodInfo := supplier.NewSubInfo("assrt", 0, "good.zip", language.ChineseSimple, "https://example.com/good.zip", 0, 0, ".zip", mustBuildZipBytes(t, map[string]string{
-		"Movie.zh.srt": strings.Repeat("1\n00:00:01,000 --> 00:00:02,000\nhello world subtitle line\n\n", 40),
+		"Movie.zh.srt": strings.Repeat("1\n00:00:01,000 --> 00:00:02,000\n你好，世界\nHello world subtitle line\n\n", 40),
 	}))
 
 	got, ok, err := firstUsableAssrtDownload(
@@ -473,6 +487,34 @@ func TestFirstUsableAssrtDownloadReturnsLastErrorWhenAllCandidatesFail(t *testin
 	}
 	if strings.Contains(err.Error(), "invalid archive payload") == false && strings.Contains(err.Error(), "assrt unusable downloaded candidate") == false {
 		t.Fatalf("unexpected error %q", err.Error())
+	}
+}
+
+func TestFirstUsableAssrtDownloadRejectsEnglishOnlySubtitle(t *testing.T) {
+	englishInfo := supplier.NewSubInfo("assrt", 0, "english.zip", language.ChineseSimple, "https://example.com/english.zip", 0, 0, ".zip", mustBuildZipBytes(t, map[string]string{
+		"My.Show.S01E03.en.srt": "1\n00:00:01,000 --> 00:00:02,000\nHello there\n\n2\n00:00:03,000 --> 00:00:04,000\nGeneral Kenobi\n",
+	}))
+
+	got, ok, err := firstUsableAssrtDownload(
+		logrus.New(),
+		filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"),
+		false,
+		[]assrtDownloadCandidate{
+			{url: "https://example.com/english.zip", subName: "english.zip"},
+		},
+		nil,
+		func(_ int, _ assrtDownloadCandidate) (*supplier.SubInfo, error) {
+			return englishInfo, nil
+		},
+	)
+	if ok {
+		t.Fatal("expected english-only subtitle to be rejected")
+	}
+	if got != nil {
+		t.Fatalf("firstUsableAssrtDownload() got %#v, want nil", got)
+	}
+	if err == nil || strings.Contains(err.Error(), "assrt unusable downloaded candidate") == false {
+		t.Fatalf("unexpected error %v", err)
 	}
 }
 

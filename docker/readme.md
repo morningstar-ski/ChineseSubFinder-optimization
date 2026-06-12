@@ -2,30 +2,30 @@
 
 ### 当前仓库推荐方式
 
-这个仓库现在默认使用**源码直出镜像**的方式部署，请优先在仓库根目录执行：
+这个仓库现在默认使用 **GHCR 成品镜像拉取** 的方式部署，请优先在仓库根目录执行：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-如果构建环境需要代理，可以显式传入：
+如果需要固定版本，可以显式指定镜像：
 
 ```bash
-APP_VERSION=v0.55.4-local \
-GOPROXY=https://goproxy.cn,direct \
-HTTP_PROXY=http://127.0.0.1:7890 \
-HTTPS_PROXY=http://127.0.0.1:7890 \
-docker compose up -d --build
+CSF_IMAGE=ghcr.io/morningstar-ski/chinesesubfinder-optimization:v0.55.4-provider.10 \
+docker compose up -d
 ```
 
 说明：
 
-- 根目录 `Dockerfile` 会从当前仓库源码构建前端和后端，默认构建 **非 Lite** 标准版，并安装 Chromium
-- 根目录 `compose.yaml` 是默认启动入口，默认会得到可直接使用浏览器型字幕源的镜像
+- 根目录 `compose.yaml` 是默认远端部署入口，默认直接拉取 `ghcr.io/morningstar-ski/chinesesubfinder-optimization:latest`
+- 根目录 `compose.build.yaml` 是本地源码构建覆盖文件
+- 根目录 `Dockerfile` 会作为 GHCR 镜像构建链路，默认构建 **非 Lite** 标准版，并安装 Chromium
 - 运行时会自动探测 `/usr/bin/chromium` 等常见路径，一般不需要再到实验室里手填本地 Chrome 路径
 - `compose.browser.yaml` 仅保留给已经在使用浏览器覆盖文件的兼容场景
-- 如需显式退回轻量模式，请自行传入 `LITE_MODE=true` 和 `INSTALL_BROWSER=false`
-- `docker/full-release.Dockerfile` 会下载上游官方 release，**不适合**这个改写仓库的发布
+- 如需本地源码构建，请使用 `docker compose -f compose.yaml -f compose.build.yaml up -d --build`
+- 如需显式退回轻量模式，请在源码构建时传入 `LITE_MODE=true` 和 `INSTALL_BROWSER=false`
+- `docker/full-release.Dockerfile` 会下载上游官方 release，**不适合**这个改写仓库的默认部署
 - `docker/lite-release.Dockerfile` 只保留历史参考意义，默认也不作为一键部署入口
 
 使用本程序是有前提的，高度依赖 Emby、Jellyfin、Plex、tinyMediaManager 这类软件对你的视频（电影、连续剧）进行削刮。

@@ -24,10 +24,9 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/imdb_helper"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
+	markSystem "github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/mark_system"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
-	language2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/emirpasic/gods/maps/treemap"
 	"github.com/jinzhu/now"
 	"github.com/sirupsen/logrus"
@@ -256,38 +255,20 @@ func hasCoveredAllNeededEpisodes(logger *logrus.Logger, seriesInfo *series.Serie
 		return false
 	}
 
-	parserHub := sub_parser_hub.NewSubParserHub(logger, ass.NewParser(logger), srt.NewParser(logger))
+	mk := markSystem.NewMarkingSystem(logger, common.DefaultSubSiteSequence(), 0)
 	for epsKey := range seriesInfo.NeedDlEpsKeyList {
+		episodeInfo := seriesInfo.NeedDlEpsKeyList[epsKey]
 		files := organized[epsKey]
 		if len(files) == 0 {
 			return false
 		}
-		foundUsable := false
-		for _, subFile := range files {
-			found, info, err := parserHub.DetermineFileTypeFromFile(subFile)
-			if err != nil {
-				logger.Warningln(common.QueueName, queueIndex, supplierName, "probe parse failed", subFile, err)
-				continue
+		if requireChinese {
+			if mk.SelectOneSubFileWithVideo(files, episodeInfo.FileFullPath) == nil {
+				return false
 			}
-			if found == false || info == nil {
-				continue
-			}
-			if requireChinese {
-				if language.HasChineseLang(info.Lang) {
-					foundUsable = true
-					break
-				}
-				continue
-			}
-			if language.HasChineseLang(info.Lang) {
-				continue
-			}
-			if info.Lang == language2.English || (len(info.OtherLines) > 0 && len(info.CHLines) == 0) {
-				foundUsable = true
-				break
-			}
+			continue
 		}
-		if foundUsable == false {
+		if mk.SelectBestEnglishSubFile(files, episodeInfo.FileFullPath) == nil {
 			return false
 		}
 	}
