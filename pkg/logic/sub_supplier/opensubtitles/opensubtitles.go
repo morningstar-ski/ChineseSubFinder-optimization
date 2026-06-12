@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -43,6 +44,11 @@ const (
 	subtitleLanguageEnglish subtitleLanguageMode = "english"
 )
 
+var sharedQuotaExhaustedState struct {
+	sync.RWMutex
+	exhausted bool
+}
+
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 	return newSupplier(fileDownloader, subtitleLanguageChinese)
 }
@@ -68,6 +74,7 @@ func newSupplier(fileDownloader *file_downloader.FileDownloader, languageMode su
 	if settings.Get().AdvancedSettings.Topic > 0 && settings.Get().AdvancedSettings.Topic != sup.topic {
 		sup.topic = settings.Get().AdvancedSettings.Topic
 	}
+	sup.quotaExhausted = isSharedQuotaExhausted()
 
 	return &sup
 }
@@ -101,6 +108,9 @@ func (s *Supplier) IsAlive() bool {
 }
 
 func (s *Supplier) OverDailyDownloadLimit() bool {
+	if isSharedQuotaExhausted() {
+		s.quotaExhausted = true
+	}
 	if s.quotaExhausted {
 		return true
 	}
@@ -175,6 +185,9 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 		s.log.Debugln(s.GetSupplierName(), videoFPath, "End...")
 	}()
 	s.log.Debugln(s.GetSupplierName(), videoFPath, "Start...")
+	if isSharedQuotaExhausted() {
+		s.quotaExhausted = true
+	}
 	if s.quotaExhausted {
 		return nil, nil
 	}
@@ -222,7 +235,7 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 		downloadInfo, err := s.api.DownloadByFileID(client, candidate.FileID)
 		if err != nil {
 			if isOpenSubtitlesQuotaExceeded(err) {
-				s.quotaExhausted = true
+				s.markQuotaExhausted()
 			}
 			s.log.Errorln(s.GetSupplierName(), "DownloadByFileID", candidate.FileID, err)
 			continue
@@ -312,6 +325,23 @@ func isOpenSubtitlesQuotaExceeded(err error) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "http 406")
+}
+
+func (s *Supplier) markQuotaExhausted() {
+	s.quotaExhausted = true
+	setSharedQuotaExhausted(true)
+}
+
+func isSharedQuotaExhausted() bool {
+	sharedQuotaExhaustedState.RLock()
+	defer sharedQuotaExhaustedState.RUnlock()
+	return sharedQuotaExhaustedState.exhausted
+}
+
+func setSharedQuotaExhausted(exhausted bool) {
+	sharedQuotaExhaustedState.Lock()
+	defer sharedQuotaExhaustedState.Unlock()
+	sharedQuotaExhaustedState.exhausted = exhausted
 }
 
 func buildSearchQueries(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, season, episode int) []map[string]string {
