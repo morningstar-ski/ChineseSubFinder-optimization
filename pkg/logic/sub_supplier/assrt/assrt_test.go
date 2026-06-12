@@ -328,6 +328,51 @@ func TestSelectAssrtSearchKeywordUsesMediaInfoWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestGetSubInfoWithFallbackDeduplicatesResolvedKeywords(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cfg := settings.Get()
+	oldRootURL := cfg.AdvancedSettings.SuppliersSettings.Assrt.RootUrl
+	oldToken := cfg.SubtitleSources.AssrtSettings.Token
+	t.Cleanup(func() {
+		cfg.AdvancedSettings.SuppliersSettings.Assrt.RootUrl = oldRootURL
+		cfg.SubtitleSources.AssrtSettings.Token = oldToken
+	})
+
+	var gotKeywords []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKeywords = append(gotKeywords, r.URL.Query().Get("q"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"sub":{"action":"search","subs":[],"result":"succeed","keyword":"ok"},"status":0}`))
+	}))
+	defer server.Close()
+
+	cfg.AdvancedSettings.SuppliersSettings.Assrt.RootUrl = server.URL
+	cfg.SubtitleSources.AssrtSettings.Token = "test-token"
+
+	supplier := NewSupplier(&file_downloader.FileDownloader{Log: log_helper.GetLogger4Tester()})
+	supplier.theSearchInterval = 0
+
+	videoPath := createAssrtEpisodeFixture(t, "George Lopez - S03E11 - Episode 11.mkv", 3, 11)
+	mediaInfo := &models.MediaInfo{
+		TitleCn:       "洛佩兹一家",
+		TitleEn:       "George Lopez",
+		OriginalTitle: "George Lopez",
+	}
+
+	got, err := supplier.getSubInfoWithFallback(mediaInfo, videoPath, false)
+	if err != nil {
+		t.Fatalf("getSubInfoWithFallback returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil result when all deduplicated searches miss, got %#v", got)
+	}
+
+	wantKeywords := []string{"洛佩兹一家 S03E11", "George Lopez S03E11"}
+	if !reflect.DeepEqual(gotKeywords, wantKeywords) {
+		t.Fatalf("search keywords = %#v; want %#v", gotKeywords, wantKeywords)
+	}
+}
+
 func createAssrtEpisodeFixture(t *testing.T, videoName string, season int, episode int) string {
 	t.Helper()
 

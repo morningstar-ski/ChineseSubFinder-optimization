@@ -377,12 +377,19 @@ func (s *Supplier) persistBadDownloadSubIDs() error {
 
 func (s *Supplier) getSubInfoWithFallback(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool) (*SearchSubResult, error) {
 	videoFileName := filepath.Base(videoFPath)
+	seenKeywords := make(map[string]string, len(assrtSearchKeywordOrder))
 	for _, keyWordType := range assrtSearchKeywordOrder {
 		keyWord, err := selectAssrtSearchKeyword(mediaInfo, videoFPath, isMovie, keyWordType)
 		if err != nil {
 			s.log.Infoln(s.GetSupplierName(), videoFileName, "Skip Search KeyWordType", keyWordType, err)
 			continue
 		}
+		keywordKey := assrtSearchKeywordDedupKey(keyWord)
+		if previousType, found := seenKeywords[keywordKey]; found {
+			s.log.Infoln(s.GetSupplierName(), videoFileName, "Skip Duplicate Search KeyWordType", keyWordType, "KeyWord:", keyWord, "SameAs:", previousType)
+			continue
+		}
+		seenKeywords[keywordKey] = keyWordType
 
 		s.log.Infoln(s.GetSupplierName(), videoFileName, "Try Search KeyWordType", keyWordType, "KeyWord:", keyWord)
 		searchSubResult, err := s.getSubByKeyWord(keyWord)
@@ -399,6 +406,10 @@ func (s *Supplier) getSubInfoWithFallback(mediaInfo *models.MediaInfo, videoFPat
 	}
 
 	return nil, nil
+}
+
+func assrtSearchKeywordDedupKey(keyword string) string {
+	return strings.ToLower(strings.Join(strings.Fields(keyword), " "))
 }
 
 func selectAssrtSearchKeyword(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, keyWordType string) (string, error) {
