@@ -833,14 +833,42 @@ func scoreSubHDCandidate(candidate HdListItem, matcher ranking.TargetMatcher, ta
 func selectSearchResultURLs(searchResults []searchResultItem, titleCandidates []string) []string {
 	items := searchResults
 	if len(titleCandidates) > 0 {
-		filtered := make([]searchResultItem, 0, len(searchResults))
+		type scoredSearchResult struct {
+			item  searchResultItem
+			score int
+			index int
+		}
+		filtered := make([]scoredSearchResult, 0, len(searchResults))
 		for _, item := range searchResults {
-			if matchSeriesTitle(item.Title, titleCandidates) == false {
+			bestScore := 0
+			for _, titleCandidate := range titleCandidates {
+				score := scoreSeriesTitle(normalizeComparableSeriesTitle(item.Title), titleCandidate)
+				if score > bestScore {
+					bestScore = score
+				}
+			}
+			if bestScore == 0 {
 				continue
 			}
-			filtered = append(filtered, item)
+			filtered = append(filtered, scoredSearchResult{
+				item:  item,
+				score: bestScore,
+				index: len(filtered),
+			})
 		}
-		items = filtered
+		sort.SliceStable(filtered, func(i, j int) bool {
+			if filtered[i].score != filtered[j].score {
+				return filtered[i].score > filtered[j].score
+			}
+			return filtered[i].index < filtered[j].index
+		})
+		items = make([]searchResultItem, 0, len(filtered))
+		for _, item := range filtered {
+			items = append(items, item.item)
+			if len(items) >= maxSeriesSearchResultPages {
+				break
+			}
+		}
 	}
 
 	out := make([]string, 0, len(items))
@@ -852,6 +880,8 @@ func selectSearchResultURLs(searchResults []searchResultItem, titleCandidates []
 	}
 	return out
 }
+
+const maxSeriesSearchResultPages = 6
 
 func matchSeriesTitle(candidateTitle string, titleCandidates []string) bool {
 	normalizedCandidate := normalizeComparableSeriesTitle(candidateTitle)

@@ -1,6 +1,7 @@
 package subhd
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -220,6 +221,33 @@ func TestSelectSearchResultURLsKeepsAllResultsWithoutTitleCandidates(t *testing.
 	}
 	if got[0] != "/a" || got[1] != "/b" {
 		t.Fatalf("selectSearchResultURLs() = %v; want [/a /b]", got)
+	}
+}
+
+func TestSelectSearchResultURLsCapsSeriesResultsAndKeepsBestMatchesFirst(t *testing.T) {
+	searchResults := []searchResultItem{
+		{Title: "Wrong Show Season 1", URL: "/wrong"},
+		{Title: "The Boys Season 5", URL: "/season"},
+		{Title: "The Boys", URL: "/exact"},
+	}
+	for i := 0; i < 8; i++ {
+		searchResults = append(searchResults, searchResultItem{
+			Title: fmt.Sprintf("The Boys Extra %d", i),
+			URL:   fmt.Sprintf("/extra-%d", i),
+		})
+	}
+
+	got := selectSearchResultURLs(searchResults, []string{"The Boys"})
+	if len(got) != maxSeriesSearchResultPages {
+		t.Fatalf("selectSearchResultURLs() len = %d; want %d", len(got), maxSeriesSearchResultPages)
+	}
+	if got[0] != "/exact" || got[1] != "/season" {
+		t.Fatalf("selectSearchResultURLs() first urls = %v; want [/exact /season ...]", got[:2])
+	}
+	for _, url := range got {
+		if url == "/wrong" {
+			t.Fatal("selectSearchResultURLs() should drop non-matching results")
+		}
 	}
 }
 
