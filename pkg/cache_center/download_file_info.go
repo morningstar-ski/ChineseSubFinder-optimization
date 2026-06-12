@@ -218,8 +218,16 @@ func downloadFileCacheTTL() time.Duration {
 	if cache == nil {
 		return 4320 * time.Hour
 	}
-	if cache.Unit == "hour" {
-		return time.Duration(cache.TTL) * time.Hour
+	if cache.Unit == "second" {
+		ttl := cache.TTL
+		if ttl < 259200 || ttl > 525600 {
+			ttl = 259200
+		}
+		return time.Duration(ttl) * time.Second
 	}
-	return time.Duration(cache.TTL) * time.Second
+	ttl := cache.TTL
+	if ttl < 4320 || ttl > 8760 {
+		ttl = 4320
+	}
+	return time.Duration(ttl) * time.Hour
 }
