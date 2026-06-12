@@ -91,7 +91,7 @@ func (c *CacheCenter) DownloadFileGet(fileUrlUID string, validators ...DownloadF
 			return false, nil, nil
 		}
 		df.ExpirationTime = time.Now().Add(downloadFileCacheTTL())
-		c.db.Save(&df)
+		c.db.Model(&models.DownloadFileInfo{}).Where("uid = ?", df.UID).Update("expiration_time", df.ExpirationTime)
 		c.Log.Infoln("DownloadFileGet", fileUrlUID, "cache_revalidated")
 		return true, subInfo, nil
 	}
