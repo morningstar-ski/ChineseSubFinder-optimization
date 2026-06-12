@@ -1,6 +1,6 @@
 <template>
   <q-page class="q-pa-md">
-    <q-banner inline-actions class="text-white bg-red" v-if="isJobRunning">
+    <q-banner :inline-actions="!isMobile" class="text-white bg-red" v-if="isJobRunning">
       <template v-slot:avatar>
         <q-icon name="warning" />
       </template>
@@ -10,7 +10,7 @@
       </template>
       <span> </span>
     </q-banner>
-    <q-banner inline-actions class="bg-blue-1 text-blue-10 q-mb-md">
+    <q-banner :inline-actions="!isMobile" class="bg-blue-1 text-blue-10 q-mb-md">
       <template v-slot:avatar>
         <q-icon name="info" />
       </template>
@@ -25,11 +25,14 @@
       <q-tabs
         v-model="tab"
         dense
+        shrink
         active-color="primary"
         indicator-color="primary"
-        align="justify"
+        :align="tabAlign"
+        mobile-arrows
+        outside-arrows
         narrow-indicator
-        style="max-width: 700px"
+        class="settings-tabs"
       >
         <q-tab name="basic" label="基础配置" />
         <q-tab name="advanced" label="进阶配置" />
@@ -83,6 +86,7 @@
 
 <script setup>
 import { computed, ref } from 'vue';
+import { useQuasar } from 'quasar';
 import BasicSettings from 'pages/settings/SettingsPanelBasic';
 import AdvancedSettings from 'pages/settings/SettingsPanelAdvanced';
 import EmbySettings from 'pages/settings/SettingsPanelEmby';
@@ -94,8 +98,11 @@ import FormSubmitArea from 'pages/settings/FormSubmitArea';
 import SubSourceSettings from 'pages/settings/SettingsPanelSubSource';
 import { PROJECT_ISSUES_URL, PROJECT_REPO_URL } from 'src/constants/ProjectLinks';
 
+const $q = useQuasar();
 const tab = ref('subSource');
 
+const isMobile = computed(() => $q.screen.lt.md);
+const tabAlign = computed(() => (isMobile.value ? 'left' : 'justify'));
 const isSettingsLoaded = computed(() => Object.keys(formModel).length);
 
 const openPage = (url) => {
@@ -104,3 +111,9 @@ const openPage = (url) => {
 
 useSettings();
 </script>
+
+<style scoped>
+.settings-tabs {
+  max-width: 100%;
+}
+</style>

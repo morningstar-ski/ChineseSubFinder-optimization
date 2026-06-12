@@ -21,7 +21,7 @@ func ReadCustomPortFile(log *logrus.Logger) int {
 			return defPort
 		}
 
-		atoi, err := strconv.Atoi(string(bytes))
+		atoi, err := strconv.Atoi(strings.TrimSpace(string(bytes)))
 		if err != nil {
 			log.Errorln("Atoi CustomPort Error", err)
 			log.Infoln("Use DefPort", defPort)
@@ -61,18 +61,16 @@ func ReadCustomAuthFile(log *logrus.Logger) bool {
 }
 
 func resolveCustomFilePath(fileName string) string {
+	configRootDir := ConfigRootDirFPath()
+	if configRootDir != "" {
+		configRootFilePath := filepath.Join(configRootDir, fileName)
+		if IsFile(configRootFilePath) {
+			return configRootFilePath
+		}
+	}
+
 	if IsFile(fileName) {
 		return fileName
-	}
-
-	configRootDir := ConfigRootDirFPath()
-	if configRootDir == "" {
-		return fileName
-	}
-
-	configRootFilePath := filepath.Join(configRootDir, fileName)
-	if IsFile(configRootFilePath) {
-		return configRootFilePath
 	}
 
 	return fileName

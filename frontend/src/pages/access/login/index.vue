@@ -14,6 +14,7 @@
                   <q-input
                     square
                     v-model="form.username"
+                    autocomplete="username"
                     lazy-rules
                     :rules="[(val) => !!val || '用户名不能为空']"
                     label="用户名"
@@ -26,6 +27,7 @@
                     square
                     v-model="form.password"
                     type="password"
+                    autocomplete="current-password"
                     lazy-rules
                     :rules="[(val) => !!val || '密码不能为空']"
                     label="密码"

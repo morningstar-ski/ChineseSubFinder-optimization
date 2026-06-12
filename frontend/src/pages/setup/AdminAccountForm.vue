@@ -3,6 +3,7 @@
     <q-input
       filled
       v-model="setupState.form.username"
+      autocomplete="username"
       label="输入您的用户名"
       hint="用户名必须在3-16个字符以内，只能包含字母、数字、下划线"
       lazy-rules
@@ -16,6 +17,7 @@
       filled
       v-model="setupState.form.password"
       type="password"
+      autocomplete="new-password"
       label="输入您的密码"
       hint="密码必须在6-30位之间"
       lazy-rules
@@ -31,6 +33,7 @@
       filled
       v-model="setupState.form.confirmPassword"
       type="password"
+      autocomplete="new-password"
       label="确认密码"
       hint=""
       lazy-rules

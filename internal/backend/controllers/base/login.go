@@ -22,6 +22,13 @@ func (cb *ControllerBase) LoginHandler(c *gin.Context) {
 	nowUserInfo := settings.UserInfo{}
 	err = c.ShouldBindJSON(&nowUserInfo)
 	if err != nil {
+		c.JSON(http.StatusBadRequest, backend2.ReplyCommon{Message: err.Error()})
+		err = nil
+		return
+	}
+	if nowUserInfo.IsValidUsername() == false {
+		c.JSON(http.StatusBadRequest, backend2.ReplyCommon{Message: "username format invalid"})
+		err = nil
 		return
 	}
 

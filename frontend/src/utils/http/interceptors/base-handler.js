@@ -1,28 +1,37 @@
+import { LocalStorage } from 'quasar';
 import { router } from 'src/router';
+import { userState } from 'src/store/userState';
+
+const clearAuthState = () => {
+  userState.username = '';
+  userState.accessToken = undefined;
+  LocalStorage.remove('token');
+};
 
 const handleError = (error) => {
-  // eslint-disable-next-line
-  console.error('interceptor catch the error!\n', error);
   let errorMessageText = error.data?.message || error.message || '网络错误';
-  // 权限不足时的处理
+
   if (error.status === 401) {
-    errorMessageText = error.data.message || '权限不足，请登录重试';
-    router.push('/access/login');
+    clearAuthState();
+    errorMessageText = error.data?.message || '权限不足，请登录重试';
+    if (router.currentRoute.value.path !== '/access/login') {
+      router.push('/access/login');
+    }
+  } else {
+    // eslint-disable-next-line no-console
+    console.error('interceptor catch the error!\n', error);
   }
 
-  const rtData = {
+  return Promise.reject({
     error,
     message: errorMessageText,
-  };
-
-  return Promise.reject(rtData);
+  });
 };
 
 export default {
   onRequestRejected: (error) => handleError(error),
   onResponseFullFilled: (response) => {
     const { data } = response;
-    // 正常返回但是code是错误码的情况也需要异常处理
     if (data?.code && data?.code > 300) {
       return handleError(response);
     }

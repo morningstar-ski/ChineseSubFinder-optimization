@@ -65,6 +65,56 @@ func TestReadCustomPortFileFromConfigRoot(t *testing.T) {
 	}
 }
 
+func TestReadCustomPortFileTrimsTrailingWhitespace(t *testing.T) {
+	tempDir := t.TempDir()
+	customPortPath := filepath.Join(tempDir, customPort)
+	if err := os.WriteFile(customPortPath, []byte("19045\r\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile CustomPort returned error: %v", err)
+	}
+
+	oldConfigPath := LinuxConfigPathInSelfPath()
+	t.Cleanup(func() {
+		SetLinuxConfigPathInSelfPath(oldConfigPath)
+	})
+
+	SetLinuxConfigPathInSelfPath(tempDir)
+
+	if got := ReadCustomPortFile(logrus.New()); got != 19045 {
+		t.Fatalf("ReadCustomPortFile with trailing newline = %d", got)
+	}
+}
+
+func TestReadCustomPortFilePrefersConfigRootOverWorkingDirectory(t *testing.T) {
+	configDir := t.TempDir()
+	cwdDir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(configDir, customPort), []byte("19045"), 0o644); err != nil {
+		t.Fatalf("WriteFile config CustomPort returned error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cwdDir, customPort), []byte("19055"), 0o644); err != nil {
+		t.Fatalf("WriteFile cwd CustomPort returned error: %v", err)
+	}
+
+	oldConfigPath := LinuxConfigPathInSelfPath()
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		SetLinuxConfigPathInSelfPath(oldConfigPath)
+		_ = os.Chdir(oldWd)
+	})
+
+	SetLinuxConfigPathInSelfPath(configDir)
+	if err := os.Chdir(cwdDir); err != nil {
+		t.Fatalf("Chdir returned error: %v", err)
+	}
+
+	if got := ReadCustomPortFile(logrus.New()); got != 19045 {
+		t.Fatalf("ReadCustomPortFile with config root precedence = %d", got)
+	}
+}
+
 func TestSetLinuxConfigPathInSelfPathResetsConfigRootCache(t *testing.T) {
 	oldConfigPath := LinuxConfigPathInSelfPath()
 	t.Cleanup(func() {

@@ -4,7 +4,7 @@
     <q-badge v-else class="cursor-pointer" label="说明" title="查看当前优化版说明" />
   </span>
   <q-dialog v-model="visible">
-    <q-card class="column" style="width: 600px; min-height: 400px">
+    <q-card class="column version-dialog-card">
       <q-card-section>
         <div class="text-h5">{{ dialogTitle }}</div>
       </q-card-section>
@@ -24,7 +24,7 @@
 
       <q-separator />
 
-      <q-tab-panels class="col" v-model="tab" animated>
+      <q-tab-panels class="col version-dialog-content" v-model="tab" animated>
         <q-tab-panel name="summary">
           <markdown :source="PROJECT_UPDATE_MARKDOWN" />
         </q-tab-panel>
@@ -33,15 +33,15 @@
             <div class="text-h6">仓库入口</div>
             <div>
               当前优化版代码、说明和提交记录都在
-              <a :href="PROJECT_REPO_URL" target="_blank"> 仓库主页 </a>
+              <a :href="PROJECT_REPO_URL" target="_blank">仓库主页</a>
             </div>
           </section>
 
-          <section>
+          <section class="q-mt-md">
             <div class="text-h6">Docker</div>
             <div>
               参考
-              <a :href="PROJECT_DOCKER_DOC_URL" target="_blank"> Docker 部署文档 </a>
+              <a :href="PROJECT_DOCKER_DOC_URL" target="_blank">Docker 部署文档</a>
             </div>
             <div class="text-grey">* 帮助文档和部署说明已经统一指向当前优化版仓库。</div>
           </section>
@@ -49,8 +49,8 @@
           <section class="q-mt-md">
             <div class="text-h6">问题反馈</div>
             <div>
-              使用本仓库的 issue 跟踪问题：
-              <a :href="PROJECT_ISSUES_URL" target="_blank"> 问题列表 </a>
+              使用本仓库的 issue 跟踪问题，
+              <a :href="PROJECT_ISSUES_URL" target="_blank">问题列表</a>
             </div>
           </section>
         </q-tab-panel>
@@ -59,7 +59,7 @@
       <q-separator />
 
       <q-card-actions align="right">
-        <q-btn color="primary" @click="navigateToRepoPage"> 打开仓库 </q-btn>
+        <q-btn color="primary" @click="navigateToRepoPage">打开仓库</q-btn>
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -92,5 +92,16 @@ const navigateToRepoPage = () => {
 <style lang="scss" scoped>
 a {
   color: $primary;
+}
+
+.version-dialog-card {
+  width: min(600px, 92vw);
+  max-width: 92vw;
+  min-height: min(400px, 85vh);
+  max-height: 85vh;
+}
+
+.version-dialog-content {
+  overflow: auto;
 }
 </style>

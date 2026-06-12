@@ -431,6 +431,66 @@ func TestOneVideoSelectBestSubDoesNotTranslateEnglishCandidateInChineseStage(t *
 		t.Fatalf("unexpected error = %v", err)
 	}
 }
+
+func TestOneVideoSelectBestSubRejectsMismatchedChineseCandidate(t *testing.T) {
+	settings.SetConfigRootPath(t.TempDir())
+	cfg := settings.Get()
+	cfg.AdvancedSettings.DebugMode = false
+	cfg.AdvancedSettings.SaveMultiSub = false
+	cfg.AdvancedSettings.FixTimeLine = false
+	cfg.ExperimentalFunction.AutoChangeSubEncode.Enable = false
+	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
+	cfg.ExperimentalFunction.LLMSubtitleFallback.Enable = true
+	cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir = t.TempDir()
+	cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir = t.TempDir()
+
+	videoDir := t.TempDir()
+	videoPath := filepath.Join(videoDir, "Codex.Fallback.Probe.2010.1080p.WEB-DL-GROUP.mkv")
+	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
+		t.Fatalf("WriteFile(video) error = %v", err)
+	}
+
+	downloadDir := t.TempDir()
+	badChinesePath := filepath.Join(downloadDir, "["+common2.SubSiteXunLei+"]_0_The.Vampire.Diaries.S01E01.1080p.WEB-DL.chs.srt")
+	badChineseBody := strings.Join([]string{
+		"1",
+		"00:00:01,000 --> 00:00:02,000",
+		"一个多世纪以来 我都秘密地生活",
+		"",
+		"2",
+		"00:00:03,000 --> 00:00:04,000",
+		"直到现在",
+		"",
+	}, "\n")
+	if err := os.WriteFile(badChinesePath, []byte(badChineseBody), 0o600); err != nil {
+		t.Fatalf("WriteFile(badChinese) error = %v", err)
+	}
+
+	log := logrus.New()
+	d := &Downloader{
+		log:              log,
+		mk:               markSystem.NewMarkingSystem(log, common2.DefaultSubSiteSequence(), 0),
+		SaveSubHelper:    save_sub_helper.NewSaveSubHelper(log, formatterEmby.NewFormatter(), nil),
+		subNameFormatter: formatterCommon.Emby,
+		llmSubtitleFallback: llm_subtitle_fallback.NewManagerWithTranslator(log, &cfg.ExperimentalFunction.LLMSubtitleFallback, fallbackTranslatorStub{
+			output: strings.Join([]string{
+				"1",
+				"00:00:01,000 --> 00:00:02,000",
+				"测试翻译1",
+				"",
+			}, "\n"),
+		}),
+	}
+
+	err := d.oneVideoSelectBestSub(videoPath, []string{badChinesePath})
+	if err == nil {
+		t.Fatal("expected mismatched chinese subtitle to be rejected")
+	}
+	if errors.Is(err, errNoUsableChineseSubtitle) == false {
+		t.Fatalf("unexpected error = %v", err)
+	}
+}
+
 func TestTryWriteLLMSubtitleFallbackTranslatesEnglishCandidateInFallbackStage(t *testing.T) {
 	settings.SetConfigRootPath(t.TempDir())
 	cfg := settings.Get()

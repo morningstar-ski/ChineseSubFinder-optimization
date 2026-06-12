@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,6 +130,28 @@ func TestOrganizeDlSubFilesFallsBackToKnownEpisodeForSingleArchiveEntry(t *testi
 	epsKey := pkg.GetEpisodeKeyName(1, 2)
 	if len(organized[epsKey]) != 1 {
 		t.Fatalf("OrganizeDlSubFiles() organized[%q] = %#v; want one file", epsKey, organized[epsKey])
+	}
+}
+
+func TestSearchMatchedSubFileByOneVideoIncludesSmallSubtitleFile(t *testing.T) {
+	log := log_helper.GetLogger4Tester()
+	dir := t.TempDir()
+	videoPath := filepath.Join(dir, "Audit.Movie.2024.mp4")
+	subPath := filepath.Join(dir, "Audit.Movie.2024.chinese(简,manual).default.srt")
+
+	if err := os.WriteFile(videoPath, []byte(strings.Repeat("v", 2048)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(subPath, []byte("1\n00:00:01,000 --> 00:00:03,000\n测试字幕上传\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := SearchMatchedSubFileByOneVideo(log, videoPath)
+	if err != nil {
+		t.Fatalf("SearchMatchedSubFileByOneVideo() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != subPath {
+		t.Fatalf("SearchMatchedSubFileByOneVideo() = %#v", got)
 	}
 }
 

@@ -55,7 +55,7 @@ const upload = async () => {
     timeout: 3000,
   });
   await getSubtitleUploadList();
-  eventBus.emit('subtitle-uploaded');
+  eventBus.emit('subtitle-uploaded', props.path);
 };
 
 watch(uploadFile, () => {

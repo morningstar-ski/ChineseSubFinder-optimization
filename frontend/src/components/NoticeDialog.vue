@@ -1,13 +1,13 @@
 <template>
   <q-dialog v-model="visible" persistent>
-    <q-card style="width: 800px; max-width: 800px">
+    <q-card class="column notice-dialog-card">
       <q-card-section>
         <div class="text-h6 text-grey-8">当前仓库说明</div>
       </q-card-section>
 
       <q-separator />
 
-      <q-card-section>
+      <q-card-section class="col notice-dialog-content">
         <markdown :source="notifyContent"></markdown>
       </q-card-section>
 
@@ -49,3 +49,15 @@ onMounted(async () => {
   }
 });
 </script>
+
+<style scoped>
+.notice-dialog-card {
+  width: min(800px, 92vw);
+  max-width: 92vw;
+  max-height: 85vh;
+}
+
+.notice-dialog-content {
+  overflow: auto;
+}
+</style>

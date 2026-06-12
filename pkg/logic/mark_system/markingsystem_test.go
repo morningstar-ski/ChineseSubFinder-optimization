@@ -125,3 +125,19 @@ func TestSelectBestEnglishSubFilePrefersSRTOverASSWhenScoresClose(t *testing.T) 
 		t.Fatalf("SelectBestEnglishSubFile() FileFullPath = %q; want %q", got.FileFullPath, srtPath)
 	}
 }
+
+func TestSelectOneSubFileWithVideoRejectsMismatchedChineseCandidate(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	badChinesePath := filepath.Join(tmpDir, "[xunlei]_0_The.Vampire.Diaries.S01E01.1080p.WEB-DL.chs.srt")
+	if err := os.WriteFile(badChinesePath, []byte("1\n00:00:01,000 --> 00:00:02,000\n你好\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", badChinesePath, err)
+	}
+
+	mk := NewMarkingSystem(log_helper.GetLogger4Tester(), common.DefaultSubSiteSequence(), 0)
+	got := mk.SelectOneSubFileWithVideo([]string{badChinesePath}, filepath.Join("C:\\", "Media", "Codex.Fallback.Probe.2010.1080p.WEB-DL-GROUP.mkv"))
+	if got != nil {
+		t.Fatalf("SelectOneSubFileWithVideo() returned %q; want nil for mismatched subtitle", got.FileFullPath)
+	}
+}

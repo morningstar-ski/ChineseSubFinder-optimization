@@ -185,11 +185,13 @@ func (cb *ControllerBase) PreviewSearchOtherWeb(c *gin.Context) {
 	searchOtherWebReply.SearchUrls = append(searchOtherWebReply.SearchUrls, settings.Get().AdvancedSettings.SuppliersSettings.Zimuku.GetSearchUrl())
 	searchOtherWebReply.SearchUrls = append(searchOtherWebReply.SearchUrls, settings.Get().AdvancedSettings.SuppliersSettings.SubHD.GetSearchUrl())
 
-	year, err := now.Parse(mixMediaInfo.Year)
-	if err != nil {
-		return
+	strYear := ""
+	if mixMediaInfo.Year != "" {
+		year, parseErr := now.Parse(mixMediaInfo.Year)
+		if parseErr == nil {
+			strYear = fmt.Sprintf("%d", year.Year())
+		}
 	}
-	strYear := fmt.Sprintf("%d", year.Year())
 	// 返回多种关键词
 	searchOtherWebReply.KeyWords = make([]string, 0)
 	// imdb id
@@ -198,14 +200,20 @@ func (cb *ControllerBase) PreviewSearchOtherWeb(c *gin.Context) {
 	if searchOtherWeb.IsMovie == true {
 		// 电影
 		searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.TitleCn)
-		searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.TitleCn+" "+strYear)
+		if strYear != "" {
+			searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.TitleCn+" "+strYear)
+		}
 		if mixMediaInfo.TitleCn != mixMediaInfo.TitleEn {
 			searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.TitleEn)
-			searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.TitleEn+" "+strYear)
+			if strYear != "" {
+				searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.TitleEn+" "+strYear)
+			}
 		}
 		if mixMediaInfo.TitleCn != mixMediaInfo.OriginalTitle && mixMediaInfo.OriginalTitle != mixMediaInfo.TitleEn {
 			searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.OriginalTitle)
-			searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.OriginalTitle+" "+strYear)
+			if strYear != "" {
+				searchOtherWebReply.KeyWords = append(searchOtherWebReply.KeyWords, mixMediaInfo.OriginalTitle+" "+strYear)
+			}
 		}
 	} else {
 		// 电视剧

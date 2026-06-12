@@ -99,6 +99,7 @@ import BtnUploadSubtitle from 'pages/library/BtnUploadSubtitle';
 import BtnDialogPreviewVideo from 'pages/library/BtnDialogPreviewVideo';
 import BtnDialogSearchSubtitle from 'pages/library/BtnDialogSearchSubtitle';
 import { formModel } from 'pages/settings/use-settings';
+import useEventBus from 'src/composables/use-event-bus';
 
 const props = defineProps({
   data: Object,
@@ -175,6 +176,12 @@ watch(subtitleUploadList, (val, oldVal) => {
     (!val.find((e) => e.video_f_path === props.data.video_f_path) &&
       oldVal.find((e) => e.video_f_path === props.data.video_f_path))
   ) {
+    getDetailInfo();
+  }
+});
+
+useEventBus('subtitle-uploaded', (videoFPath) => {
+  if (videoFPath === props.data.video_f_path) {
     getDetailInfo();
   }
 });

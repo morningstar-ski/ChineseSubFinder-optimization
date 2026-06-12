@@ -176,11 +176,10 @@ func SeriesAllEpsAndSubtitles(l *logrus.Logger, dir string) (*backend.SeasonInfo
 			return nil
 		}
 
-		if filter.SkipFileInfo(l, d, path) == true {
-			return nil
-		}
-
 		if pkg.IsWantedVideoExtDef(d.Name()) == true {
+			if filter.SkipFileInfo(l, d, path) == true {
+				return nil
+			}
 			// 如果是符合视频的后缀名，那么就缓存起来
 			tmpDir := filepath.Dir(path)
 			_, found := pathVideoMap[tmpDir]
@@ -192,6 +191,9 @@ func SeriesAllEpsAndSubtitles(l *logrus.Logger, dir string) (*backend.SeasonInfo
 		}
 
 		if sub_parser_hub.IsSubExtWanted(d.Name()) == true {
+			if filter.SkipFileInfo4Sub(l, d, path) == true {
+				return nil
+			}
 			// 如果是符合字幕的后缀名，那么就缓存起来
 			tmpDir := filepath.Dir(path)
 			_, found := pathSubsMap[tmpDir]

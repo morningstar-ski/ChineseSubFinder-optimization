@@ -17,37 +17,70 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// MarkingSystem 评价系统，解决字幕排序优先级问题
+// MarkingSystem 评估系统，解决字幕排序优先级问题
 type MarkingSystem struct {
 	log             *logrus.Logger
-	subSiteSequence []string // 网站的优先级，从高到低
-	SubTypePriority int      // 字幕格式的优先级
+	subSiteSequence []string // 网站优先级，从高到低
+	SubTypePriority int      // 字幕格式优先级
 	subParserHub    *sub_parser_hub.SubParserHub
 }
 
 func NewMarkingSystem(log *logrus.Logger, subSiteSequence []string, subTypePriority int) *MarkingSystem {
-	mk := MarkingSystem{subSiteSequence: subSiteSequence,
+	mk := MarkingSystem{
+		subSiteSequence: subSiteSequence,
 		log:             log,
 		SubTypePriority: subTypePriority,
-		subParserHub:    sub_parser_hub.NewSubParserHub(log, ass.NewParser(log), srt.NewParser(log))}
+		subParserHub:    sub_parser_hub.NewSubParserHub(log, ass.NewParser(log), srt.NewParser(log)),
+	}
 	return &mk
 }
 
 // SelectOneSubFile 选择最优的一个字幕文件
 func (m MarkingSystem) SelectOneSubFile(organizeSubFiles []string) *subparser.FileInfo {
-	var finalSubFile *subparser.FileInfo
+	return m.SelectOneSubFileWithVideo(organizeSubFiles, "")
+}
+
+// SelectOneSubFileWithVideo 在已知目标视频时，过滤明显不匹配的中文字幕候选。
+func (m MarkingSystem) SelectOneSubFileWithVideo(organizeSubFiles []string, targetVideoFullPath string) *subparser.FileInfo {
 	subInfoDict := m.parseSubFileInfo(organizeSubFiles)
 	siteNames := make([]string, 0, len(subInfoDict))
 	for siteName := range subInfoDict {
 		siteNames = append(siteNames, siteName)
 	}
 	orderedSiteNames := common.OrderSubSiteNames(siteNames, m.subSiteSequence)
-	// 优先级别暂定 subSiteSequence: zimuku -> subhd -> xunlei -> shooter
-	// 这里需要循环四轮：
-	// 第一轮，双语、字幕类型自定义，优先
-	// 第二轮，单语言（中文）、字幕类型自定义，优先
-	// 第三轮，双语、字幕类型0，优先
-	// 第四轮，单语言（中文）、字幕类型0，优先
+
+	if strings.TrimSpace(targetVideoFullPath) == "" {
+		return m.selectOneSubFileLegacy(subInfoDict, orderedSiteNames)
+	}
+
+	selectionPhases := []struct {
+		bilingualOnly   bool
+		subTypePriority int
+	}{
+		{bilingualOnly: true, subTypePriority: m.SubTypePriority},
+		{bilingualOnly: false, subTypePriority: m.SubTypePriority},
+		{bilingualOnly: true, subTypePriority: 0},
+		{bilingualOnly: false, subTypePriority: 0},
+	}
+
+	for _, phase := range selectionPhases {
+		finalSubFile := m.selectBestChineseCandidateForVideo(
+			subInfoDict,
+			orderedSiteNames,
+			targetVideoFullPath,
+			phase.bilingualOnly,
+			phase.subTypePriority,
+		)
+		if finalSubFile != nil {
+			return finalSubFile
+		}
+	}
+
+	return nil
+}
+
+func (m MarkingSystem) selectOneSubFileLegacy(subInfoDict map[string][]subparser.FileInfo, orderedSiteNames []string) *subparser.FileInfo {
+	var finalSubFile *subparser.FileInfo
 	for i := 0; i < 4; i++ {
 		for _, subSite := range orderedSiteNames {
 			infos, ok := subInfoDict[subSite]
@@ -71,26 +104,77 @@ func (m MarkingSystem) SelectOneSubFile(organizeSubFiles []string) *subparser.Fi
 	return nil
 }
 
+func (m MarkingSystem) selectBestChineseCandidateForVideo(subInfoDict map[string][]subparser.FileInfo, orderedSiteNames []string, targetVideoFullPath string, bilingualOnly bool, subTypePriority int) *subparser.FileInfo {
+	targetName := filepath.Base(targetVideoFullPath)
+	targetInfo, _ := decode.GetVideoInfoFromFileName(targetName)
+	isMovie := targetInfo == nil || (targetInfo.Season == 0 && targetInfo.Episode == 0)
+	targetSeason := 0
+	targetEpisode := 0
+	targetParsedTitle := ""
+	if targetInfo != nil {
+		targetSeason = targetInfo.Season
+		targetEpisode = targetInfo.Episode
+		targetParsedTitle = targetInfo.Title
+	}
+	matcher := ranking.NewTargetMatcher(targetVideoFullPath, isMovie)
+
+	var best *subparser.FileInfo
+	bestScore := 0
+	hasBest := false
+
+	for siteIndex, siteName := range orderedSiteNames {
+		infos := subInfoDict[siteName]
+		for idx := range infos {
+			info := infos[idx]
+			if isChineseCandidateForPhase(info, bilingualOnly, subTypePriority) == false {
+				continue
+			}
+			if hasExplicitTitleMismatch(targetName, targetParsedTitle, candidateReleaseNames(info)) {
+				continue
+			}
+
+			score := ranking.ScoreCandidate(matcher, subtitleCandidateMetadata(info, len(orderedSiteNames)-siteIndex), ranking.CandidateScoreSpec{
+				IsMovie:       isMovie,
+				TargetSeason:  targetSeason,
+				TargetEpisode: targetEpisode,
+				EpisodeMatchWeights: &ranking.EpisodeMatchWeights{
+					ExactMatch:     40,
+					SeasonPack:     10,
+					WrongEpisode:   -35,
+					SeasonMatch:    0,
+					WrongSeason:    0,
+					WrongEpisodeSB: 0,
+				},
+				SubTypePriority:     subTypePriority,
+				HIPenalty:           -3,
+				ReleaseMatchWeights: ranking.StandardReleaseMatchWeights,
+			})
+
+			if hasBest == false || score > bestScore {
+				infoCopy := info
+				best = &infoCopy
+				bestScore = score
+				hasBest = true
+			}
+		}
+	}
+
+	return best
+}
+
 // SelectEachSiteTop1SubFile 每个网站最优的文件
 func (m MarkingSystem) SelectEachSiteTop1SubFile(organizeSubFiles []string) ([]string, []subparser.FileInfo) {
-	// 每个文件都带有出处 [subhd]
 	var finalSubFile *subparser.FileInfo
-	var outSiteName = make([]string, 0)
-	var outSubParserFileInfos = make([]subparser.FileInfo, 0)
+	outSiteName := make([]string, 0)
+	outSubParserFileInfos := make([]subparser.FileInfo, 0)
 	subInfoDict := m.parseSubFileInfo(organizeSubFiles)
 	siteNames := make([]string, 0, len(subInfoDict))
 	for siteName := range subInfoDict {
 		siteNames = append(siteNames, siteName)
 	}
 	orderedSiteNames := common.OrderSubSiteNames(siteNames, m.subSiteSequence)
-	// 这里需要循环四轮：
-	// 第一轮，双语、字幕类型自定义，优先
-	// 第二轮，单语言（中文）、字幕类型自定义，优先
-	// 第三轮，双语、字幕类型0，优先
-	// 第四轮，单语言（中文）、字幕类型0，优先
 	for _, siteName := range orderedSiteNames {
 		infos := subInfoDict[siteName]
-		// 每个网站保存一个
 		for i := 0; i < 4; i++ {
 			if i == 0 {
 				finalSubFile = sub_helper.SelectChineseBestBilingualSubtitle(infos, m.SubTypePriority)
@@ -144,7 +228,7 @@ func (m MarkingSystem) SelectBestEnglishSubFile(organizeSubFiles []string, targe
 				continue
 			}
 
-			score := ranking.ScoreCandidate(matcher, englishCandidateMetadata(info, len(orderedSiteNames)-siteIndex), ranking.CandidateScoreSpec{
+			score := ranking.ScoreCandidate(matcher, subtitleCandidateMetadata(info, len(orderedSiteNames)-siteIndex), ranking.CandidateScoreSpec{
 				IsMovie:       isMovie,
 				TargetSeason:  targetSeason,
 				TargetEpisode: targetEpisode,
@@ -174,10 +258,7 @@ func (m MarkingSystem) SelectBestEnglishSubFile(organizeSubFiles []string, targe
 
 // parseSubFileInfo 从文件解析字幕信息
 func (m MarkingSystem) parseSubFileInfo(organizeSubFiles []string) map[string][]subparser.FileInfo {
-	// 一个网站可能就算取了 Top1 字幕，也可能是返回一个压缩包，然后解压完就是多个字幕，所以
-	var subInfoDict = make(map[string][]subparser.FileInfo)
-	// 拿到现有的字幕列表，开始抉择
-	// 先判断当前字幕是什么语言（如果是简体，还需要考虑，判断这个字幕是简体还是繁体）
+	subInfoDict := make(map[string][]subparser.FileInfo)
 	for _, oneSubFileFullPath := range organizeSubFiles {
 		bFind, subFileInfo, err := m.subParserHub.DetermineFileTypeFromFile(oneSubFileFullPath)
 		if err != nil {
@@ -188,12 +269,9 @@ func (m MarkingSystem) parseSubFileInfo(organizeSubFiles []string) map[string][]
 			m.log.Warnln("DetermineFileTypeFromFile", oneSubFileFullPath, "not support SubType")
 			continue
 		}
-		_, ok := subInfoDict[subFileInfo.FromWhereSite]
-		if ok == false {
-			// 新建
+		if _, ok := subInfoDict[subFileInfo.FromWhereSite]; ok == false {
 			subInfoDict[subFileInfo.FromWhereSite] = make([]subparser.FileInfo, 0)
 		}
-		// 添加
 		subInfoDict[subFileInfo.FromWhereSite] = append(subInfoDict[subFileInfo.FromWhereSite], *subFileInfo)
 	}
 	return subInfoDict
@@ -209,9 +287,26 @@ func isEnglishFallbackCandidate(info subparser.FileInfo) bool {
 	return len(info.OtherLines) > 0 && len(info.CHLines) == 0
 }
 
-func englishCandidateMetadata(info subparser.FileInfo, siteAuthority int) ranking.CandidateMetadata {
+func isChineseCandidateForPhase(info subparser.FileInfo, bilingualOnly bool, subTypePriority int) bool {
+	if language.HasChineseLang(info.Lang) == false {
+		return false
+	}
+	if bilingualOnly && language.IsBilingualSubtitle(info.Lang) == false {
+		return false
+	}
+	if subTypePriority == 1 {
+		return strings.EqualFold(info.Ext, common.SubExtSRT)
+	}
+	if subTypePriority == 2 {
+		return strings.EqualFold(info.Ext, common.SubExtASS) || strings.EqualFold(info.Ext, common.SubExtSSA)
+	}
+	return true
+}
+
+func subtitleCandidateMetadata(info subparser.FileInfo, siteAuthority int) ranking.CandidateMetadata {
 	candidate := ranking.CandidateMetadata{
 		Name:           info.Name,
+		ReleaseNames:   candidateReleaseNames(info),
 		SubtitleExt:    strings.ToLower(info.Ext),
 		AuthorityScore: siteAuthority * 10,
 	}
@@ -227,4 +322,56 @@ func englishCandidateMetadata(info subparser.FileInfo, siteAuthority int) rankin
 	}
 
 	return candidate
+}
+
+func candidateReleaseNames(info subparser.FileInfo) []string {
+	names := make([]string, 0, 2)
+	rawName := strings.TrimSpace(info.Name)
+	if rawName == "" {
+		return names
+	}
+
+	trimmed := rawName
+	if strings.HasPrefix(trimmed, "[") {
+		if siteEnd := strings.Index(trimmed, "]_"); siteEnd >= 0 {
+			rest := trimmed[siteEnd+2:]
+			if rankEnd := strings.Index(rest, "_"); rankEnd >= 0 && rankEnd+1 < len(rest) {
+				trimmed = rest[rankEnd+1:]
+			}
+		}
+	}
+
+	if trimmed != "" && trimmed != rawName {
+		names = append(names, trimmed)
+	}
+	return names
+}
+
+func hasExplicitTitleMismatch(targetName string, targetParsedTitle string, releaseNames []string) bool {
+	targetTitle := normalizeSubtitleTitle(targetName)
+	if parsedTitle := normalizeSubtitleTitle(targetParsedTitle); parsedTitle != "" {
+		targetTitle = parsedTitle
+	}
+	for _, releaseName := range releaseNames {
+		parsed, err := decode.GetVideoInfoFromFileName(releaseName)
+		if err != nil || parsed == nil || parsed.Title == "" {
+			continue
+		}
+		if parsed.Season == 0 && parsed.Episode == 0 {
+			continue
+		}
+		candidateTitle := normalizeSubtitleTitle(parsed.Title)
+		if targetTitle != "" && candidateTitle != "" && targetTitle != candidateTitle {
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+func normalizeSubtitleTitle(input string) string {
+	base := strings.TrimSuffix(filepath.Base(strings.TrimSpace(input)), filepath.Ext(strings.TrimSpace(input)))
+	base = strings.ReplaceAll(base, "_", " ")
+	base = strings.ReplaceAll(base, ".", " ")
+	return strings.ToLower(strings.Join(strings.Fields(base), " "))
 }

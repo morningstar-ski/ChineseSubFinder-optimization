@@ -20,13 +20,13 @@ const routes = [
         children: [
           {
             name: 'library.movie.list',
-            path: 'library/movies',
+            path: 'movies',
             component: () => import('pages/library/movies/index.vue'),
             meta: { title: '电影', icon: 'movie' },
           },
           {
             name: 'library.tv.list',
-            path: 'library/tvs',
+            path: 'tvs',
             component: () => import('pages/library/tvs/index.vue'),
             meta: { title: '连续剧', icon: 'live_tv' },
           },

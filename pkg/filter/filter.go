@@ -9,45 +9,48 @@ import (
 )
 
 func SkipFileInfo(l *logrus.Logger, curFile os.DirEntry, fileFullPath string) bool {
+	return skipFileInfo(l, curFile, fileFullPath, false)
+}
 
+func SkipFileInfo4Sub(l *logrus.Logger, curFile os.DirEntry, fileFullPath string) bool {
+	return skipFileInfo(l, curFile, fileFullPath, true)
+}
+
+func skipFileInfo(l *logrus.Logger, curFile os.DirEntry, fileFullPath string, allowSmallSub bool) bool {
 	if curFile.IsDir() == true {
-		// 排除缓存文件夹，见 #532
+		// 鎺掗櫎缂撳瓨鏂囦欢澶癸紝瑙?#532
 		if strings.HasPrefix(curFile.Name(), ".@__thumb") == true {
 			l.Debugln("curFile is dir and match `.@__thumb`, skip")
 			return true
 		}
 	}
 
-	// 跳过不符合的文件，比如 MAC OS 下可能有缓存文件，见 #138
+	// 璺宠繃涓嶇鍚堢殑鏂囦欢锛屾瘮濡?MAC OS 涓嬪彲鑳芥湁缂撳瓨鏂囦欢锛岃 #138
 	fi, err := curFile.Info()
 	if err != nil {
 		l.Errorln("curFile.Info:", curFile.Name(), err)
 		return true
 	}
 
-	// 封面缓存文件夹中的文件都要跳过 .@__thumb  #581
-	// 获取这个文件的父级文件夹的名称，然后判断是否是 .@__thumb 开头的
+	// 灏侀潰缂撳瓨鏂囦欢澶逛腑鐨勬枃浠堕兘瑕佽烦杩?.@__thumb  #581
 	parentFolderName := filepath.Base(filepath.Dir(fileFullPath))
 	if strings.HasPrefix(parentFolderName, ".@__thumb") == true {
 		l.Debugln("curFile is in .@__thumb folder, skip")
 		return true
 	}
 
-	// 软链接问题 #558
+	// 杞摼鎺ラ棶棰?#558
 	if fi.Size() < 1000 {
-
 		fileInfo, err := os.Lstat(fileFullPath)
 		if err != nil {
 			l.Errorln("os.Lstat:", fileFullPath, err)
 			return true
 		}
 		if fileInfo.Mode()&os.ModeSymlink != 0 {
-			// 确认是软连接
+			// 纭鏄蒋杩炴帴
 			l.Debugln("curFile is symlink,", fileFullPath)
-			//realPath, err := filepath.EvalSymlinks(fileFullPath)
-			//if err == nil {
-			//	fmt.Println("Path:", realPath)
-			//}
+		} else if allowSmallSub == true {
+			l.Debugln("curFile.Size() < 1000 but allowed for subtitle:", curFile.Name())
 		} else {
 			l.Debugln("curFile.Size() < 1000:", curFile.Name())
 			return true
@@ -58,7 +61,7 @@ func SkipFileInfo(l *logrus.Logger, curFile os.DirEntry, fileFullPath string) bo
 		l.Debugln("curFile.Size() == 4096 && Prefix Name == ._*", curFile.Name())
 		return true
 	}
-	// 跳过预告片，见 #315
+	// 璺宠繃棰勫憡鐗囷紝瑙?#315
 	if strings.HasSuffix(strings.ReplaceAll(curFile.Name(), filepath.Ext(curFile.Name()), ""), "-trailer") == true {
 		l.Debugln("curFile Name has -trailer:", curFile.Name())
 		return true

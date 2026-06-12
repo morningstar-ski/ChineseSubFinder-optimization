@@ -313,7 +313,7 @@ const handleDownloadCsfSub = async (item, isConfirmLock = false, showMessage = f
   formData.append('file', new File([selectedSubBlob.value], item.title, { type: 'text/plain' }));
   await LibraryApi.uploadSubtitle(formData);
   await getSubtitleUploadList();
-  eventBus.emit('subtitle-uploaded');
+  eventBus.emit('subtitle-uploaded', videoFilePath);
 
   if (isConfirmLock) {
     $q.dialog({

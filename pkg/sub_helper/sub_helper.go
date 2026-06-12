@@ -254,6 +254,10 @@ func AddFrontName(info supplier.SubInfo, orgName string) string {
 	return "[" + info.FromWhere + "]_" + strconv.FormatInt(info.TopN, 10) + "_" + orgName
 }
 
+func skipMatchedSubtitleFile(l *logrus.Logger, curFile os.DirEntry, fileFullPath string) bool {
+	return filter.SkipFileInfo4Sub(l, curFile, fileFullPath)
+}
+
 // SearchMatchedSubFileByDir 搜索符合后缀名的视频文件，排除 Sub_SxE0 这样的文件夹中的文件
 func SearchMatchedSubFileByDir(log *logrus.Logger, dir string) ([]string, error) {
 	// 这里有个梗，会出现 __MACOSX 这类文件夹，那么里面会有一样的文件，需要用文件大小排除一下，至少大于 1 kb 吧
@@ -278,7 +282,7 @@ func SearchMatchedSubFileByDir(log *logrus.Logger, dir string) ([]string, error)
 			}
 		} else {
 			// 这里就是文件了
-			if filter.SkipFileInfo(log, curFile, fullPath) == true {
+			if skipMatchedSubtitleFile(log, curFile, fullPath) == true {
 				continue
 			}
 
@@ -310,7 +314,7 @@ func SearchMatchedSubFileByOneVideo(l *logrus.Logger, oneVideoFullPath string) (
 		}
 		// 这里就是文件了
 		oldPath := dir + pathSep + curFile.Name()
-		if filter.SkipFileInfo(l, curFile, oldPath) == true {
+		if skipMatchedSubtitleFile(l, curFile, oldPath) == true {
 			continue
 		}
 
@@ -349,7 +353,7 @@ func SearchVideoMatchSubFileAndRemoveExtMark(l *logrus.Logger, oneVideoFullPath 
 		} else {
 			// 这里就是文件了
 			oldPath := dir + pathSep + curFile.Name()
-			if filter.SkipFileInfo(l, curFile, oldPath) == true {
+			if skipMatchedSubtitleFile(l, curFile, oldPath) == true {
 				continue
 			}
 			// 判断的时候用小写的，后续重命名的时候用原有的名称

@@ -143,7 +143,7 @@ const upload = async () => {
       // sleep 1s
       // eslint-disable-next-line no-await-in-loop,no-promise-executor-return
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      eventBus.emit('subtitle-uploaded');
+      eventBus.emit('subtitle-uploaded', item.video_f_path);
     }
   }
   SystemMessage.success('字幕上传成功。如果设置开启了“自动校正时间轴”，处理需要一些时间，请耐心等待', {

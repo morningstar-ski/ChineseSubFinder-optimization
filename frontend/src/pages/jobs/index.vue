@@ -62,7 +62,56 @@
 
     <q-separator class="q-mt-md" />
 
+    <div v-if="isMobile" class="q-gutter-sm q-mt-md">
+      <q-card v-for="row in filteredData" :key="row.id" flat bordered>
+        <q-card-section class="row items-start no-wrap q-col-gutter-sm">
+          <div class="col">
+            <div class="text-subtitle2">{{ row.video_name }}</div>
+            <div class="text-caption text-grey">{{ VIDEO_TYPE_NAME_MAP[row.video_type] }}</div>
+          </div>
+          <q-checkbox :model-value="isSelected(row)" dense @update:model-value="toggleSelected(row, $event)" />
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-section class="q-gutter-y-sm">
+          <div class="row items-center justify-between">
+            <span class="text-caption text-grey">状态</span>
+            <span
+              :style="{
+                background: JOB_STATUS_COLOR_MAP[row.job_status],
+                color: 'white',
+                borderRadius: '5px',
+                padding: '2px 6px',
+                fontSize: '12px',
+              }"
+              >{{ JOB_STATUS_MAP[row.job_status] }}</span
+            >
+          </div>
+          <div class="row items-center justify-between">
+            <span class="text-caption text-grey">优先级</span>
+            <span>{{ row.task_priority }}</span>
+          </div>
+          <div class="row items-start justify-between q-col-gutter-sm">
+            <span class="text-caption text-grey col-4">更新时间</span>
+            <span class="col text-right">{{ row.update_time }}</span>
+          </div>
+          <div v-if="row.error_info" class="text-caption text-negative">
+            {{ row.error_info }}
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <job-detail-btn-dialog :data="row" />
+          <job-log-btn-dialog :data="row" />
+        </q-card-actions>
+      </q-card>
+
+      <div v-if="filteredData.length === 0" class="q-pa-md text-grey text-center">没有可用数据</div>
+    </div>
+
     <q-table
+      v-else
       :columns="columns"
       :rows="filteredData"
       flat
@@ -113,6 +162,7 @@ import JobLogBtnDialog from 'pages/jobs/JobLogBtnDialog';
 import JobDetailBtnDialog from 'pages/jobs/JobDetailBtnDialog';
 
 const $q = useQuasar();
+const isMobile = computed(() => $q.screen.lt.md);
 
 const columns = [
   // { label: 'ID', field: 'id' },
@@ -170,6 +220,18 @@ const getData = async () => {
 const refresh = () => {
   selected.value = [];
   getData();
+};
+
+const isSelected = (row) => selected.value.some((item) => item.id === row.id);
+
+const toggleSelected = (row, checked) => {
+  if (checked) {
+    if (!isSelected(row)) {
+      selected.value = [...selected.value, row];
+    }
+    return;
+  }
+  selected.value = selected.value.filter((item) => item.id !== row.id);
 };
 
 const filteredData = computed(() => {

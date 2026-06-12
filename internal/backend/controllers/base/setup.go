@@ -19,6 +19,13 @@ func (cb *ControllerBase) SetupHandler(c *gin.Context) {
 	setupInfo := backend2.ReqSetupInfo{}
 	err = c.ShouldBindJSON(&setupInfo)
 	if err != nil {
+		c.JSON(http.StatusBadRequest, backend2.ReplyCommon{Message: err.Error()})
+		err = nil
+		return
+	}
+	if setupInfo.Settings.UserInfo.IsValidUsername() == false {
+		c.JSON(http.StatusBadRequest, backend2.ReplyCommon{Message: "username format invalid"})
+		err = nil
 		return
 	}
 	// 只有当用户不存在的时候才能够执行初始化操作

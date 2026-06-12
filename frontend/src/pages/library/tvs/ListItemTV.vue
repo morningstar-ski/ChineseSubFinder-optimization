@@ -37,6 +37,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import DialogTVDetail from 'pages/library/tvs/DialogTVDetail';
 import LibraryApi from 'src/api/LibraryApi';
 import { getUrl, subtitleUploadList } from 'pages/library/use-library';
+import useEventBus from 'src/composables/use-event-bus';
 
 const props = defineProps({
   data: Object,
@@ -73,6 +74,12 @@ watch(subtitleUploadList, (val, oldValue) => {
     detailInfo.value?.one_video_info.some((e) => oldValue.map((f) => f.video_f_path).includes(e.video_f_path)) &&
     !detailInfo.value?.one_video_info.some((e) => val.map((f) => f.video_f_path).includes(e.video_f_path))
   ) {
+    getDetailInfo();
+  }
+});
+
+useEventBus('subtitle-uploaded', (videoFPath) => {
+  if (detailInfo.value?.one_video_info.some((item) => item.video_f_path === videoFPath)) {
     getDetailInfo();
   }
 });
