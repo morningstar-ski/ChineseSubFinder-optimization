@@ -13,6 +13,18 @@ import (
 
 func TestBuildSubSupplierHubOrdersSuppliersByDefaultSequence(t *testing.T) {
 	plans := map[string]supplierPlan{
+		common.SubSiteOpenSubtitles: {
+			siteName:        common.SubSiteOpenSubtitles,
+			supplierFactory: newFakeSupplierFactory(common.SubSiteOpenSubtitles),
+		},
+		common.SubSiteTVSubtitles: {
+			siteName:        common.SubSiteTVSubtitles,
+			supplierFactory: newFakeSupplierFactory(common.SubSiteTVSubtitles),
+		},
+		common.SubSiteMovieSubtitles: {
+			siteName:        common.SubSiteMovieSubtitles,
+			supplierFactory: newFakeSupplierFactory(common.SubSiteMovieSubtitles),
+		},
 		common.SubSiteXunLei: {
 			siteName:        common.SubSiteXunLei,
 			supplierFactory: newFakeSupplierFactory(common.SubSiteXunLei),
@@ -46,6 +58,9 @@ func TestBuildSubSupplierHubOrdersSuppliersByDefaultSequence(t *testing.T) {
 		common.SubSiteSubDL,
 		common.SubSiteShooter,
 		common.SubSiteXunLei,
+		common.SubSiteOpenSubtitles,
+		common.SubSiteTVSubtitles,
+		common.SubSiteMovieSubtitles,
 	}
 
 	if len(got) != len(want) {
