@@ -3,6 +3,7 @@ package assrt
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +23,8 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/random_auth_key"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
+	supplier2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 )
 
 var assrtInstance *Supplier
@@ -384,6 +387,83 @@ func TestGetSubByKeyWordAllowsArrayLanglist(t *testing.T) {
 	if got.Sub.Subs[0].Id != 7 || got.Sub.Subs[0].VoteScore != 8 || got.Sub.Subs[0].Revision != 2 {
 		t.Fatalf("unexpected numeric fields: %#v", got.Sub.Subs[0])
 	}
+}
+
+func TestWithAssrtRateLimitWaitsBeforeNextRequest(t *testing.T) {
+	supplier := &Supplier{
+		theSearchInterval: 40 * time.Millisecond,
+		lastRequestAt:     time.Now(),
+	}
+
+	start := time.Now()
+	if err := supplier.withAssrtRateLimit(func() error { return nil }); err != nil {
+		t.Fatalf("withAssrtRateLimit returned error: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 30*time.Millisecond {
+		t.Fatalf("expected request limiter to wait, elapsed=%v", elapsed)
+	}
+}
+
+func TestGetCachedSubInfoBySearchSubUsesCacheKey(t *testing.T) {
+	cacheName := "assrt-cache-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	cache_center.DelDb(cacheName)
+	t.Cleanup(func() {
+		cache_center.DelDb(cacheName)
+	})
+
+	authKey := random_auth_key.AuthKey{
+		BaseKey:  pkg.BaseKey(),
+		AESKey16: pkg.AESKey16(),
+		AESIv16:  pkg.AESIv16(),
+	}
+	fd := file_downloader.NewFileDownloader(newAssrtCacheCenterOrSkip(t, cacheName), authKey)
+	supplier := NewSupplier(fd)
+	supplier.theSearchInterval = 0
+
+	searchSub := SearchSubItem{
+		Id:         715414,
+		NativeName: "The.Boys.S05E04",
+	}
+	cacheKey := assrtSearchSubCacheKey(supplier.GetSupplierName(), searchSub)
+	subInfo := supplier2.NewSubInfo(
+		supplier.GetSupplierName(),
+		0,
+		"The Boys S05E04",
+		language.ChineseSimple,
+		"https://example.com/the-boys-s05e04.srt",
+		0,
+		0,
+		".srt",
+		[]byte("1\n00:00:01,000 --> 00:00:02,000\nHello\n"),
+	)
+	subInfo.SetFileUrlSha256(cacheKey)
+	if err := fd.CacheCenter.DownloadFileAdd(subInfo); err != nil {
+		t.Fatalf("DownloadFileAdd returned error: %v", err)
+	}
+
+	found, got, err := supplier.getCachedSubInfoBySearchSub(cacheKey)
+	if err != nil {
+		t.Fatalf("getCachedSubInfoBySearchSub returned error: %v", err)
+	}
+	if found == false || got == nil {
+		t.Fatalf("expected cached subtitle hit, found=%v got=%#v", found, got)
+	}
+}
+
+func newAssrtCacheCenterOrSkip(t *testing.T, cacheName string) (cc *cache_center.CacheCenter) {
+	t.Helper()
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprint(r)
+			if strings.Contains(msg, "go-sqlite3 requires cgo to work") {
+				t.Skip("skip assrt cache test: sqlite driver requires cgo in this environment")
+			}
+			panic(r)
+		}
+	}()
+
+	return cache_center.NewCacheCenter(cacheName, log_helper.GetLogger4Tester())
 }
 
 func TestRememberBadDownloadSubIDOnlyForPermanentArchiveErrors(t *testing.T) {

@@ -40,6 +40,8 @@ type Supplier struct {
 	badDownloadSubIDs      sync.Map
 	badDownloadSubIDsPath  string
 	badDownloadSubIDsMutex sync.Mutex
+	requestIntervalMutex   sync.Mutex
+	lastRequestAt          time.Time
 	theSearchInterval      time.Duration
 }
 
@@ -189,6 +191,18 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 			s.log.Infoln(s.GetSupplierName(), videoFileName, "Skip mismatched subtitle candidate", searchSub.Id, searchSub.Videoname)
 			continue
 		}
+		cacheKey := assrtSearchSubCacheKey(s.GetSupplierName(), searchSub)
+		found, cachedSubInfo, err := s.getCachedSubInfoBySearchSub(cacheKey)
+		if err != nil {
+			s.log.Warningln(s.GetSupplierName(), videoFileName, "DownloadFileGet", cacheKey, err)
+		}
+		if found {
+			outSubInfoList = append(outSubInfoList, *cachedSubInfo)
+			if len(outSubInfoList) >= settings.Get().AdvancedSettings.Topic {
+				return outSubInfoList, nil
+			}
+			continue
+		}
 		oneSubDetail, err := s.getSubDetail(int(searchSub.Id))
 		if err != nil {
 			s.log.Errorln("getSubDetail", err)
@@ -203,7 +217,7 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool) ([]suppli
 		subInfo, err := s.fileDownloader.Get(s.GetSupplierName(), int64(index), videoFileName, nowSubDownloadUrl,
 			0, 0,
 			// 閻庣數澧楅〃鍛村春鐏炲墽鈻旈柍褜鍓氱粙澶愵敂閸℃妫楀┑鐐茬墕閿曪箑鈻撻幋锕€鍗冲鍓侇焾閺?FileDownloadUrl 闂佹眹鍔岀€氼喗绔熼幒鎴殫濞达絽鎽滈幗鐔虹磼濡ゅ绱伴悷?
-			fmt.Sprintf("%s-%s-%d", s.GetSupplierName(), searchSub.NativeName, searchSub.Id),
+			cacheKey,
 		)
 		if err != nil {
 			if s.rememberBadDownloadSubID(searchSub.Id, err) {
@@ -450,25 +464,27 @@ func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier
 }
 
 func (s *Supplier) getSubByKeyWord(keyword string) (*SearchSubResult, error) {
-
-	defer func() {
-		time.Sleep(s.theSearchInterval)
-	}()
-
 	var searchSubResult SearchSubResult
 	var errKnow error
 
 	s.log.Infoln("Search KeyWord:", keyword)
 	tt := url.QueryEscape(keyword)
-	httpClient, err := pkg.NewHttpClient()
-	if err != nil {
-		return nil, err
-	}
-	resp, err := httpClient.R().
-		Get(settings.Get().AdvancedSettings.SuppliersSettings.Assrt.RootUrl +
-			"/sub/search?q=" + tt +
-			"&cnt=15&pos=0" +
-			"&token=" + settings.Get().SubtitleSources.AssrtSettings.Token)
+	var respBody string
+	err := s.withAssrtRateLimit(func() error {
+		httpClient, err := pkg.NewHttpClient()
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.R().
+			Get(settings.Get().AdvancedSettings.SuppliersSettings.Assrt.RootUrl +
+				"/sub/search?q=" + tt +
+				"&cnt=15&pos=0" +
+				"&token=" + settings.Get().SubtitleSources.AssrtSettings.Token)
+		if resp != nil {
+			respBody = resp.String()
+		}
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -477,16 +493,16 @@ func (s *Supplier) getSubByKeyWord(keyword string) (*SearchSubResult, error) {
 		SearchSubResult
 		濠殿噯绲鹃弻銊┿€呰濞艰鈻庢惔銊ユ疂闂佽鍨伴幊搴ㄥ窗瀹€鍕櫖?		jsonString := "{\"sub\":{\"action\":\"search\",\"subs\":{},\"result\":\"succeed\",\"keyword\":\"闁哄鏅炴慨銈咁焽閸愨晛绶為煫鍥ㄦ尨閺?S04E07\"},\"status\":0}"
 	*/
-	err = json.Unmarshal([]byte(resp.String()), &searchSubResult)
+	err = json.Unmarshal([]byte(respBody), &searchSubResult)
 	if err != nil {
 		// 闂佸憡鍔曠粔鐢割敆濠靛牅鐒婃繝闈涳功濡叉悂鎮峰▎娆戠ɑ闁诲海鏅划姘跺传閸曨偆浠氶柣?
 		errKnow = err
 		var searchSubResultEmpty SearchSubResultEmpty
-		err = json.Unmarshal([]byte(resp.String()), &searchSubResultEmpty)
+		err = json.Unmarshal([]byte(respBody), &searchSubResultEmpty)
 		if err != nil {
 			// 婵犵鈧啿鈧綊鎮樻径瀣氦婵☆垳绮瑧闁荤喐鐟辩徊楣冩倵娴犲鐓ユ繛鍡樺俯閸ゆ牠鏌ㄥ☉妯肩劯闁稿鎳忕粙濠囧醇濠靛洨娈ら柣鐔告磻閻掞附淇婇幖浣瑰仢闁哄瀵ч煬顒勬煟閵娿儱顏柡浣革功閹风娀顢涘顓烆伅婵炴垶鎸搁敃顏勵焽娴煎瓨鍎嶉柛鏇ㄥ灡閺呪晠鎮归崶璺虹仧闁告閰ｅ畷鎶藉Ω閵娧咁唹闂佹悶鍎抽崑娑㈠吹椤撱垹鍌?			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", keyword, errKnow.Error())
 			s.log.Errorln(s.GetSupplierName(), "json.Unmarshal", err)
-			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("keyword: %s, resp: %s, error: %s", keyword, resp.String(), errKnow.Error()))
+			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("keyword: %s, resp: %s, error: %s", keyword, respBody, errKnow.Error()))
 			return nil, errKnow
 		}
 		// 闁荤姍鍐惧剰闁逞屽墲婢瑰牏鎹㈤崘顔煎偍?
@@ -666,29 +682,57 @@ func assrtNormalizedTitleFromName(name string) string {
 	return strings.ToLower(strings.Join(strings.Fields(name), " "))
 }
 
-func (s *Supplier) getSubDetail(subID int) (OneSubDetail, error) {
+func assrtSearchSubCacheKey(supplierName string, searchSub SearchSubItem) string {
+	return fmt.Sprintf("%s-%s-%d", supplierName, searchSub.NativeName, searchSub.Id)
+}
 
-	defer func() {
-		time.Sleep(s.theSearchInterval)
-	}()
-
-	var subDetail OneSubDetail
-
-	httpClient, err := pkg.NewHttpClient()
-	if err != nil {
-		return subDetail, err
+func (s *Supplier) getCachedSubInfoBySearchSub(cacheKey string) (bool, *supplier.SubInfo, error) {
+	if s == nil || s.fileDownloader == nil || s.fileDownloader.CacheCenter == nil {
+		return false, nil, nil
 	}
-	resp, err := httpClient.R().
-		SetQueryParams(map[string]string{
-			"token": settings.Get().SubtitleSources.AssrtSettings.Token,
-			"id":    strconv.Itoa(subID),
-		}).
-		SetResult(&subDetail).
-		Get(settings.Get().AdvancedSettings.SuppliersSettings.Assrt.RootUrl + "/sub/detail")
-	if err != nil {
+	return s.fileDownloader.CacheCenter.DownloadFileGet(cacheKey, s.fileDownloader.ValidateCachedSubInfo)
+}
+
+func (s *Supplier) withAssrtRateLimit(do func() error) error {
+	s.requestIntervalMutex.Lock()
+	defer s.requestIntervalMutex.Unlock()
+
+	if s.theSearchInterval > 0 && s.lastRequestAt.IsZero() == false {
+		wait := s.theSearchInterval - time.Since(s.lastRequestAt)
+		if wait > 0 {
+			time.Sleep(wait)
+		}
+	}
+
+	err := do()
+	s.lastRequestAt = time.Now()
+	return err
+}
+
+func (s *Supplier) getSubDetail(subID int) (OneSubDetail, error) {
+	var subDetail OneSubDetail
+	var respBody string
+	err := s.withAssrtRateLimit(func() error {
+		httpClient, err := pkg.NewHttpClient()
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.R().
+			SetQueryParams(map[string]string{
+				"token": settings.Get().SubtitleSources.AssrtSettings.Token,
+				"id":    strconv.Itoa(subID),
+			}).
+			SetResult(&subDetail).
+			Get(settings.Get().AdvancedSettings.SuppliersSettings.Assrt.RootUrl + "/sub/detail")
 		if resp != nil {
+			respBody = resp.String()
+		}
+		return err
+	})
+	if err != nil {
+		if respBody != "" {
 			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", subID, err.Error())
-			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("subID: %d, resp: %s, error: %s", subID, resp.String(), err.Error()))
+			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("subID: %d, resp: %s, error: %s", subID, respBody, err.Error()))
 
 			// 闁哄鐗婇幐鎼佸吹椤撶姵瀚柛鎰靛幘濡叉悂鏌￠崒姘煑婵?
 			cacheCenterFolder, err := pkg.GetRootCacheCenterFolder()
@@ -701,7 +745,7 @@ func (s *Supplier) getSubDetail(subID int) (OneSubDetail, error) {
 			defer func() {
 				_ = file.Close()
 			}()
-			file.WriteString(resp.String())
+			file.WriteString(respBody)
 		}
 		return subDetail, err
 	}
@@ -713,20 +757,27 @@ func (s *Supplier) getUserInfo() (UserInfo, error) {
 
 	var userInfo UserInfo
 
-	httpClient, err := pkg.NewHttpClient()
-	if err != nil {
-		return userInfo, err
-	}
-	resp, err := httpClient.R().
-		SetQueryParams(map[string]string{
-			"token": settings.Get().SubtitleSources.AssrtSettings.Token,
-		}).
-		SetResult(&userInfo).
-		Get(settings.Get().AdvancedSettings.SuppliersSettings.Assrt.RootUrl + "/user/quota")
-	if err != nil {
+	var respBody string
+	err := s.withAssrtRateLimit(func() error {
+		httpClient, err := pkg.NewHttpClient()
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.R().
+			SetQueryParams(map[string]string{
+				"token": settings.Get().SubtitleSources.AssrtSettings.Token,
+			}).
+			SetResult(&userInfo).
+			Get(settings.Get().AdvancedSettings.SuppliersSettings.Assrt.RootUrl + "/user/quota")
 		if resp != nil {
+			respBody = resp.String()
+		}
+		return err
+	})
+	if err != nil {
+		if respBody != "" {
 			s.log.Errorln(s.GetSupplierName(), "NewHttpClient:", err.Error())
-			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("resp: %s, error: %s", resp.String(), err.Error()))
+			notify_center.Notify.Add(s.GetSupplierName()+" NewHttpClient", fmt.Sprintf("resp: %s, error: %s", respBody, err.Error()))
 		}
 		return userInfo, err
 	}
