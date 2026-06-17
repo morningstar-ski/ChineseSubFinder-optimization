@@ -10,6 +10,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/go-resty/resty/v2"
+	"github.com/sirupsen/logrus"
 )
 
 func TestParseSearchResults(t *testing.T) {
@@ -68,6 +69,32 @@ func TestSelectBestMovieRejectsWrongTitle(t *testing.T) {
 	}
 }
 
+func TestSelectBestMovieReturnsNilWhenNoCandidateKeywordsExist(t *testing.T) {
+	results := []movieSearchResult{
+		{ID: 1, Title: "Inferno", Year: "2016", URL: "/movie-1.html"},
+	}
+
+	result := selectBestMovie(results, &models.MediaInfo{}, "")
+	if result != nil {
+		t.Fatalf("selectBestMovie() = %#v; want nil when no title candidates exist", result)
+	}
+}
+
+func TestSelectBestMovieUsesKeywordWhenMediaInfoIsNil(t *testing.T) {
+	results := []movieSearchResult{
+		{ID: 1, Title: "Inferno", Year: "2016", URL: "/movie-1.html"},
+		{ID: 2, Title: "Interstellar", Year: "2014", URL: "/movie-2.html"},
+	}
+
+	result := selectBestMovie(results, nil, "Interstellar")
+	if result == nil {
+		t.Fatal("selectBestMovie() returned nil with keyword fallback")
+	}
+	if result.ID != 2 {
+		t.Fatalf("selectBestMovie() = %#v; want movie 2", result)
+	}
+}
+
 func TestBuildSearchKeywordsAddsPunctuationStrippedVariant(t *testing.T) {
 	mediaInfo := &models.MediaInfo{
 		TitleEn: "Will & Harper",
@@ -89,6 +116,16 @@ func TestBuildSearchKeywordsAddsPunctuationStrippedVariant(t *testing.T) {
 	}
 	if found == false {
 		t.Fatalf("expected punctuation-stripped keyword in %#v", keywords)
+	}
+}
+
+func TestBuildSearchKeywordsFallsBackToFileNameWithoutMediaInfo(t *testing.T) {
+	keywords := buildSearchKeywords(nil, filepath.Join("C:\\", "Media", "Inception.2010.1080p.BluRay.x264.mkv"))
+	if len(keywords) == 0 {
+		t.Fatalf("expected fallback keywords, got %#v", keywords)
+	}
+	if keywords[0] != "Inception" {
+		t.Fatalf("expected filename fallback first, got %#v", keywords)
 	}
 }
 
@@ -281,5 +318,71 @@ func TestSearchMoviesRetriesEOFUntilSuccess(t *testing.T) {
 	}
 	if client.RetryCount != 0 {
 		t.Fatalf("client retry count should be restored, got %d", client.RetryCount)
+	}
+}
+
+func TestResolveCandidatesWithFallbackContinuesAfterTransientSearchFailure(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cfg := settings.Get()
+	oldRootURL := cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl
+	oldSearchURL := cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.SearchUrl
+	t.Cleanup(func() {
+		cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl = oldRootURL
+		cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.SearchUrl = oldSearchURL
+	})
+
+	attempts := 0
+	seenChineseKeyword := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/search.php":
+			attempts++
+			if r.FormValue("q") == "时时刻刻" {
+				seenChineseKeyword = true
+			}
+			if r.FormValue("q") == "The Hours" {
+				hijacker, ok := w.(http.Hijacker)
+				if ok == false {
+					t.Fatalf("response writer does not support hijacking")
+				}
+				conn, _, err := hijacker.Hijack()
+				if err != nil {
+					t.Fatalf("Hijack() error = %v", err)
+				}
+				_ = conn.Close()
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<p class="description">Search results</p><ul style="margin-left:2em"><li><div style="width:500px"><a href="/movie-5012.html">时时刻刻 (2002)</a></div></li></ul>`))
+		case "/movie-5012.html":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<table><tr><th><div><span><b>Chinese subtitles:</b></span></div></th></tr><tr><td><a href="/subtitle-2.html"><div class="subtitle"><div><a href="/subtitle-2.html"><b>The Hours chinese subtitles (BluRay-GROUP)</b></a></div><table><tr><td title="release">BluRay-GROUP</td><td title="rip">BluRay</td><td title="downloaded">5600</td></tr></table></div></a></td></tr></table>`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl = server.URL
+	cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.SearchUrl = "/search.php"
+
+	client := newTestHTTPClient(t)
+	supplier := &Supplier{log: logrus.New(), topic: 1, languageMode: movieSubtitlesChinese}
+
+	candidates, err := supplier.resolveCandidatesWithFallback(client, &models.MediaInfo{TitleEn: "The Hours"}, filepath.Join("C:\\", "Media", "时时刻刻 (2002) - 1080p.mkv"))
+	if err != nil {
+		t.Fatalf("resolveCandidatesWithFallback() error = %v", err)
+	}
+	if attempts < 2 {
+		t.Fatalf("search attempts = %d, want at least 2", attempts)
+	}
+	if seenChineseKeyword == false {
+		t.Fatal("expected fallback keyword search after transient failure")
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %#v", candidates)
+	}
+	if candidates[0].SubtitlePageURL != "/subtitle-2.html" {
+		t.Fatalf("candidate page = %q", candidates[0].SubtitlePageURL)
 	}
 }

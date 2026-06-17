@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"math"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/local_http_proxy_server"
@@ -42,6 +44,14 @@ import (
 const (
 	subtitleDownloadTimeout    = common.HTMLTimeOut + 30*time.Second
 	subtitleDownloadRetryCount = 2
+	publicIPRequestTimeout     = 3 * time.Second
+	publicIPCacheTTL           = 10 * time.Minute
+)
+
+var (
+	publicIPCacheMu      sync.RWMutex
+	publicIPCacheValue   string
+	publicIPCacheExpires time.Time
 )
 
 // NewHttpClient 新建一个 resty 的对象
@@ -100,10 +110,20 @@ func newSubtitleDownloadHTTPClient() (*resty.Client, error) {
 	return httpClient, nil
 }
 
+func newPublicIPHTTPClient() (*resty.Client, error) {
+	httpClient, err := NewHttpClient()
+	if err != nil {
+		return nil, err
+	}
+	httpClient.SetTimeout(publicIPRequestTimeout)
+	httpClient.SetRetryCount(0)
+	return httpClient, nil
+}
+
 func getPublicIP(inputSite string) string {
 
 	var client *resty.Client
-	client, err := NewHttpClient()
+	client, err := newPublicIPHTTPClient()
 	if err != nil {
 		return ""
 	}
@@ -115,6 +135,9 @@ func getPublicIP(inputSite string) string {
 }
 
 func GetPublicIP(log *logrus.Logger, queue *settings.TaskQueue) string {
+	if cached := getCachedPublicIP(); cached != "" {
+		return cached
+	}
 
 	defPublicIPSites := []string{
 		"https://myip.biturl.top/",
@@ -136,19 +159,92 @@ func GetPublicIP(log *logrus.Logger, queue *settings.TaskQueue) string {
 		customPublicIPSites = append(customPublicIPSites, defPublicIPSites...)
 	}
 
-	for i, publicIPSite := range customPublicIPSites {
+	publicIP := resolvePublicIPFromSites(log, customPublicIPSites, getPublicIP)
+	if publicIP != "" {
+		cachePublicIP(publicIP)
+	}
+	return publicIP
+}
+
+func resolvePublicIPFromSites(log *logrus.Logger, publicIPSites []string, fetch func(string) string) string {
+	for i, publicIPSite := range publicIPSites {
 		log.Debugln("[GetPublicIP]", i, publicIPSite)
-		publicIP := getPublicIP(publicIPSite)
-
-		matcheds := regex_things.ReMatchIP.FindAllString(publicIP, -1)
-
-		if publicIP != "" || matcheds == nil || len(matcheds) == 0 {
-			log.Infoln("[GetPublicIP]", publicIP)
-			return publicIP
+		publicIP := strings.TrimSpace(fetch(publicIPSite))
+		if publicIP == "" {
+			continue
 		}
+
+		parsedIP := extractIPFromText(publicIP)
+		if parsedIP == "" {
+			continue
+		}
+
+		log.Infoln("[GetPublicIP]", parsedIP)
+		return parsedIP
 	}
 
 	return ""
+}
+
+func extractIPFromText(raw string) string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		switch {
+		case r >= '0' && r <= '9':
+			return false
+		case r >= 'a' && r <= 'f':
+			return false
+		case r >= 'A' && r <= 'F':
+			return false
+		case r == '.' || r == ':':
+			return false
+		default:
+			return true
+		}
+	})
+
+	for _, field := range fields {
+		if strings.Contains(field, ".") == false && strings.Contains(field, ":") == false {
+			continue
+		}
+		parsedIP := net.ParseIP(field)
+		if parsedIP == nil {
+			continue
+		}
+		return parsedIP.String()
+	}
+
+	return ""
+}
+
+func getCachedPublicIP() string {
+	publicIPCacheMu.RLock()
+	defer publicIPCacheMu.RUnlock()
+
+	if publicIPCacheValue == "" || time.Now().After(publicIPCacheExpires) {
+		return ""
+	}
+
+	return publicIPCacheValue
+}
+
+func cachePublicIP(ip string) {
+	publicIPCacheMu.Lock()
+	defer publicIPCacheMu.Unlock()
+
+	publicIPCacheValue = strings.TrimSpace(ip)
+	if publicIPCacheValue == "" {
+		publicIPCacheExpires = time.Time{}
+		return
+	}
+	publicIPCacheExpires = time.Now().Add(publicIPCacheTTL)
+}
+
+func clearPublicIPCache() {
+	publicIPCacheMu.Lock()
+	defer publicIPCacheMu.Unlock()
+
+	publicIPCacheValue = ""
+	publicIPCacheExpires = time.Time{}
 }
 
 // DownFile 从指定的 url 下载文件
@@ -540,7 +636,7 @@ func CloseChrome(l *logrus.Logger) {
 	sysType := runtime.GOOS
 	if sysType == "linux" {
 		// LINUX系统
-		cmdString = "pkill chrome"
+		cmdString = "pkill -x chrome || pkill -x chromium"
 		command = exec.Command("/bin/sh", "-c", cmdString)
 	}
 	if sysType == "windows" {
@@ -560,7 +656,37 @@ func CloseChrome(l *logrus.Logger) {
 	}
 	err := command.Run()
 	if err != nil {
+		if isCloseChromeNoProcessErr(sysType, err) {
+			l.Debugln("CloseChrome no running browser process")
+			return
+		}
 		l.Warningln("CloseChrome", err)
+	}
+}
+
+func isCloseChromeNoProcessErr(sysType string, err error) bool {
+	exitErr, ok := err.(*exec.ExitError)
+	errText := strings.TrimSpace(err.Error())
+	if ok {
+		switch sysType {
+		case "linux", "darwin":
+			if exitErr.ExitCode() == 1 {
+				return true
+			}
+		case "windows":
+			if exitErr.ExitCode() == 128 {
+				return true
+			}
+		}
+	}
+
+	switch sysType {
+	case "linux", "darwin":
+		return errText == "exit status 1"
+	case "windows":
+		return errText == "exit status 128"
+	default:
+		return false
 	}
 }
 

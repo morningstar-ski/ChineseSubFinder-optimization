@@ -25,6 +25,8 @@ const (
 	SubSiteOpenSubtitles    = "opensubtitles"
 	SubSiteTVSubtitles      = "tvsubtitles"
 	SubSiteMovieSubtitles   = "moviesubtitles"
+	SubSiteSubtitleCat      = "subtitlecat"
+	SubSiteSubtitleCatTrans = "subtitlecat_translated"
 )
 
 const (

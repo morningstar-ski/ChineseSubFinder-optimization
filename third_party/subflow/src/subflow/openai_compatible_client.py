@@ -92,6 +92,15 @@ def _response_format_is_unsupported(message: str) -> bool:
     return "response_format" in normalized or "json_schema" in normalized or "json_object" in normalized
 
 
+def _normalize_completion_result(text: str) -> dict[str, Any]:
+    parsed = json.loads(text)
+    if isinstance(parsed, dict):
+        return parsed
+    if isinstance(parsed, list):
+        return {"translations": parsed}
+    raise OpenAICompatibleError("OpenAI-compatible translate response was not a JSON object.")
+
+
 def generate_json_response(*, base_url: str, api_key: str, model: str, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
     del schema
     endpoint = _normalize_endpoint(base_url)
@@ -112,9 +121,10 @@ def generate_json_response(*, base_url: str, api_key: str, model: str, prompt: s
     for extra in attempts:
         try:
             response_payload = _post_json(endpoint, api_key=api_key, payload={**base_payload, **extra})
-            result = json.loads(_extract_response_text(response_payload))
-            if not isinstance(result, dict):
-                raise OpenAICompatibleError("OpenAI-compatible translate response was not a JSON object.")
+            response_text = _extract_response_text(response_payload)
+            result = _normalize_completion_result(response_text)
+            result["__raw_api_payload"] = response_payload
+            result["__raw_completion_text"] = response_text
             return result
         except Exception as exc:
             last_error = exc

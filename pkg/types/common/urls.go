@@ -34,4 +34,7 @@ const (
 
 	SubMovieSubtitlesRootUrlDef = "https://www.moviesubtitles.org"
 	SubMovieSubtitlesSearchUrl  = "/search.php"
+
+	SubSubtitleCatRootUrlDef = "https://www.subtitlecat.com"
+	SubSubtitleCatSearchUrl  = "/index.php"
 )

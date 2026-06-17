@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -110,7 +111,19 @@ func (d *Downloader) canTryLLMStageFallback() bool {
 	if settings.Get().AdvancedSettings.SaveMultiSub {
 		return false
 	}
-	return d.llmSubtitleFallback != nil && d.llmSubtitleFallback.Enabled()
+	return d.llmSubtitleFallback != nil && d.llmSubtitleFallback.Ready()
+}
+
+func (d *Downloader) canTryEnglishFallback() bool {
+	return settings.Get().AdvancedSettings.SaveMultiSub == false
+}
+
+func (d *Downloader) canTryTranslatedChineseFallback() bool {
+	if settings.Get().AdvancedSettings.SaveMultiSub {
+		return false
+	}
+	cfg := settings.Get().SubtitleSources.SubtitleCatSettings
+	return cfg != nil && cfg.EnableTranslatedChineseFallback
 }
 
 func (d *Downloader) tryWriteLLMSubtitleFallback(videoPath string, organizeSubFiles []string) error {
@@ -129,6 +142,24 @@ func (d *Downloader) tryWriteLLMSubtitleFallback(videoPath string, organizeSubFi
 	}
 
 	return d.writeSingleSubtitle(videoPath, *fallbackSub)
+}
+
+func (d *Downloader) tryWriteEnglishSubtitleFallback(videoPath string, organizeSubFiles []string) error {
+	if d.canTryEnglishFallback() == false {
+		return common.AllSiteDownloadSubNotFound
+	}
+
+	organizeSubFiles = d.prepareSubtitleCandidates(videoPath, organizeSubFiles)
+	if len(organizeSubFiles) < 1 {
+		return common.AllSiteDownloadSubNotFound
+	}
+
+	englishCandidate := d.mk.SelectBestEnglishSubFile(organizeSubFiles, videoPath)
+	if englishCandidate == nil {
+		return common.AllSiteDownloadSubNotFound
+	}
+
+	return d.writeSingleSubtitle(videoPath, *englishCandidate)
 }
 
 // saveFullSeasonSub 需要单独存储到连续剧每一季的特殊缓存目录中。
@@ -181,7 +212,7 @@ func (d *Downloader) saveFullSeasonSub(seriesInfo *series.SeriesInfo, organizeSu
 }
 
 func (d *Downloader) tryLLMSubtitleFallback(videoPath string, organizeSubFiles []string) *subparser.FileInfo {
-	if d.llmSubtitleFallback == nil || d.llmSubtitleFallback.Enabled() == false {
+	if d.llmSubtitleFallback == nil || d.llmSubtitleFallback.Ready() == false {
 		return nil
 	}
 
@@ -198,4 +229,18 @@ func (d *Downloader) tryLLMSubtitleFallback(videoPath string, organizeSubFiles [
 
 	d.log.Infoln("tryLLMSubtitleFallback.Success", "video", filepath.Base(videoPath), "source", englishCandidate.Name)
 	return fallbackSub
+}
+
+func (d *Downloader) tryEnglishSeriesFallback(ctx context.Context, videoPath string, organizeSubFiles []string) error {
+	err, p, canceled := runDownloaderErrorStep(ctx, func() error {
+		return d.tryWriteEnglishSubtitleFallback(videoPath, organizeSubFiles)
+	})
+	if p != nil {
+		d.log.Errorln("seriesDlFunc.tryWriteEnglishSubtitleFallback panicChan", p)
+		return errors.New("seriesDlFunc.tryWriteEnglishSubtitleFallback panic")
+	}
+	if canceled {
+		return errors.New(fmt.Sprintf("cancel at NeedDlEpsKeyList.tryWriteEnglishSubtitleFallback, %s", filepath.Base(videoPath)))
+	}
+	return err
 }

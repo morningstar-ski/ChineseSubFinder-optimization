@@ -20,26 +20,51 @@ import (
 type SubSupplierHub struct {
 	log                            *logrus.Logger
 	Suppliers                      []ifaces.ISupplier
+	movieSuppliers                 []ifaces.ISupplier
+	seriesSuppliers                []ifaces.ISupplier
 	englishFallbackMovieSuppliers  []ifaces.ISupplier
 	englishFallbackSeriesSuppliers []ifaces.ISupplier
+	translatedMovieSuppliers       []ifaces.ISupplier
+	translatedSeriesSuppliers      []ifaces.ISupplier
 	locker                         sync.Mutex
 }
 
 func NewSubSupplierHub(one ifaces.ISupplier, inSuppliers ...ifaces.ISupplier) *SubSupplierHub {
+	return NewSubSupplierHubWithCapabilities(one, true, true, inSuppliers...)
+}
+
+func NewSubSupplierHubWithCapabilities(one ifaces.ISupplier, supportMovie bool, supportSeries bool, inSuppliers ...ifaces.ISupplier) *SubSupplierHub {
 	s := &SubSupplierHub{
 		log:                            one.GetLogger(),
 		Suppliers:                      make([]ifaces.ISupplier, 0, 1+len(inSuppliers)),
+		movieSuppliers:                 make([]ifaces.ISupplier, 0, 1+len(inSuppliers)),
+		seriesSuppliers:                make([]ifaces.ISupplier, 0, 1+len(inSuppliers)),
 		englishFallbackMovieSuppliers:  make([]ifaces.ISupplier, 0),
 		englishFallbackSeriesSuppliers: make([]ifaces.ISupplier, 0),
+		translatedMovieSuppliers:       make([]ifaces.ISupplier, 0),
+		translatedSeriesSuppliers:      make([]ifaces.ISupplier, 0),
 	}
-	s.Suppliers = append(s.Suppliers, one)
-	s.Suppliers = append(s.Suppliers, inSuppliers...)
+	s.AddSubSupplierWithCapability(one, supportMovie, supportSeries)
+	for _, supplier := range inSuppliers {
+		s.AddSubSupplier(supplier)
+	}
 	return s
 }
 
 // AddSubSupplier 添加中文字幕阶段供应源。
 func (d *SubSupplierHub) AddSubSupplier(one ifaces.ISupplier) {
+	d.AddSubSupplierWithCapability(one, true, true)
+}
+
+// AddSubSupplierWithCapability 添加中文字幕阶段供应源并记录媒体类型能力。
+func (d *SubSupplierHub) AddSubSupplierWithCapability(one ifaces.ISupplier, supportMovie bool, supportSeries bool) {
 	d.Suppliers = append(d.Suppliers, one)
+	if supportMovie {
+		d.movieSuppliers = append(d.movieSuppliers, one)
+	}
+	if supportSeries {
+		d.seriesSuppliers = append(d.seriesSuppliers, one)
+	}
 }
 
 // AddEnglishFallbackSupplier 添加英文兜底阶段供应源。
@@ -52,7 +77,16 @@ func (d *SubSupplierHub) AddEnglishFallbackSupplier(one ifaces.ISupplier, suppor
 	}
 }
 
-// DelSubSupplier 移除供应源。
+func (d *SubSupplierHub) AddTranslatedFallbackSupplier(one ifaces.ISupplier, supportMovie bool, supportSeries bool) {
+	if supportMovie {
+		d.translatedMovieSuppliers = append(d.translatedMovieSuppliers, one)
+	}
+	if supportSeries {
+		d.translatedSeriesSuppliers = append(d.translatedSeriesSuppliers, one)
+	}
+}
+
+// DelSubSupplier 删除供应源。
 func (d *SubSupplierHub) DelSubSupplier(one ifaces.ISupplier) {
 	removeByName := func(items []ifaces.ISupplier) []ifaces.ISupplier {
 		out := items[:0]
@@ -66,8 +100,12 @@ func (d *SubSupplierHub) DelSubSupplier(one ifaces.ISupplier) {
 	}
 
 	d.Suppliers = removeByName(d.Suppliers)
+	d.movieSuppliers = removeByName(d.movieSuppliers)
+	d.seriesSuppliers = removeByName(d.seriesSuppliers)
 	d.englishFallbackMovieSuppliers = removeByName(d.englishFallbackMovieSuppliers)
 	d.englishFallbackSeriesSuppliers = removeByName(d.englishFallbackSeriesSuppliers)
+	d.translatedMovieSuppliers = removeByName(d.translatedMovieSuppliers)
+	d.translatedSeriesSuppliers = removeByName(d.translatedSeriesSuppliers)
 }
 
 // MovieNeedDlSub 电影是否需要下载字幕。
@@ -150,7 +188,7 @@ func (d *SubSupplierHub) SeriesNeedDlSubFromEmby(dealers *media_info_dealers.Dea
 
 // DownloadSub4Movie 下载中文字幕阶段的电影字幕。
 func (d *SubSupplierHub) DownloadSub4Movie(videoFullPath string, index int64) ([]string, error) {
-	return d.downloadMovieSubFromSuppliers(videoFullPath, index, d.Suppliers)
+	return d.downloadMovieSubFromSuppliers(videoFullPath, index, d.movieSuppliers)
 }
 
 // DownloadEnglishFallbackSub4Movie 下载英文兜底阶段的电影字幕。
@@ -158,14 +196,22 @@ func (d *SubSupplierHub) DownloadEnglishFallbackSub4Movie(videoFullPath string, 
 	return d.downloadMovieSubFromSuppliers(videoFullPath, index, d.englishFallbackMovieSuppliers)
 }
 
+func (d *SubSupplierHub) DownloadTranslatedFallbackSub4Movie(videoFullPath string, index int64) ([]string, error) {
+	return d.downloadMovieSubFromSuppliers(videoFullPath, index, d.translatedMovieSuppliers)
+}
+
 // DownloadSub4Series 下载中文字幕阶段的剧集字幕。
 func (d *SubSupplierHub) DownloadSub4Series(seriesDirPath string, seriesInfo *series.SeriesInfo, index int64) (map[string][]string, error) {
-	return d.dlSubFromSeriesInfo(seriesDirPath, index, seriesInfo, d.Suppliers)
+	return d.dlSubFromSeriesInfo(seriesDirPath, index, seriesInfo, d.seriesSuppliers)
 }
 
 // DownloadEnglishFallbackSub4Series 下载英文兜底阶段的剧集字幕。
 func (d *SubSupplierHub) DownloadEnglishFallbackSub4Series(seriesDirPath string, seriesInfo *series.SeriesInfo, index int64) (map[string][]string, error) {
 	return d.dlSubFromSeriesInfo(seriesDirPath, index, seriesInfo, d.englishFallbackSeriesSuppliers)
+}
+
+func (d *SubSupplierHub) DownloadTranslatedFallbackSub4Series(seriesDirPath string, seriesInfo *series.SeriesInfo, index int64) (map[string][]string, error) {
+	return d.dlSubFromSeriesInfo(seriesDirPath, index, seriesInfo, d.translatedSeriesSuppliers)
 }
 
 func (d *SubSupplierHub) HasEnglishFallbackMovieSuppliers() bool {
@@ -174,6 +220,14 @@ func (d *SubSupplierHub) HasEnglishFallbackMovieSuppliers() bool {
 
 func (d *SubSupplierHub) HasEnglishFallbackSeriesSuppliers() bool {
 	return len(d.englishFallbackSeriesSuppliers) > 0
+}
+
+func (d *SubSupplierHub) HasTranslatedFallbackMovieSuppliers() bool {
+	return len(d.translatedMovieSuppliers) > 0
+}
+
+func (d *SubSupplierHub) HasTranslatedFallbackSeriesSuppliers() bool {
+	return len(d.translatedSeriesSuppliers) > 0
 }
 
 // CheckSubSiteStatus 检查中文字幕阶段供应源状态。
@@ -209,7 +263,7 @@ func (d *SubSupplierHub) CheckSubSiteStatus() backend.ReplyCheckStatus {
 
 	suppliersLen := len(d.Suppliers)
 	for i := 0; i < suppliersLen; {
-		if d.Suppliers[i].IsAlive() == false || d.Suppliers[i].OverDailyDownloadLimit() {
+		if d.Suppliers[i].OverDailyDownloadLimit() {
 			d.DelSubSupplier(d.Suppliers[i])
 			suppliersLen = len(d.Suppliers)
 			i = 0

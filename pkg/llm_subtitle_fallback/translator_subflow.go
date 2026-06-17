@@ -17,10 +17,7 @@ func (subflowTranslator) Translate(req TranslateRequest) error {
 		return err
 	}
 
-	pythonExecutable := req.PythonExecutable
-	if pythonExecutable == "" {
-		pythonExecutable = defaultPythonExe
-	}
+	pythonExecutable := resolvePythonExecutable(req.PythonExecutable)
 
 	args := []string{
 		"-m", "subflow.translate_job",
@@ -95,6 +92,28 @@ func resolveSubflowRootDir(configured string) (string, error) {
 		return "", fmt.Errorf("subflow root dir is empty")
 	}
 	return "", fmt.Errorf("subflow root dir invalid, tried: %s", strings.Join(candidates, ", "))
+}
+
+func resolvePythonExecutable(configured string) string {
+	configured = strings.TrimSpace(configured)
+	if configured != "" {
+		return configured
+	}
+
+	for _, candidate := range []string{
+		os.Getenv("CSF_LLM_SUBTITLE_FALLBACK_PYTHON"),
+		os.Getenv("CSF_DDDDOCR_PYTHON"),
+	} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if info, err := os.Stat(filepath.Clean(filepath.FromSlash(candidate))); err == nil && info.IsDir() == false {
+			return filepath.Clean(filepath.FromSlash(candidate))
+		}
+	}
+
+	return defaultPythonExe
 }
 
 func isValidSubflowRootDir(root string) bool {

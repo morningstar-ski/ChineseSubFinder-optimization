@@ -62,14 +62,21 @@ ENV TZ=Asia/Shanghai \
     PERMS=true \
     PUID=1026 \
     PGID=100 \
+    CSF_DDDDOCR_PYTHON=/opt/csf-ocr/bin/python3 \
+    CSF_LLM_SUBTITLE_FALLBACK_PYTHON=/opt/csf-ocr/bin/python3 \
+    CSF_LLM_SUBTITLE_FALLBACK_SUBFLOW_ROOT=/opt/subflow \
     UMASK=022 \
     PS1="\u@\h:\w \$ "
+COPY third_party/subflow /opt/subflow
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
         ffmpeg \
         gosu \
+        python3 \
+        python3-pip \
+        python3-venv \
         tini \
         tzdata \
     && if [ "${INSTALL_BROWSER}" = "true" ]; then apt-get install -y --no-install-recommends \
@@ -93,8 +100,9 @@ RUN apt-get update \
         libxfixes3 \
         libxkbcommon0 \
         libxrandr2 \
-        tesseract-ocr \
         xdg-utils; fi \
+    && python3 -m venv /opt/csf-ocr \
+    && /opt/csf-ocr/bin/pip install --no-cache-dir ddddocr -r /opt/subflow/requirements-translate.txt \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*

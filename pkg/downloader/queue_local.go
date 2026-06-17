@@ -2,12 +2,11 @@ package downloader
 
 import (
 	"fmt"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
-
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/task_queue"
 	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	taskQueue2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/task_queue"
@@ -250,18 +249,8 @@ func (d *Downloader) queueDownloaderLocal() {
 	}()
 
 	downloadCounter++
-	// 创建一个 chan 用于任务的中断和超时
-	done := make(chan interface{}, 1)
-	// 接收内部任务的 panic
-	panicChan := make(chan interface{}, 1)
-
-	go func() {
+	err, p, canceled := runDownloaderErrorStep(d.ctx, func() error {
 		defer func() {
-			if p := recover(); p != nil {
-				panicChan <- p
-			}
-			close(done)
-			close(panicChan)
 			// 每下载完毕一次，进行一次缓存和 Chrome 的清理
 			err = pkg.ClearRootTmpFolder()
 			if err != nil {
@@ -276,35 +265,32 @@ func (d *Downloader) queueDownloaderLocal() {
 		if oneJob.VideoType == common2.Movie {
 			// 电影
 			// 具体的下载逻辑 func()
-			done <- d.movieDlFunc(d.ctx, oneJob, downloadCounter)
+			return d.movieDlFunc(d.ctx, oneJob, downloadCounter)
 		} else if oneJob.VideoType == common2.Series {
 			// 连续剧
 			// 具体的下载逻辑 func()
-			done <- d.seriesDlFunc(d.ctx, oneJob, downloadCounter)
-		} else {
-			d.log.Errorln("oneJob.VideoType not support, oneJob.VideoType = ", oneJob.VideoType)
-			done <- nil
+			return d.seriesDlFunc(d.ctx, oneJob, downloadCounter)
 		}
-	}()
 
-	select {
-	case err := <-done:
-		// 跳出 select，可以外层继续，不会阻塞在这里
-		if err != nil {
-			d.log.Errorln(err)
-		}
-		// 刷新视频的缓存结构
-		//d.UpdateInfo(oneJob)
+		d.log.Errorln("oneJob.VideoType not support, oneJob.VideoType = ", oneJob.VideoType)
+		return nil
+	})
 
-		break
-	case p := <-panicChan:
-		// 遇到内部的 panic，向外抛出
-		panic(p)
-	case <-d.ctx.Done():
-		{
-			// 取消这个 context
-			d.log.Warningln("cancel Downloader.QueueDownloader()")
-			return
-		}
+	if p != nil {
+		err = fmt.Errorf("Downloader.QueueDownloader panic: %v", p)
+		d.log.Errorln(err)
+		d.downloadQueue.AutoDetectUpdateJobStatus(oneJob, err)
+		return
 	}
+	if canceled {
+		// 取消这个 context
+		d.log.Warningln("cancel Downloader.QueueDownloader()")
+		return
+	}
+	// 跳出等待后可以外层继续，不会阻塞在这里
+	if err != nil {
+		d.log.Errorln(err)
+	}
+	// 刷新视频的缓存结构
+	//d.UpdateInfo(oneJob)
 }

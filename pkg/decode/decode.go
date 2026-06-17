@@ -79,6 +79,10 @@ func getVideoNfoInfo(nfoFilePath string, rootKey string) (types.VideoNfoInfo, er
 		imdbInfo.Title = t.Text()
 		break
 	}
+	for _, t := range doc.FindElements("./" + rootKey + "/originaltitle") {
+		imdbInfo.OriginalTitle = t.Text()
+		break
+	}
 	//---------------------------------------------------------------------
 	// IMDB
 	for _, t := range doc.FindElements("./" + rootKey + "/imdbid") {
@@ -424,7 +428,7 @@ func GetVideoInfoFromFileName(fileName string) (*PTN.TorrentInfo, error) {
 	return parse, nil
 }
 
-//GetVideoInfoFromFileFullPath 从全文件路径推断文件信息，这个应该是次要方案，优先还是从 nfo 文件获取这些信息
+// GetVideoInfoFromFileFullPath 从全文件路径推断文件信息，这个应该是次要方案，优先还是从 nfo 文件获取这些信息
 func GetVideoInfoFromFileFullPath(videoFileFullPath string, isMovie bool) (types.VideoNfoInfo, time.Time, error) {
 
 	var err error
@@ -437,8 +441,23 @@ func GetVideoInfoFromFileFullPath(videoFileFullPath string, isMovie bool) (types
 
 	} else {
 		videoNfoInfo, err = GetVideoNfoInfo4OneSeriesEpisode(videoFileFullPath)
-		if err != nil {
-			return types.VideoNfoInfo{}, time.Time{}, err
+		if err != nil || videoNfoInfo.Season == 0 || videoNfoInfo.Episode == 0 {
+			parseInfo, parseErr := GetVideoInfoFromFileName(filepath.Base(videoFileFullPath))
+			if parseErr != nil || parseInfo == nil || parseInfo.Season == 0 || parseInfo.Episode == 0 {
+				return types.VideoNfoInfo{}, time.Time{}, err
+			}
+			parsedYear := ""
+			if parseInfo.Year > 0 {
+				parsedYear = strconv.Itoa(parseInfo.Year)
+			}
+			videoNfoInfo = types.VideoNfoInfo{
+				Title:       parseInfo.Title,
+				Season:      parseInfo.Season,
+				Episode:     parseInfo.Episode,
+				Year:        parsedYear,
+				ReleaseDate: "",
+				IsMovie:     false,
+			}
 		}
 	}
 	/*

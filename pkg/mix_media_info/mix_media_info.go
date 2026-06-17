@@ -3,6 +3,7 @@ package mix_media_info
 import (
 	"errors"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/media_info_dealers"
@@ -95,20 +96,34 @@ func KeyWordSelect(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool,
 
 	keyWord := ""
 
-	if keyWordType == "cn" {
+	if mediaInfo == nil && keyWordType != "file" {
+		keyWord = normalizePathKeyword(videoFPath, isMovie)
+		if keyWord == "" {
+			return "", errors.New("mediaInfo is nil and fallback keyword is empty")
+		}
+	} else if keyWordType == "cn" {
 		keyWord = mediaInfo.TitleCn
 		if keyWord == "" {
-			return "", errors.New("TitleCn is empty")
+			keyWord = normalizePathKeyword(videoFPath, isMovie)
+			if keyWord == "" {
+				return "", errors.New("TitleCn is empty")
+			}
 		}
 	} else if keyWordType == "en" {
 		keyWord = mediaInfo.TitleEn
 		if keyWord == "" {
-			return "", errors.New("TitleEn is empty")
+			keyWord = normalizePathKeyword(videoFPath, isMovie)
+			if keyWord == "" {
+				return "", errors.New("TitleEn is empty")
+			}
 		}
 	} else if keyWordType == "org" {
 		keyWord = mediaInfo.OriginalTitle
 		if keyWord == "" {
-			return "", errors.New("OriginalTitle is empty")
+			keyWord = normalizePathKeyword(videoFPath, isMovie)
+			if keyWord == "" {
+				return "", errors.New("OriginalTitle is empty")
+			}
 		}
 	} else if keyWordType == "file" {
 		keyWord = normalizeFileKeyword(videoFPath)
@@ -129,6 +144,50 @@ func KeyWordSelect(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool,
 	}
 
 	return keyWord, nil
+}
+
+func normalizePathKeyword(videoFPath string, isMovie bool) string {
+	if isMovie && looksLikeSeriesEpisode(videoFPath) == false {
+		if bok, _, _ := decode.IsFakeBDMVWorked(videoFPath); bok {
+			title := filepath.Base(filepath.Dir(videoFPath))
+			title = stripYearSuffix(title)
+			title = pkg.ReplaceSpecString(title, " ")
+			title = strings.Join(strings.Fields(title), " ")
+			if title != "" {
+				return title
+			}
+		}
+		return normalizeFileKeyword(videoFPath)
+	}
+
+	seriesDir := filepath.Dir(filepath.Dir(videoFPath))
+	if seriesDir == "." || seriesDir == string(filepath.Separator) {
+		return normalizeFileKeyword(videoFPath)
+	}
+
+	title := filepath.Base(seriesDir)
+	title = stripYearSuffix(title)
+	title = pkg.ReplaceSpecString(title, " ")
+	title = strings.Join(strings.Fields(title), " ")
+	if title == "" {
+		return normalizeFileKeyword(videoFPath)
+	}
+	return title
+}
+
+func looksLikeSeriesEpisode(videoFPath string) bool {
+	fileName := filepath.Base(videoFPath)
+	if fileInfo, err := decode.GetVideoInfoFromFileName(fileName); err == nil && fileInfo != nil && fileInfo.Season > 0 && fileInfo.Episode > 0 {
+		return true
+	}
+
+	seasonDir := filepath.Base(filepath.Dir(videoFPath))
+	return regexp.MustCompile(`(?i)^season\s*\d+$`).MatchString(strings.TrimSpace(seasonDir))
+}
+
+func stripYearSuffix(title string) string {
+	re := regexp.MustCompile(`\s+\(\d{4}.*\)$`)
+	return strings.TrimSpace(re.ReplaceAllString(title, ""))
 }
 
 func normalizeFileKeyword(videoFPath string) string {

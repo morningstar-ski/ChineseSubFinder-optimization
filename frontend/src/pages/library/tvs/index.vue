@@ -1,25 +1,27 @@
 <template>
-  <q-page class="q-pa-lg">
-    <div class="row q-gutter-md">
-      <btn-dialog-library-refresh />
-      <btn-dialog-media-server-subtitle-refresh />
-      <q-btn color="primary" @click="setLock(true)" label="锁定" />
-      <q-btn color="primary" @click="setLock(false)" label="取消锁定" />
-      <div v-if="selection.length" class="self-center text-grey">已选中{{ selection.length }}项</div>
-      <q-btn v-if="selection.length" color="primary" flat @click="selection = []" label="清空选择" />
+  <q-page class="page-shell tv-index">
+    <div class="page-toolbar">
+      <div class="page-toolbar__group">
+        <btn-dialog-library-refresh />
+        <btn-dialog-media-server-subtitle-refresh />
+        <q-btn color="primary" @click="setLock(true)" label="锁定" icon="lock" />
+        <q-btn color="primary" outline @click="setLock(false)" label="取消锁定" icon="lock_open" />
+        <div v-if="selection.length" class="self-center text-muted">已选中 {{ selection.length }} 项</div>
+        <q-btn v-if="selection.length" color="primary" flat @click="selection = []" label="清空选择" icon="close" />
+      </div>
 
-      <q-space />
+      <div class="page-toolbar__spacer"></div>
 
-      <q-input v-model="filterForm.search" outlined dense label="输入关键字搜索">
+      <q-input v-model="filterForm.search" outlined dense label="输入关键词搜索" class="tv-index__search">
         <template #append>
           <q-icon name="search" />
         </template>
       </q-input>
     </div>
 
-    <q-separator class="q-my-md" />
+    <q-separator class="q-mb-md" />
 
-    <div v-if="tvs.length" class="row q-gutter-x-md q-gutter-y-lg">
+    <div v-if="tvs.length" class="tv-index__grid">
       <q-intersection v-for="item in filteredTvs" :key="item.root_dir_path" style="width: 160px; height: 280px" once>
         <div
           class="item-wrapper cursor-pointer"
@@ -29,12 +31,13 @@
           <list-item-t-v :data="item" :selected="selection" />
           <q-checkbox
             :model-value="selection.includes(item.root_dir_path)"
-            class="absolute-top-right no-pointer-events"
+            class="absolute-top-right no-pointer-events tv-index__checkbox"
           />
         </div>
       </q-intersection>
     </div>
-    <div v-else class="q-my-md text-grey">当前没有可用视频，点击"更新缓存"按钮可重建缓存</div>
+
+    <div v-else class="q-my-md text-grey">当前没有可用视频，点击“更新缓存”可以重新建立缓存。</div>
   </q-page>
 </template>
 
@@ -110,33 +113,52 @@ const lockTv = async (item, lock) => {
 
 const setLock = async (flag) => {
   if (selection.value.length === 0) {
-    SystemMessage.warn('请至少选择一项！');
+    SystemMessage.warn('请至少选择一项');
     return;
   }
   $q.dialog({
     title: '提示',
-    message: `确定${flag ? '锁定' : '取消锁定'}选中的${selection.value.length}项吗？`,
+    message: `确定${flag ? '锁定' : '取消锁定'}选中的 ${selection.value.length} 项吗？`,
     cancel: true,
     persistent: true,
   }).onOk(async () => {
     await Promise.allSettled(
       selection.value.map((e) => tvs.value.find((f) => f.root_dir_path === e)).map((e) => lockTv(e, flag))
     );
-    // 取消选中
     selection.value = [];
-    SystemMessage.success('操作成功！');
+    SystemMessage.success('操作成功');
   });
 };
 </script>
 
 <style lang="scss">
+.tv-index__search {
+  width: min(100%, 300px);
+}
+
+.tv-index__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 18px;
+}
+
 .item-wrapper {
   overflow: hidden;
-  border-radius: 4px;
-  padding: 2px;
+  border-radius: 22px;
+  padding: 4px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 
   &.selected {
-    box-shadow: 0 0 0 2px $primary;
+    background: rgba(22, 119, 255, 0.08);
+    box-shadow: 0 0 0 1px rgba(22, 119, 255, 0.18);
   }
+
+  &:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.tv-index__checkbox {
+  margin: 10px;
 }
 </style>

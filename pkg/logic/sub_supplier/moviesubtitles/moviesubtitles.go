@@ -152,8 +152,8 @@ func (s *Supplier) getSubListFromFile(videoFPath string) ([]supplier.SubInfo, er
 
 	mediaInfo, err := mix_media_info.GetMixMediaInfo(s.fileDownloader.MediaInfoDealers, videoFPath, true)
 	if err != nil {
-		s.log.Errorln(s.GetSupplierName(), videoFPath, "GetMixMediaInfo", err)
-		return nil, err
+		s.log.Warningln(s.GetSupplierName(), videoFPath, "GetMixMediaInfo", err, "fallback to title-based search")
+		mediaInfo = nil
 	}
 
 	client, err := pkg.NewHttpClient()
@@ -216,7 +216,8 @@ func (s *Supplier) resolveCandidatesWithFallback(client *resty.Client, mediaInfo
 
 		movies, err := s.searchMovies(client, keyword)
 		if err != nil {
-			return nil, err
+			s.log.Warningln(s.GetSupplierName(), "searchMovies", keyword, err)
+			continue
 		}
 
 		movie := selectBestMovie(movies, mediaInfo, keyword)
@@ -226,7 +227,8 @@ func (s *Supplier) resolveCandidatesWithFallback(client *resty.Client, mediaInfo
 
 		candidates, err := s.fetchMovieCandidates(client, absoluteURL(settings.Get().AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl, movie.URL), videoFPath)
 		if err != nil {
-			return nil, err
+			s.log.Warningln(s.GetSupplierName(), "fetchMovieCandidates", keyword, movie.URL, err)
+			continue
 		}
 		if len(candidates) == 0 {
 			continue
@@ -432,8 +434,12 @@ func selectBestMovie(results []movieSearchResult, mediaInfo *models.MediaInfo, k
 		return nil
 	}
 
-	targetYear := normalizeYear(mediaInfo.Year)
-	candidates := compactStrings(mediaInfo.TitleEn, mediaInfo.OriginalTitle, keyword)
+	targetYear := ""
+	candidates := compactStrings(keyword)
+	if mediaInfo != nil {
+		targetYear = normalizeYear(mediaInfo.Year)
+		candidates = compactStrings(mediaInfo.TitleEn, mediaInfo.OriginalTitle, keyword)
+	}
 	type scoredMovie struct {
 		movie      movieSearchResult
 		titleScore int
@@ -454,6 +460,9 @@ func selectBestMovie(results []movieSearchResult, mediaInfo *models.MediaInfo, k
 			}
 		}
 		scored = append(scored, scoredMovie{movie: result, titleScore: titleScore, score: score})
+	}
+	if len(scored) == 0 {
+		return nil
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {
@@ -514,6 +523,12 @@ func parseCandidateFields(block *goquery.Selection) map[string]string {
 }
 
 func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string) []string {
+	if mediaInfo == nil {
+		return expandSearchKeywordVariants([]string{
+			normalizeVideoTitle(videoFPath),
+		})
+	}
+
 	return expandSearchKeywordVariants([]string{
 		mediaInfo.TitleEn,
 		mediaInfo.OriginalTitle,

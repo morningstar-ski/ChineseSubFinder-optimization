@@ -1,32 +1,37 @@
 <template>
-  <q-card flat square>
-    <div class="area-cover q-mb-sm relative-position">
-      <div v-if="!posterInfo?.url" style="width: 160px; height: 200px"></div>
+  <q-card flat class="tv-card">
+    <div class="tv-card__cover">
+      <div v-if="!posterInfo?.url" class="tv-card__cover-placeholder"></div>
       <q-img
         v-else
         :src="getUrl(posterInfo.url)"
-        class="content-width bg-grey-2"
+        class="tv-card__image"
         no-spinner
         style="width: 160px; height: 200px"
         fit="cover"
       />
     </div>
-    <div class="content-width text-ellipsis-line-2" :title="data.name">{{ data.name }}</div>
-    <div class="row items-center">
-      <q-space />
-      <div>
+
+    <div class="tv-card__body">
+      <div class="tv-card__title text-ellipsis-line-2" :title="data.name">{{ data.name }}</div>
+
+      <div class="tv-card__footer">
         <dialog-t-v-detail :data="detailInfo">
           <q-btn
             v-if="hasSubtitleVideoCount > 0"
-            color="black"
+            color="primary"
             flat
             dense
             icon="closed_caption"
             :label="`${hasSubtitleVideoCount}/${detailInfo.one_video_info.length}`"
             title="已有字幕"
           />
-          <q-btn v-else color="grey" round flat dense icon="closed_caption" title="没有字幕" />
+          <q-btn v-else color="grey-5" round flat dense icon="closed_caption" title="没有字幕" />
         </dialog-t-v-detail>
+
+        <div class="tv-card__status" :class="{ 'has-subtitle': hasSubtitleVideoCount > 0 }">
+          <span>{{ hasSubtitleVideoCount > 0 ? '已覆盖部分剧集' : '待补字幕' }}</span>
+        </div>
       </div>
     </div>
   </q-card>
@@ -68,7 +73,6 @@ const hasSubtitleVideoCount = computed(
 );
 
 watch(subtitleUploadList, (val, oldValue) => {
-  // 上传字幕列表当前文件有变化时刷新
   if (
     detailInfo.value?.one_video_info.some((e) => oldValue.map((f) => f.video_f_path).includes(e.video_f_path)) &&
     !detailInfo.value?.one_video_info.some((e) => val.map((f) => f.video_f_path).includes(e.video_f_path))
@@ -84,28 +88,74 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.content-width {
-  width: 160px;
+.tv-card {
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.94);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
+
+.tv-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.12);
+}
+
+.tv-card__cover {
+  padding: 10px;
+}
+
+.tv-card__cover-placeholder,
+.tv-card__image {
+  width: 160px;
+  height: 200px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f0f4fa 0%, #e5edf8 100%);
+}
+
+.tv-card__body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 14px;
+}
+
+.tv-card__title {
+  min-height: 42px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #142033;
+}
+
+.tv-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tv-card__status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f4f7fb;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tv-card__status.has-subtitle {
+  background: rgba(43, 182, 115, 0.12);
+  color: #1f8b59;
+}
+
 .text-ellipsis-line-2 {
-  height: 40px;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-}
-
-.btn-download {
-  //display: none;
-  opacity: 0;
-  transition: all 0.6s ease;
-}
-
-.area-cover:hover {
-  .btn-download {
-    //display: block;
-    opacity: 1;
-  }
 }
 </style>

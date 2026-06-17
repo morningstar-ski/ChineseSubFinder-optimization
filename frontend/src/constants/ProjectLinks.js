@@ -5,15 +5,16 @@ export const PROJECT_ISSUES_URL = `${PROJECT_REPO_URL}/issues`;
 export const PROJECT_BUG_TEMPLATE_URL = `${PROJECT_REPO_URL}/issues/new?template=----bug----.md`;
 
 export const PROJECT_UPDATE_MARKDOWN = `
-## 当前仓库
+## 鸣谢
 
-- 本界面和当前运行时以 [ChineseSubFinder-optimization](${PROJECT_REPO_URL}) 为准。
-- 这里展示的是本仓库自己的接线与更新摘要，不再复用上游官方发布说明。
+当前仓库基于 [ChineseSubFinder](https://github.com/ChineseSubFinder/ChineseSubFinder) 持续修改而来。
+保留对原作者和所有贡献者的感谢，现有能力建立在上游长期积累的扫描、匹配和字幕处理基础上。
 
-## 当前版本已对齐的内容
+## 相比原仓库的当前增强
 
-- 新增并接入 \`OpenSubtitles\`、\`TVsubtitles\`、\`Moviesubtitles\`、\`SubHD\`。
-- 修复预任务初始化完成信号，避免前端长时间停在初始化状态。
-- 设置页已对齐当前可用字幕源，并隐藏未启用的前端展示入口。
-- 帮助文档和问题反馈统一跳转到本仓库。
+- 扩展并接入更多字幕源：\`OpenSubtitles\`、\`TVsubtitles\`、\`Moviesubtitles\`、\`SubHD\`、\`SubtitleCat\`。
+- 英文字幕回退链默认保留 \`SubtitleCat\`，在缺少直链字幕时补足英文源。
+- 增加中文字幕翻译回退能力，可按配置使用 \`SubtitleCat\` 远端翻译或 LLM 翻译链。
+- \`SubHD\` 下载链补了本地 \`ddddocr\` 与 SVG 直读能力，并保留外部 OCR 显式开关。
+- WebUI、Docker 文档和问题反馈入口已统一对齐到当前仓库。
 `;

@@ -13,6 +13,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitle_best"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitlecat"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/tvsubtitles"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/xunlei"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
@@ -94,6 +95,16 @@ func ProbeSupplierStatuses(fileDownloader *file_downloader.FileDownloader, suppl
 		settings.Get().SubtitleSources.MoviesubtitlesSettings.Enabled,
 		true,
 		func() ifaces.ISupplier { return moviesubtitles.NewSupplier(fileDownloader) },
+	)
+
+	appendOptionalSupplierStatus(
+		&reply,
+		wanted,
+		common2.SubSiteSubtitleCat,
+		RuntimeModeLite,
+		true,
+		true,
+		func() ifaces.ISupplier { return subtitlecat.NewEnglishSupplier(fileDownloader) },
 	)
 
 	appendSubHDStatus(&reply, wanted, fileDownloader)

@@ -24,3 +24,5 @@ TestData/*
 /.codegraph/
 /CustomPort
 /tmp/
+**/__pycache__/
+*.pyc

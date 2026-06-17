@@ -40,7 +40,10 @@ type seasonPlan struct {
 	AllEpisodesPage      string
 }
 
-const tvSubtitlesSearchRetryCount = 2
+const tvSubtitlesSearchRetryCount = 1
+const tvSubtitlesTimeout = 8 * time.Second
+const tvSubtitlesHTTPRetryAttempts = 3
+const tvSubtitlesHTTPRetryDelay = 700 * time.Millisecond
 
 func NewSupplier(fileDownloader *file_downloader.FileDownloader) *Supplier {
 	return &Supplier{
@@ -59,7 +62,10 @@ func (s *Supplier) CheckAlive() (bool, int64) {
 		return false, 0
 	}
 
-	resp, err := client.R().Get(settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl)
+	resp, err := tvSubtitlesDoRequest(client, httpRequestSpec{
+		method: "GET",
+		url:    settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl,
+	})
 	if err != nil {
 		s.log.Errorln(s.GetSupplierName(), "CheckAlive.Get", err)
 		s.isAlive = false
@@ -114,9 +120,13 @@ func (s *Supplier) GetSubListFromFile4Anime(seriesInfo *series.SeriesInfo) ([]su
 
 func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier.SubInfo, error) {
 	allSupplierSubInfo := make([]supplier.SubInfo, 0)
+	seriesKeywords := buildSeriesSearchKeywords(seriesInfo)
+	if len(seriesKeywords) > 0 {
+		s.log.Infoln(s.GetSupplierName(), "series search keywords", strings.Join(seriesKeywords, " | "))
+	}
 
 	for _, episodeInfo := range seriesInfo.NeedDlEpsKeyList {
-		subInfos, err := s.getEpisodeSubtitle(episodeInfo.FileFullPath, episodeInfo.Season, episodeInfo.Episode)
+		subInfos, err := s.getEpisodeSubtitle(episodeInfo.FileFullPath, episodeInfo.Season, episodeInfo.Episode, seriesKeywords)
 		if err != nil {
 			s.log.Errorln(s.GetSupplierName(), "getEpisodeSubtitle", episodeInfo.FileFullPath, err)
 			continue
@@ -135,18 +145,20 @@ func (s *Supplier) downloadSub4Series(seriesInfo *series.SeriesInfo) ([]supplier
 	return allSupplierSubInfo, nil
 }
 
-func (s *Supplier) getEpisodeSubtitle(videoFPath string, season, episode int) ([]supplier.SubInfo, error) {
+func (s *Supplier) getEpisodeSubtitle(videoFPath string, season, episode int, seriesKeywords []string) ([]supplier.SubInfo, error) {
 	mediaInfo, err := mix_media_info.GetMixMediaInfo(s.fileDownloader.MediaInfoDealers, videoFPath, false)
 	if err != nil {
-		return nil, err
+		s.log.Warningln(s.GetSupplierName(), videoFPath, "GetMixMediaInfo", err, "fallback to series title search")
+		mediaInfo = nil
 	}
 
 	client, err := pkg.NewHttpClient()
 	if err != nil {
 		return nil, err
 	}
+	client.SetTimeout(tvSubtitlesTimeout)
 
-	subtitlePageURL, err := s.resolveSubtitlePageURL(client, mediaInfo, videoFPath, season, episode)
+	subtitlePageURL, err := s.resolveSubtitlePageURL(client, mediaInfo, videoFPath, season, episode, seriesKeywords)
 	if err != nil {
 		return nil, err
 	}
@@ -183,24 +195,27 @@ func (s *Supplier) getEpisodeSubtitle(videoFPath string, season, episode int) ([
 	return []supplier.SubInfo{*subInfo}, nil
 }
 
-func (s *Supplier) resolveSubtitlePageURL(client *resty.Client, mediaInfo *models.MediaInfo, videoFPath string, season, episode int) (string, error) {
-	for _, keyword := range buildSearchKeywords(mediaInfo, videoFPath) {
+func (s *Supplier) resolveSubtitlePageURL(client *resty.Client, mediaInfo *models.MediaInfo, videoFPath string, season, episode int, seriesKeywords []string) (string, error) {
+	for _, keyword := range buildSearchKeywords(mediaInfo, videoFPath, seriesKeywords...) {
 		if keyword == "" {
 			continue
 		}
 
 		shows, err := s.searchShows(client, keyword)
 		if err != nil {
-			return "", err
+			s.log.Warningln(s.GetSupplierName(), "searchShows", keyword, err)
+			continue
 		}
 		show := selectBestShow(shows, mediaInfo, keyword)
 		if show == nil {
 			continue
 		}
+		s.log.Infoln(s.GetSupplierName(), "matched show", "keyword", keyword, "title", show.Title, "id", show.ID)
 
 		plan, err := s.fetchSeasonPlan(client, show.ID, season)
 		if err != nil {
-			return "", err
+			s.log.Warningln(s.GetSupplierName(), "fetchSeasonPlan", keyword, show.ID, season, err)
+			continue
 		}
 		if plan.EpisodeSubtitlePages[episode] != "" {
 			return absoluteURL(settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl, plan.EpisodeSubtitlePages[episode]), nil
@@ -214,13 +229,11 @@ func (s *Supplier) resolveSubtitlePageURL(client *resty.Client, mediaInfo *model
 }
 
 func (s *Supplier) searchShows(client *resty.Client, keyword string) ([]showSearchResult, error) {
-	restoreRetryCount := client.RetryCount
-	client.SetRetryCount(tvSubtitlesSearchRetryCount)
-	defer client.SetRetryCount(restoreRetryCount)
-
-	resp, err := client.R().
-		SetFormData(map[string]string{"qs": keyword}).
-		Post(settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl + settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl)
+	resp, err := tvSubtitlesDoRequest(client, httpRequestSpec{
+		method:   "POST",
+		url:      settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl + settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl,
+		formData: map[string]string{"qs": keyword},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +243,10 @@ func (s *Supplier) searchShows(client *resty.Client, keyword string) ([]showSear
 
 func (s *Supplier) fetchSeasonPlan(client *resty.Client, showID, season int) (*seasonPlan, error) {
 	url := fmt.Sprintf("%s/tvshow-%d-%d.html", settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl, showID, season)
-	resp, err := client.R().Get(url)
+	resp, err := tvSubtitlesDoRequest(client, httpRequestSpec{
+		method: "GET",
+		url:    url,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +255,10 @@ func (s *Supplier) fetchSeasonPlan(client *resty.Client, showID, season int) (*s
 }
 
 func (s *Supplier) fetchDownloadPageURL(client *resty.Client, subtitlePageURL string) (string, error) {
-	resp, err := client.R().Get(subtitlePageURL)
+	resp, err := tvSubtitlesDoRequest(client, httpRequestSpec{
+		method: "GET",
+		url:    subtitlePageURL,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -252,7 +271,10 @@ func (s *Supplier) fetchDownloadPageURL(client *resty.Client, subtitlePageURL st
 }
 
 func (s *Supplier) fetchFinalDownloadURL(client *resty.Client, downloadPageURL string) (string, error) {
-	resp, err := client.R().Get(downloadPageURL)
+	resp, err := tvSubtitlesDoRequest(client, httpRequestSpec{
+		method: "GET",
+		url:    downloadPageURL,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -262,6 +284,57 @@ func (s *Supplier) fetchFinalDownloadURL(client *resty.Client, downloadPageURL s
 		return "", err
 	}
 	return absoluteURL(settings.Get().AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl, path), nil
+}
+
+type httpRequestSpec struct {
+	method   string
+	url      string
+	formData map[string]string
+}
+
+func tvSubtitlesDoRequest(client *resty.Client, spec httpRequestSpec) (*resty.Response, error) {
+	restoreRetryCount := client.RetryCount
+	client.SetRetryCount(0)
+	defer client.SetRetryCount(restoreRetryCount)
+
+	var lastResp *resty.Response
+	var lastErr error
+	for attempt := 1; attempt <= tvSubtitlesHTTPRetryAttempts; attempt++ {
+		req := client.R()
+		if len(spec.formData) > 0 {
+			req.SetFormData(spec.formData)
+		}
+		switch strings.ToUpper(spec.method) {
+		case "POST":
+			lastResp, lastErr = req.Post(spec.url)
+		default:
+			lastResp, lastErr = req.Get(spec.url)
+		}
+		if lastErr == nil && lastResp != nil && lastResp.StatusCode() >= 200 && lastResp.StatusCode() < 300 {
+			return lastResp, nil
+		}
+		if lastErr == nil && lastResp != nil {
+			lastErr = fmt.Errorf("unexpected http status %d for %s", lastResp.StatusCode(), spec.url)
+		}
+		if shouldRetryTVSubtitlesRequest(lastErr) == false || attempt == tvSubtitlesHTTPRetryAttempts {
+			return lastResp, lastErr
+		}
+		time.Sleep(tvSubtitlesHTTPRetryDelay)
+	}
+	return lastResp, lastErr
+}
+
+func shouldRetryTVSubtitlesRequest(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "eof") ||
+		strings.Contains(msg, "connection reset by peer") ||
+		strings.Contains(msg, "forcibly closed by the remote host") ||
+		strings.Contains(msg, "unexpected http status 502") ||
+		strings.Contains(msg, "unexpected http status 503") ||
+		strings.Contains(msg, "unexpected http status 504")
 }
 
 func parseSearchResults(html string) ([]showSearchResult, error) {
@@ -377,7 +450,10 @@ func selectBestShow(results []showSearchResult, mediaInfo *models.MediaInfo, key
 		return nil
 	}
 
-	candidates := compactStrings(mediaInfo.TitleEn, mediaInfo.OriginalTitle, keyword)
+	candidates := []string{keyword}
+	if mediaInfo != nil {
+		candidates = compactStrings(mediaInfo.TitleEn, mediaInfo.OriginalTitle, keyword)
+	}
 	type scoredShow struct {
 		show  showSearchResult
 		score int
@@ -423,12 +499,39 @@ func findChineseSubtitlePage(cell *goquery.Selection) string {
 	return href
 }
 
-func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string) []string {
-	return compactStrings(
-		mediaInfo.TitleEn,
-		mediaInfo.OriginalTitle,
-		normalizeVideoTitle(videoFPath),
-	)
+func buildSeriesSearchKeywords(seriesInfo *series.SeriesInfo) []string {
+	if seriesInfo == nil {
+		return nil
+	}
+
+	keywords := make([]string, 0, 3)
+	if seriesInfo.DirPath != "" {
+		if videoInfo, err := decode.GetVideoNfoInfo4SeriesDir(seriesInfo.DirPath); err == nil {
+			keywords = append(keywords, compactStrings(videoInfo.OriginalTitle, videoInfo.Title)...)
+		}
+	}
+	keywords = append(keywords, compactStrings(seriesInfo.Name)...)
+
+	return compactStrings(keywords...)
+}
+
+func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string, extraKeywords ...string) []string {
+	keywords := make([]string, 0, 4+len(extraKeywords))
+	if mediaInfo != nil {
+		keywords = append(keywords, mediaInfo.TitleEn, mediaInfo.OriginalTitle)
+	}
+	keywords = append(keywords, extraKeywords...)
+	keywords = append(keywords, normalizeSeriesTitle(videoFPath), normalizeVideoTitle(videoFPath))
+
+	return compactStrings(keywords...)
+}
+
+func normalizeSeriesTitle(videoFPath string) string {
+	seriesDir := filepath.Dir(filepath.Dir(videoFPath))
+	title := filepath.Base(seriesDir)
+	title = stripShowYearSuffix(title)
+	title = pkg.ReplaceSpecString(title, " ")
+	return strings.Join(strings.Fields(title), " ")
 }
 
 func normalizeVideoTitle(videoFPath string) string {
@@ -492,16 +595,89 @@ func scoreShowTitle(showTitle string, candidate string) int {
 	if showTitle == "" || candidate == "" {
 		return 0
 	}
-	switch {
-	case showTitle == candidate:
+	if showTitle == candidate {
 		return 100
-	case strings.Contains(showTitle, candidate):
+	}
+
+	showTokens := meaningfulTitleTokens(showTitle)
+	candidateTokens := meaningfulTitleTokens(candidate)
+	if len(showTokens) == 0 || len(candidateTokens) == 0 {
+		return 0
+	}
+
+	if len(showTokens) == 1 || len(candidateTokens) == 1 {
+		if len(showTokens) == 1 && len(candidateTokens) == 1 && showTokens[0] == candidateTokens[0] {
+			return 90
+		}
+		return 0
+	}
+
+	overlap := sharedTokenCount(showTokens, candidateTokens)
+	if overlap == 0 {
+		return 0
+	}
+
+	showCoverage := overlap * 100 / len(showTokens)
+	candidateCoverage := overlap * 100 / len(candidateTokens)
+	switch {
+	case showCoverage == 100 && candidateCoverage == 100:
+		return 95
+	case showCoverage == 100 && candidateCoverage >= 80:
+		return 80
+	case candidateCoverage == 100 && showCoverage >= 80:
+		return 70
+	case strings.Contains(showTitle, candidate) && candidateCoverage >= 80:
 		return 60
-	case strings.Contains(candidate, showTitle):
-		return 40
 	default:
 		return 0
 	}
+}
+
+func meaningfulTitleTokens(title string) []string {
+	rawTokens := strings.Fields(title)
+	if len(rawTokens) == 0 {
+		return nil
+	}
+
+	stopWords := map[string]struct{}{
+		"a":   {},
+		"an":  {},
+		"the": {},
+		"of":  {},
+		"and": {},
+	}
+
+	out := make([]string, 0, len(rawTokens))
+	for _, token := range rawTokens {
+		if _, ok := stopWords[token]; ok {
+			continue
+		}
+		out = append(out, token)
+	}
+	if len(out) == 0 {
+		return rawTokens
+	}
+	return out
+}
+
+func sharedTokenCount(left []string, right []string) int {
+	seen := make(map[string]struct{}, len(left))
+	for _, token := range left {
+		seen[token] = struct{}{}
+	}
+
+	count := 0
+	counted := make(map[string]struct{}, len(right))
+	for _, token := range right {
+		if _, ok := counted[token]; ok {
+			continue
+		}
+		if _, ok := seen[token]; ok {
+			count++
+			counted[token] = struct{}{}
+		}
+	}
+	return count
 }
 
 func normalizeComparableTitle(title string) string {

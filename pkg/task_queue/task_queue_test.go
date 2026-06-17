@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/emby"
 	task_queue2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/task_queue"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/cache_center"
@@ -280,6 +282,99 @@ func TestTaskQueue_UpdatePriority(t *testing.T) {
 
 	if len(waitingJobs) != 2 {
 		t.Fatal("len(waitingJobs) != 2")
+	}
+}
+
+func TestTaskQueue_RequeueForManualTriggerMakesJobImmediatelyRunnable(t *testing.T) {
+
+	taskQueue := newTestTaskQueue(t)
+	nowJob := *task_queue2.NewOneJob(common.Movie, "manual-requeue", DefaultTaskPriorityLevel)
+	nowJob.DownloadTimes = 1
+	nowJob.UpdateTime = emby.Time(time.Now())
+	nowJob.ErrorInfo = "all site download sub not found"
+
+	bok, err := taskQueue.Add(nowJob)
+	if err != nil {
+		t.Fatal("TaskQueue.Add", err)
+	}
+	if bok == false {
+		t.Fatal("TaskQueue.Add == false")
+	}
+
+	bok, waitingJob, err := taskQueue.GetOneWaitingJob()
+	if err != nil {
+		t.Fatal("TaskQueue.GetOneWaitingJob", err)
+	}
+	if bok == true {
+		t.Fatal("expected cooldown to block immediate pickup before manual requeue")
+	}
+	if waitingJob.Id != "" {
+		t.Fatal("waitingJob should be empty before manual requeue")
+	}
+
+	nowJob.TaskPriority = HighTaskPriorityLevel
+	bok, err = taskQueue.RequeueForManualTrigger(nowJob)
+	if err != nil {
+		t.Fatal("TaskQueue.RequeueForManualTrigger", err)
+	}
+	if bok == false {
+		t.Fatal("TaskQueue.RequeueForManualTrigger == false")
+	}
+
+	bok, waitingJob, err = taskQueue.GetOneWaitingJob()
+	if err != nil {
+		t.Fatal("TaskQueue.GetOneWaitingJob", err)
+	}
+	if bok == false {
+		t.Fatal("expected manual requeue to make job immediately runnable")
+	}
+	if waitingJob.TaskPriority != HighTaskPriorityLevel {
+		t.Fatalf("TaskPriority = %d, want %d", waitingJob.TaskPriority, HighTaskPriorityLevel)
+	}
+	if waitingJob.DownloadTimes != 0 {
+		t.Fatalf("DownloadTimes = %d, want 0", waitingJob.DownloadTimes)
+	}
+	if waitingJob.RetryTimes != 0 {
+		t.Fatalf("RetryTimes = %d, want 0", waitingJob.RetryTimes)
+	}
+	if waitingJob.JobStatus != task_queue2.Waiting {
+		t.Fatalf("JobStatus = %v, want Waiting", waitingJob.JobStatus)
+	}
+	if waitingJob.ErrorInfo != "" {
+		t.Fatalf("ErrorInfo = %q, want empty", waitingJob.ErrorInfo)
+	}
+}
+
+func TestTaskQueue_AutoDetectUpdateJobStatusMarksNoSubFoundAsFailed(t *testing.T) {
+
+	taskQueue := newTestTaskQueue(t)
+	nowJob := *task_queue2.NewOneJob(common.Movie, "no-sub-found", DefaultTaskPriorityLevel)
+
+	bok, err := taskQueue.Add(nowJob)
+	if err != nil {
+		t.Fatal("TaskQueue.Add", err)
+	}
+	if bok == false {
+		t.Fatal("TaskQueue.Add == false")
+	}
+
+	taskQueue.AutoDetectUpdateJobStatus(nowJob, ErrNoSubFound)
+
+	bok, gotJob := taskQueue.GetOneJobByID(nowJob.Id)
+	if bok == false {
+		t.Fatal("TaskQueue.GetOneJobByID == false")
+	}
+	if gotJob.JobStatus != task_queue2.Failed {
+		t.Fatalf("JobStatus = %v, want Failed", gotJob.JobStatus)
+	}
+	if gotJob.ErrorInfo != ErrNoSubFound.Error() {
+		t.Fatalf("ErrorInfo = %q, want %q", gotJob.ErrorInfo, ErrNoSubFound.Error())
+	}
+	if gotJob.DownloadTimes != 1 {
+		t.Fatalf("DownloadTimes = %d, want 1", gotJob.DownloadTimes)
+	}
+	if gotJob.TaskPriority != DefaultTaskPriorityLevel {
+		t.Fatalf("TaskPriority = %d, want %d", gotJob.TaskPriority, DefaultTaskPriorityLevel)
 	}
 }
 

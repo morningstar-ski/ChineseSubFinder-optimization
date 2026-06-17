@@ -329,28 +329,48 @@ def _cue_prompt_payload(cue: SubtitleCue) -> dict[str, Any]:
     }
 
 
+def _write_chunk_debug_artifacts(chunk_dir: Path, chunk_index: int, prompt: str, payload: dict[str, Any]) -> None:
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    prefix = f"chunk-{chunk_index:03d}"
+    (chunk_dir / f"{prefix}.prompt.txt").write_text(prompt, encoding="utf-8")
+
+    raw_payload = payload.get("__raw_api_payload")
+    if raw_payload is not None:
+        (chunk_dir / f"{prefix}.response.raw.json").write_text(
+            json.dumps(raw_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    raw_completion_text = payload.get("__raw_completion_text")
+    if isinstance(raw_completion_text, str) and raw_completion_text.strip():
+        (chunk_dir / f"{prefix}.response.content.txt").write_text(raw_completion_text, encoding="utf-8")
+
+    normalized_payload = {key: value for key, value in payload.items() if key.startswith("__") is False}
+    (chunk_dir / f"{prefix}.response.normalized.json").write_text(
+        json.dumps(normalized_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def _build_prompt(request: TranslateJobRequest, cues: list[SubtitleCue]) -> str:
     lines = [
         f"Translate the following subtitle cues from {request.source_language or 'the source language'} to {request.target_language}.",
-        "The source file is a noisy intermediate-English subtitle. Some lines may be OCR-damaged, machine-translated from another language, or split awkwardly.",
-        "Default to a faithful meaning-first translation. Stay close to the original proposition, action, and relationship.",
-        "Use freer adaptation only when a literal rendering would confuse a Chinese viewer because of culture, idiom, joke timing, or obviously broken source text.",
-        "When the source is damaged, repair the smallest span necessary from nearby cues. Prefer the most ordinary scene-fitting conversational meaning, not a word-by-word rescue of broken phrasing and not a creative rewrite.",
-        "If multiple readings are possible, choose the most conservative one supported by the cue and nearby context.",
-        "Do not omit concrete nouns, objects, destinations, or asks just to make the line smoother. If the exact object is uncertain but clearly concrete, keep the Chinese concrete and narrow rather than vague or abstract.",
-        "A broken shared-item invitation should stay a shared-item invitation in Chinese, not become a vague line such as 分一下.",
-        "Preserve meaning, speaker intent, tone, polarity, joke strength, and plot facts.",
-        "Do not invert meaning. Do not turn a question into a statement or a statement into a question.",
-        "Do not add hidden motives, sexual implications, sarcasm, abstract wording, or stronger wording unless the source clearly says so.",
-        "Prefer natural spoken Chinese over mirrored English word order. When the source is plain, keep the Chinese plain.",
-        "Translate on-screen labels and signs into concise Chinese that a viewer can read instantly.",
-        "Translate lyrics or stylized lines into concise natural Chinese instead of leaving them as broken literal English fragments.",
-        "Keep non-dialogue cues such as applause, laughter, silence, music, ambience, and performance notes visibly distinct from dialogue by using bracketed Chinese such as （掌声）.",
-        "If a state cue is attached to dialogue, keep the dialogue readable first and append the state cue in brackets instead of dropping it.",
-        "Keep names, HTML markup, and inline control markers such as {n8} unchanged.",
-        "Drop local file paths, release filenames, site watermarks, URL-only lines, and release-group prefixes unrelated to the scene instead of translating them.",
-        "Return JSON only. For each cue, return one object with id and lines, where lines is an array of 1 or 2 subtitle lines.",
-        "Each subtitle line should be concise and readable on screen. Do not output explanations or notes.",
+        "This is subtitle translation, not prose translation. The source may be noisy OCR English or awkward intermediate English.",
+        "Rules:",
+        "1. Return exactly one item for every cue id below. Do not drop, merge, reorder, or skip any cue.",
+        "2. Translate every meaningful cue into natural spoken Chinese. Do not leave an English sentence unchanged. If unsure, give the safest Chinese paraphrase instead of copying the English source.",
+        "3. Exceptions: keep proper names, acronyms, HTML markup, and inline control markers such as {n8} unchanged. Keep a standalone name in its original script unless a standard Chinese form is obvious from the cue.",
+        "4. Very short cues still need translation when they carry meaning: questions, calls, shouts, fragments, trailing phrases, confirmations, and commands.",
+        "5. If one sentence is split across neighboring cues, translate each cue as the matching fragment of that same sentence. Keep unfinished openings such as than, but, and, or because naturally unfinished when the source is unfinished.",
+        "6. Use nearby cues only to disambiguate damaged text or unfinished clauses. Do not pull words, facts, conclusions, or emotional color from another cue into the current cue. Do not anticipate the next cue or repeat it early.",
+        "7. When the source is damaged, repair the smallest span necessary from nearby cues. Choose the most conservative scene-fitting reading and avoid creative rewrites.",
+        "8. Preserve meaning, speaker intent, tone, polarity, and plot facts. Do not invert meaning or add motives, sarcasm, or stronger wording that is not present.",
+        "9. Keep concrete nouns, objects, destinations, and requests concrete. Do not smooth them into vague or abstract Chinese.",
+        "10. Prefer concise natural subtitle Chinese over mirrored English word order. Compress only when needed for subtitle readability.",
+        "11. Translate on-screen labels, lyrics, and stylized lines into concise readable Chinese. Keep non-dialogue cues visibly distinct with bracketed Chinese such as [sound] style cues translated into Chinese brackets.",
+        "12. Drop local file paths, release filenames, site watermarks, URL-only lines, and release-group prefixes unrelated to the scene.",
+        "13. Each item's lines array must contain 1 or 2 subtitle lines only, short enough to read on screen.",
+        "14. Return a JSON array only. Each item must be {\"id\": <int>, \"lines\": [<line1>, <optional line2>]} with no commentary.",
     ]
     if request.style:
         lines.append(f"Follow this style guide exactly after preserving the meaning: {request.style}")
@@ -481,7 +501,8 @@ def _translate_chunks(
     chunks: list[list[SubtitleCue]],
 ) -> dict[int, str]:
     translated: dict[int, str] = {}
-    for chunk in chunks:
+    chunk_debug_dir = (request.output_path.parent / "chunk-debug") if request.output_path else None
+    for chunk_index, chunk in enumerate(chunks, start=1):
         prompt = _build_prompt(request, chunk)
         cue_by_id = {cue.index: cue for cue in chunk}
         last_error: Exception | None = None
@@ -501,6 +522,8 @@ def _translate_chunks(
         if payload is None:
             assert last_error is not None
             raise last_error
+        if chunk_debug_dir is not None:
+            _write_chunk_debug_artifacts(chunk_debug_dir, chunk_index, prompt, payload)
         items = payload.get("translations", [])
         if not isinstance(items, list):
             raise RuntimeError("Gemini translation response did not contain translations.")

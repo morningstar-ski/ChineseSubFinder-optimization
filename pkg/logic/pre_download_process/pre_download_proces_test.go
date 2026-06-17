@@ -96,6 +96,45 @@ func TestBuildSubSupplierHubPreservesEnglishFallbacks(t *testing.T) {
 	}
 }
 
+func TestBuildSubSupplierHubKeepsSubtitleCatFallbackOutOfPrimarySuppliers(t *testing.T) {
+	plans := map[string]supplierPlan{
+		common.SubSiteXunLei: {
+			siteName:        common.SubSiteXunLei,
+			supplierFactory: newFakeSupplierFactory(common.SubSiteXunLei),
+			supportMovie:    true,
+			supportSeries:   true,
+		},
+		common.SubSiteSubtitleCat: {
+			siteName:        common.SubSiteSubtitleCat,
+			supplierFactory: newFakeSupplierFactory(common.SubSiteSubtitleCat),
+			skipPrimary:     true,
+			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
+				hub.AddEnglishFallbackSupplier(newFakeSupplierFactory(common.SubSiteSubtitleCat)(), true, true)
+			},
+			addTranslatedFallbacks: func(hub *subSupplier.SubSupplierHub) {
+				hub.AddTranslatedFallbackSupplier(newFakeSupplierFactory(common.SubSiteSubtitleCatTrans)(), true, true)
+			},
+		},
+	}
+
+	hub := buildSubSupplierHub(plans)
+	if hub == nil {
+		t.Fatal("buildSubSupplierHub() returned nil")
+	}
+	if len(hub.Suppliers) != 1 {
+		t.Fatalf("len(hub.Suppliers) = %d; want 1", len(hub.Suppliers))
+	}
+	if got := hub.Suppliers[0].GetSupplierName(); got != common.SubSiteXunLei {
+		t.Fatalf("hub.Suppliers[0] = %q; want %q", got, common.SubSiteXunLei)
+	}
+	if hub.HasEnglishFallbackMovieSuppliers() == false || hub.HasEnglishFallbackSeriesSuppliers() == false {
+		t.Fatal("expected subtitlecat english fallback to be registered")
+	}
+	if hub.HasTranslatedFallbackMovieSuppliers() == false || hub.HasTranslatedFallbackSeriesSuppliers() == false {
+		t.Fatal("expected subtitlecat translated fallback to be registered")
+	}
+}
+
 type fakeSupplier struct {
 	name string
 	log  *logrus.Logger

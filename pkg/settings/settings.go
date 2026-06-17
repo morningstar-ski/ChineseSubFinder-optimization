@@ -168,6 +168,8 @@ func (s *Settings) ensureDefaults() {
 	}
 	if s.SubtitleSources == nil {
 		s.SubtitleSources = NewSubtitleSources()
+	} else {
+		s.SubtitleSources.ensureDefaults()
 	}
 	if s.AdvancedSettings == nil {
 		s.AdvancedSettings = NewAdvancedSettings()

@@ -1,10 +1,15 @@
 package rod_helper
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -15,6 +20,8 @@ import (
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 )
+
+const newPageNavigateRetryAttempts = 2
 
 func NewBrowserEx(opt *BrowserOptions) (*rod.Browser, error) {
 	if opt == nil || opt.Settings == nil {
@@ -48,50 +55,64 @@ func HttpGetFromBrowser(browser *rod.Browser, inputURL string, timeout time.Dura
 }
 
 func NewPageNavigate(browser *rod.Browser, destURL string, timeout time.Duration, debugMode ...bool) (*rod.Page, int, string, error) {
-	page, err := browser.Page(proto.TargetCreateTarget{URL: ""})
-	if err != nil {
-		return nil, 0, "", err
-	}
+	var lastErr error
+	for attempt := 1; attempt <= newPageNavigateRetryAttempts; attempt++ {
+		page, err := browser.Page(proto.TargetCreateTarget{URL: ""})
+		if err != nil {
+			return nil, 0, "", err
+		}
 
-	page = page.Timeout(timeout)
-	if err := page.SetUserAgent(&proto.NetworkSetUserAgentOverride{
-		UserAgent: random_useragent.RandomUserAgent(true),
-	}); err != nil {
+		page = page.Timeout(timeout)
+		if err := page.SetUserAgent(&proto.NetworkSetUserAgentOverride{
+			UserAgent: random_useragent.RandomUserAgent(true),
+		}); err != nil {
+			_ = page.Close()
+			return nil, 0, "", err
+		}
+
+		var event proto.NetworkResponseReceived
+		wait := page.WaitEvent(&event)
+		err = rod.Try(func() {
+			page.MustNavigate(destURL)
+			wait()
+			page.MustWaitLoad()
+		})
+		err = normalizeNewPageNavigateError(err)
+		if err == nil {
+			page = page.CancelTimeout()
+			return page, event.Response.Status, event.Response.URL, nil
+		}
+
+		lastErr = err
 		_ = page.Close()
-		return nil, 0, "", err
+		if shouldRetryNewPageNavigate(err) == false || attempt >= newPageNavigateRetryAttempts {
+			return nil, 0, "", err
+		}
 	}
 
-	var event proto.NetworkResponseReceived
-	wait := page.WaitEvent(&event)
-	if err := rod.Try(func() {
-		page.MustNavigate(destURL)
-		wait()
-		page.MustWaitLoad()
-	}); err != nil {
-		_ = page.Close()
-		return nil, 0, "", err
-	}
+	return nil, 0, "", lastErr
+}
 
-	page = page.CancelTimeout()
-	return page, event.Response.Status, event.Response.URL, nil
+func normalizeNewPageNavigateError(err error) error {
+	if shouldRetryNewPageNavigate(err) == false {
+		return err
+	}
+	return fmt.Errorf("object reference chain is too long")
+}
+
+func shouldRetryNewPageNavigate(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "object reference chain is too long")
 }
 
 func newLocalBrowser(opt *BrowserOptions) (*rod.Browser, error) {
-	launch := launcher.New().
-		Headless(true).
-		NoSandbox(true).
-		Leakless(false).
-		UserDataDir(filepath.Join(pkg.DefRodTmpRootFolder(), pkg.RandStringBytesMaskImprSrcSB(20)))
+	userDataDir := filepath.Join(pkg.DefRodTmpRootFolder(), pkg.RandStringBytesMaskImprSrcSB(20))
+	_ = os.MkdirAll(userDataDir, os.ModePerm)
 
-	if proxyURL := local_http_proxy_server.GetProxyUrl(); proxyURL != "" {
-		launch = launch.Proxy(proxyURL)
-	}
-
-	if chromePath := resolveChromePath(opt.Settings); chromePath != "" {
-		launch = launch.Bin(chromePath)
-	}
-
-	controlURL, err := launch.Launch()
+	controlURL, err := launchLocalBrowser(opt, userDataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +132,104 @@ func newLocalBrowser(opt *BrowserOptions) (*rod.Browser, error) {
 	}
 
 	return browser, nil
+}
+
+func launchLocalBrowser(opt *BrowserOptions, userDataDir string) (string, error) {
+	chromePath := resolveChromePath(opt.Settings)
+	if chromePath == "" {
+		chromePath = "chromium"
+	}
+	configHome := filepath.Join(userDataDir, "xdg-config")
+	cacheHome := filepath.Join(userDataDir, "xdg-cache")
+	_ = os.MkdirAll(configHome, os.ModePerm)
+	_ = os.MkdirAll(cacheHome, os.ModePerm)
+
+	args := []string{
+		"--headless=new",
+		"--no-sandbox",
+		"--disable-dev-shm-usage",
+		"--user-data-dir=" + userDataDir,
+		"--remote-debugging-address=127.0.0.1",
+		"--remote-debugging-port=0",
+		"about:blank",
+	}
+	if proxyURL := local_http_proxy_server.GetProxyUrl(); proxyURL != "" {
+		args = append(args, "--proxy-server="+proxyURL)
+	}
+
+	cmd := exec.Command(chromePath, args...)
+	cmd.Env = append(os.Environ(),
+		"HOME="+userDataDir,
+		"XDG_CONFIG_HOME="+configHome,
+		"XDG_CACHE_HOME="+cacheHome,
+	)
+
+	reader, writer := io.Pipe()
+	cmd.Stdout = writer
+	cmd.Stderr = writer
+
+	if err := cmd.Start(); err != nil {
+		_ = writer.Close()
+		_ = reader.Close()
+		return "", err
+	}
+
+	wsURLCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer reader.Close()
+		scanner := bufio.NewScanner(reader)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		lastLines := make([]string, 0, 12)
+		found := false
+		for scanner.Scan() {
+			line := scanner.Text()
+			lastLines = append(lastLines, line)
+			if len(lastLines) > 12 {
+				lastLines = lastLines[1:]
+			}
+			if opt.Log != nil {
+				opt.Log.Debugln("[chromium]", line)
+			}
+			if found {
+				continue
+			}
+			const prefix = "DevTools listening on "
+			if strings.Contains(line, prefix) {
+				wsURL := strings.TrimSpace(line[strings.Index(line, prefix)+len(prefix):])
+				wsURLCh <- wsURL
+				found = true
+			}
+		}
+		if scanErr := scanner.Err(); scanErr != nil && found == false {
+			errCh <- fmt.Errorf("%w; chromium output: %s", scanErr, strings.Join(lastLines, " | "))
+			return
+		}
+		if found == false {
+			errCh <- fmt.Errorf("chrome exited before devtools url was available; chromium output: %s", strings.Join(lastLines, " | "))
+		}
+	}()
+
+	go func() {
+		_ = cmd.Wait()
+		_ = writer.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	select {
+	case wsURL := <-wsURLCh:
+		return wsURL, nil
+	case err := <-errCh:
+		return "", err
+	case <-ctx.Done():
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		return "", fmt.Errorf("wait devtools websocket url timeout: %w", ctx.Err())
+	}
 }
 
 func newRemoteBrowser(opt *BrowserOptions) (*rod.Browser, error) {

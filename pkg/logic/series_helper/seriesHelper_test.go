@@ -69,7 +69,7 @@ func TestSeriesSubtitlesCoverNeedDlEpisodes(t *testing.T) {
 	}
 }
 
-func TestDownloadSubtitleInAllSiteByOneSeriesStopsAfterCoverage(t *testing.T) {
+func TestDownloadSubtitleInAllSiteByOneSeriesKeepsCollectingAfterCoverage(t *testing.T) {
 	seriesInfo := &series.SeriesInfo{
 		DirPath: "C:\\Media\\Series",
 		NeedDlEpsKeyList: map[string]series.EpisodeInfo{
@@ -90,14 +90,14 @@ func TestDownloadSubtitleInAllSiteByOneSeriesStopsAfterCoverage(t *testing.T) {
 	}
 
 	got := DownloadSubtitleInAllSiteByOneSeries(log_helper.GetLogger4Tester(), []ifaces.ISupplier{first, second}, seriesInfo, 1)
-	if len(got) != 1 {
-		t.Fatalf("expected 1 subtitle from first supplier, got %d", len(got))
+	if len(got) != 2 {
+		t.Fatalf("expected 2 subtitles from both suppliers, got %d", len(got))
 	}
 	if first.seriesCalls != 1 {
 		t.Fatalf("expected first supplier to be called once, got %d", first.seriesCalls)
 	}
-	if second.seriesCalls != 0 {
-		t.Fatalf("expected second supplier to be skipped, got %d calls", second.seriesCalls)
+	if second.seriesCalls != 1 {
+		t.Fatalf("expected second supplier to still run, got %d calls", second.seriesCalls)
 	}
 }
 

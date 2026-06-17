@@ -14,6 +14,8 @@ func DefaultSubSiteSequence() []string {
 		SubSiteOpenSubtitles,
 		SubSiteTVSubtitles,
 		SubSiteMovieSubtitles,
+		SubSiteSubtitleCat,
+		SubSiteSubtitleCatTrans,
 	}
 }
 

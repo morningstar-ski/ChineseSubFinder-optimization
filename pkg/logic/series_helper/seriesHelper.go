@@ -194,8 +194,6 @@ func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifa
 	}
 
 	for _, oneSupplier := range Suppliers {
-		stopFallback := false
-
 		oneSupplierFunc := func() {
 			defer func() {
 				logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "End")
@@ -222,15 +220,11 @@ func DownloadSubtitleInAllSiteByOneSeries(logger *logrus.Logger, Suppliers []ifa
 
 			outSUbInfos = append(outSUbInfos, subInfos...)
 			if seriesSubtitlesCoverNeedDlEpisodes(seriesInfo, subInfos) {
-				logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "Stop supplier fallback after covering all needed episodes")
-				stopFallback = true
+				logger.Infoln(common.QueueName, i, oneSupplier.GetSupplierName(), "Covered all needed episodes in metadata, continue collecting usable subtitles from remaining suppliers")
 			}
 		}
 
 		oneSupplierFunc()
-		if stopFallback {
-			break
-		}
 	}
 
 	return outSUbInfos

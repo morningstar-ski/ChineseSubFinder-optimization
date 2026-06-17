@@ -3,11 +3,15 @@ package tvsubtitles
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
+	"github.com/sirupsen/logrus"
 )
 
 func TestParseSearchResults(t *testing.T) {
@@ -139,7 +143,7 @@ func TestSearchShowsRetriesEOFUntilSuccess(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
-		if attempts <= 2 {
+		if attempts <= 1 {
 			hijacker, ok := w.(http.Hijacker)
 			if ok == false {
 				t.Fatalf("response writer does not support hijacking")
@@ -171,13 +175,204 @@ func TestSearchShowsRetriesEOFUntilSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchShows() error = %v", err)
 	}
-	if attempts != 3 {
-		t.Fatalf("attempts = %d, want 3", attempts)
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
 	}
 	if len(results) != 1 || results[0].ID != 2434 {
 		t.Fatalf("unexpected results %#v", results)
 	}
 	if client.RetryCount != 0 {
 		t.Fatalf("client retry count should be restored, got %d", client.RetryCount)
+	}
+}
+
+func TestFetchSeasonPlanRetriesEOFUntilSuccess(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cfg := settings.Get()
+	oldRootURL := cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl
+	t.Cleanup(func() {
+		cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl = oldRootURL
+	})
+
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			hijacker, ok := w.(http.Hijacker)
+			if ok == false {
+				t.Fatalf("response writer does not support hijacking")
+			}
+			conn, _, err := hijacker.Hijack()
+			if err != nil {
+				t.Fatalf("Hijack() error = %v", err)
+			}
+			_ = conn.Close()
+			return
+		}
+		_, _ = w.Write([]byte(`<table><tr><td>1x01</td><td><a href="episode-1.html"><b>Pilot</b></a></td><td>1</td><td><nobr><a href="subtitle-1-cn.html"><img src="images/flags/cn.gif" alt="cn"></a></nobr></td></tr></table>`))
+	}))
+	defer server.Close()
+
+	cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl = server.URL
+	client, err := pkg.NewHttpClient()
+	if err != nil {
+		t.Fatalf("NewHttpClient() error = %v", err)
+	}
+	client.SetRetryCount(0)
+
+	supplier := &Supplier{log: logrus.New()}
+	plan, err := supplier.fetchSeasonPlan(client, 123, 1)
+	if err != nil {
+		t.Fatalf("fetchSeasonPlan() error = %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d; want 2", attempts)
+	}
+	if plan.EpisodeSubtitlePages[1] != "subtitle-1-cn.html" {
+		t.Fatalf("unexpected plan %#v", plan)
+	}
+}
+
+func TestResolveSubtitlePageURLContinuesAfterTransientSearchFailure(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cfg := settings.Get()
+	oldRootURL := cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl
+	oldSearchURL := cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl
+	t.Cleanup(func() {
+		cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl = oldRootURL
+		cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl = oldSearchURL
+	})
+
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/search1.php":
+			attempts++
+			if r.FormValue("qs") == "The Crowded Room" {
+				hijacker, ok := w.(http.Hijacker)
+				if ok == false {
+					t.Fatalf("response writer does not support hijacking")
+				}
+				conn, _, err := hijacker.Hijack()
+				if err != nil {
+					t.Fatalf("Hijack() error = %v", err)
+				}
+				_ = conn.Close()
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<p class="description">Search results</p><ul><li><div><a href="/tvshow-123.html">拥挤的房间 (2023-2023)</a></div></li></ul>`))
+		case "/tvshow-123-1.html":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<table><tr><td>1x01</td><td><a href="episode-1.html"><b>Pilot</b></a></td><td>1</td><td><nobr><a href="subtitle-1-cn.html"><img src="images/flags/cn.gif" alt="cn"></a></nobr></td></tr></table>`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.RootUrl = server.URL
+	cfg.AdvancedSettings.SuppliersSettings.TVSubtitles.SearchUrl = "/search1.php"
+
+	client, err := pkg.NewHttpClient()
+	if err != nil {
+		t.Fatalf("NewHttpClient() error = %v", err)
+	}
+	supplier := &Supplier{log: logrus.New()}
+
+	pageURL, err := supplier.resolveSubtitlePageURL(client, nil, filepath.Join("C:\\", "Media", "The Crowded Room (2023)", "Season 1", "The Crowded Room - S01E01.mkv"), 1, 1, []string{"The Crowded Room", "拥挤的房间"})
+	if err != nil {
+		t.Fatalf("resolveSubtitlePageURL() error = %v", err)
+	}
+	if attempts < 4 {
+		t.Fatalf("search attempts = %d, want at least 4", attempts)
+	}
+	want := server.URL + "/subtitle-1-cn.html"
+	if pageURL != want {
+		t.Fatalf("pageURL = %q, want %q", pageURL, want)
+	}
+}
+
+func TestBuildSearchKeywordsFallsBackToFileNameWithoutMediaInfo(t *testing.T) {
+	keywords := buildSearchKeywords(nil, filepath.Join("C:\\", "Media", "Rick.and.Morty.S01E05.1080p.WEB.h264.mkv"))
+	if len(keywords) != 1 {
+		t.Fatalf("expected single fallback keyword, got %#v", keywords)
+	}
+	if keywords[0] != "Rick and Morty" {
+		t.Fatalf("unexpected fallback keyword %#v", keywords)
+	}
+}
+
+func TestBuildSearchKeywordsPrefersSeriesRootTitleWithoutMediaInfo(t *testing.T) {
+	keywords := buildSearchKeywords(nil, filepath.Join("C:\\", "Media", "Rick and Morty (2013)", "Season 5", "瑞克和莫蒂 - S05E09 - 第 9 集.mkv"))
+	if len(keywords) < 2 {
+		t.Fatalf("expected series and file fallback keywords, got %#v", keywords)
+	}
+	if keywords[0] != "Rick and Morty" {
+		t.Fatalf("expected series root keyword first, got %#v", keywords)
+	}
+}
+
+func TestSelectBestShowHandlesNilMediaInfo(t *testing.T) {
+	results := []showSearchResult{
+		{ID: 1, Title: "Rick and Morty"},
+		{ID: 2, Title: "Morty"},
+	}
+
+	result := selectBestShow(results, nil, "Rick and Morty")
+	if result == nil {
+		t.Fatal("selectBestShow() returned nil")
+	}
+	if result.ID != 1 {
+		t.Fatalf("selectBestShow() = %#v; want ID 1", result)
+	}
+}
+
+func TestSelectBestShowRejectsPartialSingleWordOverlap(t *testing.T) {
+	results := []showSearchResult{
+		{ID: 1963, Title: "Crowded"},
+	}
+
+	result := selectBestShow(results, nil, "The Crowded Room")
+	if result != nil {
+		t.Fatalf("selectBestShow() = %#v; want nil", result)
+	}
+}
+
+func TestBuildSearchKeywordsPrefersExtraSeriesKeywords(t *testing.T) {
+	keywords := buildSearchKeywords(
+		nil,
+		filepath.Join("C:\\", "Media", "拥挤的房间 (2023)", "Season 1", "拥挤的房间 - S01E01 - 第 1 集.mkv"),
+		"The Crowded Room",
+	)
+	if len(keywords) < 2 {
+		t.Fatalf("expected extra and fallback keywords, got %#v", keywords)
+	}
+	if keywords[0] != "The Crowded Room" {
+		t.Fatalf("expected english series keyword first, got %#v", keywords)
+	}
+}
+
+func TestBuildSeriesSearchKeywordsUsesOriginalTitleFromNFO(t *testing.T) {
+	rootDir := t.TempDir()
+	nfoPath := filepath.Join(rootDir, "tvshow.nfo")
+	content := `<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>拥挤的房间</title>
+  <originaltitle>The Crowded Room</originaltitle>
+</tvshow>`
+	if err := os.WriteFile(nfoPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write tvshow.nfo: %v", err)
+	}
+
+	keywords := buildSeriesSearchKeywords(&series.SeriesInfo{
+		Name:    "拥挤的房间",
+		DirPath: rootDir,
+	})
+	if len(keywords) < 2 {
+		t.Fatalf("expected original and local title keywords, got %#v", keywords)
+	}
+	if keywords[0] != "The Crowded Room" {
+		t.Fatalf("expected original title first, got %#v", keywords)
 	}
 }

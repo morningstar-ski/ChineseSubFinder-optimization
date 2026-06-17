@@ -3,6 +3,9 @@ package imdb_helper
 import (
 	"errors"
 	"github.com/jinzhu/now"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/media_info_dealers"
@@ -13,6 +16,42 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/models"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types"
 )
+
+func FallbackVideoNfoInfoFromPath(videoFullPath string, isMovie bool) types.VideoNfoInfo {
+	parseTargets := []string{
+		filepath.Base(filepath.Dir(videoFullPath)),
+		filepath.Base(videoFullPath),
+	}
+	yearPattern := regexp.MustCompile(`\((\d{4})[^)]*\)\s*$`)
+	for _, target := range parseTargets {
+		parsed, err := decode.GetVideoInfoFromFileName(target)
+		info := types.VideoNfoInfo{
+			IsMovie: isMovie,
+		}
+		if parsed != nil {
+			info.Title = parsed.Title
+			if parsed.Year > 0 {
+				info.Year = strconv.Itoa(parsed.Year)
+			}
+		}
+		trimmedTarget := strings.TrimSpace(strings.TrimSuffix(target, filepath.Ext(target)))
+		if info.Title == "" {
+			info.Title = yearPattern.ReplaceAllString(trimmedTarget, "")
+			info.Title = strings.TrimSpace(info.Title)
+		}
+		if info.Year == "" {
+			matches := yearPattern.FindStringSubmatch(trimmedTarget)
+			if len(matches) == 2 {
+				info.Year = matches[1]
+			}
+		}
+		if info.Title != "" || info.Year != "" || err == nil {
+			return info
+		}
+	}
+
+	return types.VideoNfoInfo{IsMovie: isMovie}
+}
 
 // GetIMDBInfoFromVideoFile 先从本地拿缓存，如果没有就从 Web 获取
 func GetIMDBInfoFromVideoFile(dealers *media_info_dealers.Dealers, videoFPath string, isMovie bool) (*models.IMDBInfo, error) {

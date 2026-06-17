@@ -13,6 +13,7 @@ type SuppliersSettings struct {
 	OpenSubtitles  *OneSupplierSettings `json:"opensubtitles"`
 	TVSubtitles    *OneSupplierSettings `json:"tvsubtitles"`
 	MovieSubtitles *OneSupplierSettings `json:"moviesubtitles"`
+	SubtitleCat    *OneSupplierSettings `json:"subtitlecat"`
 	SubHD          *OneSupplierSettings `json:"subhd"`
 	Zimuku         *OneSupplierSettings `json:"zimuku"`
 }
@@ -27,6 +28,7 @@ func NewSuppliersSettings() *SuppliersSettings {
 		OpenSubtitles:  NewOneSupplierSettings(common.SubSiteOpenSubtitles, common.SubOpenSubtitlesRootUrlDef, common.SubOpenSubtitlesSearchUrl, -1),
 		TVSubtitles:    NewOneSupplierSettings(common.SubSiteTVSubtitles, common.SubTVSubtitlesRootUrlDef, common.SubTVSubtitlesSearchUrl, -1),
 		MovieSubtitles: NewOneSupplierSettings(common.SubSiteMovieSubtitles, common.SubMovieSubtitlesRootUrlDef, common.SubMovieSubtitlesSearchUrl, -1),
+		SubtitleCat:    NewOneSupplierSettings(common.SubSiteSubtitleCat, common.SubSubtitleCatRootUrlDef, common.SubSubtitleCatSearchUrl, -1),
 		SubHD:          NewOneSupplierSettings(common.SubSiteSubHd, common.SubSubHDRootUrlDef, common.SubSubHDSearchUrl, 20),
 		Zimuku:         NewOneSupplierSettings(common.SubSiteZiMuKu, common.SubZiMuKuRootUrlDef, common.SubZiMuKuSearchFormatUrl, 20),
 	}
@@ -40,6 +42,7 @@ func (s *SuppliersSettings) ReSetSearchUrl() {
 	s.OpenSubtitles.SearchUrl = common.SubOpenSubtitlesSearchUrl
 	s.TVSubtitles.SearchUrl = common.SubTVSubtitlesSearchUrl
 	s.MovieSubtitles.SearchUrl = common.SubMovieSubtitlesSearchUrl
+	s.SubtitleCat.SearchUrl = common.SubSubtitleCatSearchUrl
 	s.SubHD.SearchUrl = common.SubSubHDSearchUrl
 	s.Zimuku.SearchUrl = common.SubZiMuKuSearchFormatUrl
 }
@@ -85,6 +88,9 @@ func (s *SuppliersSettings) ensureDefaults() {
 	}
 	if s.MovieSubtitles == nil {
 		s.MovieSubtitles = defaults.MovieSubtitles
+	}
+	if s.SubtitleCat == nil {
+		s.SubtitleCat = defaults.SubtitleCat
 	}
 	if s.SubHD == nil {
 		s.SubHD = defaults.SubHD

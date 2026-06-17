@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,8 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/vad"
 	"github.com/sirupsen/logrus"
 )
+
+var numericSeriesArchiveEntryPattern = regexp.MustCompile(`^(\d{1,3})$`)
 
 // OrganizeDlSubFiles 需要从汇总来是网站字幕中，解压对应的压缩包中的字幕出来
 func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []supplier.SubInfo, isMovie bool) (map[string][]string, error) {
@@ -98,6 +101,7 @@ func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []sup
 				continue
 			}
 			// 这里需要给这些下载到的文件进行改名，加是从那个网站来的前缀，后续好查找
+			singleSeriesArchiveFallback := len(subFileFullPaths) == 1 && isMovie == false && subInfos[i].Season > 0 && subInfos[i].Episode > 0
 			for _, fileFullPath := range subFileFullPaths {
 				fileBytes, err := os.ReadFile(fileFullPath)
 				if err != nil {
@@ -114,12 +118,38 @@ func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []sup
 					// 从解压的文件名称推断 Season 和 Episode 信息
 					isFullSeasonSub, nowSeason, nowEps, err := decode.GetSeasonAndEpisodeFromSubFileName(filepath.Base(fileFullPath))
 					if err != nil {
-						log.Debugln("OrganizeDlSubFiles.GetSeasonAndEpisodeFromSubFileName", filepath.Base(fileFullPath), err)
-						continue
+						if mappedSeason, mappedEpisode, ok := mapSeriesArchiveEntryFallback(subInfos[i], filepath.Base(fileFullPath)); ok {
+							nowSeason = mappedSeason
+							nowEps = mappedEpisode
+							isFullSeasonSub = false
+							log.Infoln("OrganizeDlSubFiles.NumericSeriesArchiveFallback", filepath.Base(fileFullPath), "=>", pkg.GetEpisodeKeyName(nowSeason, nowEps))
+						} else if singleSeriesArchiveFallback == false {
+							log.Debugln("OrganizeDlSubFiles.GetSeasonAndEpisodeFromSubFileName", filepath.Base(fileFullPath), err)
+							continue
+						}
+						if nowSeason <= 0 || nowEps <= 0 {
+							nowSeason = subInfos[i].Season
+							nowEps = subInfos[i].Episode
+							isFullSeasonSub = false
+							log.Infoln("OrganizeDlSubFiles.SingleSeriesArchiveFallback", filepath.Base(fileFullPath), "=>", pkg.GetEpisodeKeyName(nowSeason, nowEps))
+						}
 					}
 					if nowSeason <= 0 || isFullSeasonSub == true || nowEps <= 0 {
-						log.Debugln("OrganizeDlSubFiles.SkipUnmatchedSeriesSub", filepath.Base(fileFullPath), "Season:", nowSeason, "Episode:", nowEps, "IsFullSeason:", isFullSeasonSub)
-						continue
+						if mappedSeason, mappedEpisode, ok := mapSeriesArchiveEntryFallback(subInfos[i], filepath.Base(fileFullPath)); ok {
+							nowSeason = mappedSeason
+							nowEps = mappedEpisode
+							isFullSeasonSub = false
+							log.Infoln("OrganizeDlSubFiles.NumericSeriesArchiveFallback", filepath.Base(fileFullPath), "=>", pkg.GetEpisodeKeyName(nowSeason, nowEps))
+						} else if singleSeriesArchiveFallback == false {
+							log.Debugln("OrganizeDlSubFiles.SkipUnmatchedSeriesSub", filepath.Base(fileFullPath), "Season:", nowSeason, "Episode:", nowEps, "IsFullSeason:", isFullSeasonSub)
+							continue
+						}
+						if nowSeason <= 0 || nowEps <= 0 || isFullSeasonSub == true {
+							nowSeason = subInfos[i].Season
+							nowEps = subInfos[i].Episode
+							isFullSeasonSub = false
+							log.Infoln("OrganizeDlSubFiles.SingleSeriesArchiveFallback", filepath.Base(fileFullPath), "=>", pkg.GetEpisodeKeyName(nowSeason, nowEps))
+						}
 					}
 					newSubName := AddFrontName(subInfos[i], filepath.Base(fileFullPath))
 					newSubNameFullPath := filepath.Join(tmpFolderFullPath, newSubName)
@@ -156,6 +186,25 @@ func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []sup
 	}
 
 	return siteSubInfoDict, nil
+}
+
+func mapSeriesArchiveEntryFallback(subInfo supplier.SubInfo, fileName string) (int, int, bool) {
+	if subInfo.Season <= 0 {
+		return 0, 0, false
+	}
+	baseName := strings.TrimSpace(strings.TrimSuffix(filepath.Base(fileName), filepath.Ext(fileName)))
+	matches := numericSeriesArchiveEntryPattern.FindStringSubmatch(baseName)
+	if len(matches) != 2 {
+		return 0, 0, false
+	}
+	episode, err := strconv.Atoi(matches[1])
+	if err != nil || episode <= 0 {
+		return 0, 0, false
+	}
+	if subInfo.IsFullSeason == false && subInfo.Episode > 0 && episode != subInfo.Episode {
+		return 0, 0, false
+	}
+	return subInfo.Season, episode, true
 }
 
 // ChangeVideoExt2SubExt 检测 Name，如果是视频的后缀名就改为字幕的后缀名

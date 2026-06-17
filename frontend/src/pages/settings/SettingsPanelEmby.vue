@@ -1,9 +1,9 @@
 <template>
   <div>
-    <q-list dense style="max-width: 600px">
+    <q-list class="settings-panel-list" dense>
       <q-item tag="label" v-ripple>
         <q-item-section>
-          <q-item-label>是否开启</q-item-label>
+          <q-item-label>启用 Emby</q-item-label>
         </q-item-section>
         <q-item-section avatar>
           <q-toggle v-model="form.enable" />
@@ -13,7 +13,7 @@
       <template v-if="form.enable">
         <q-item>
           <q-item-section>
-            <q-item-label>Emby的内网URL</q-item-label>
+            <q-item-label>Emby 内网地址</q-item-label>
           </q-item-section>
           <q-item-section avatar>
             <q-input
@@ -22,14 +22,14 @@
               dense
               :rules="[
                 (val) => (form.enable && !!val) || '不能为空',
-                (val) => val.match(/^https?:\/\/\w+(\.\w+)*(:[0-9]+)?\/?(\/[.\w]*)*$/) || '请输入正确的URL',
+                (val) => val.match(/^https?:\/\/\w+(\.\w+)*(:[0-9]+)?\/?(\/[.\w]*)*$/) || '请输入正确的 URL',
               ]"
             />
           </q-item-section>
         </q-item>
         <q-item>
           <q-item-section>
-            <q-item-label>APIKey</q-item-label>
+            <q-item-label>API key</q-item-label>
           </q-item-section>
           <q-item-section avatar>
             <q-input v-model="form.api_key" standout dense :rules="[(val) => (form.enable && !!val) || '不能为空']" />
@@ -39,7 +39,7 @@
         <q-item> <btn-check-emby-server /> </q-item>
         <q-item>
           <q-item-section>
-            <q-item-label>获取最多的剧集数量</q-item-label>
+            <q-item-label>单次最多拉取条目数</q-item-label>
           </q-item-section>
           <q-item-section avatar>
             <q-input
@@ -59,11 +59,11 @@
           </q-item-section>
         </q-item>
 
-        <q-separator spaced inset></q-separator>
+        <q-separator spaced inset />
 
         <q-item :class="{ disabled: form.auto_or_manual }" tag="label" v-ripple>
           <q-item-section>
-            <q-item-label>自动匹配IMDB ID</q-item-label>
+            <q-item-label>自动匹配 IMDB ID</q-item-label>
           </q-item-section>
           <q-item-section avatar>
             <q-toggle v-model="form.auto_or_manual" :disable="form.auto_or_manual" />

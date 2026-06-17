@@ -25,5 +25,6 @@ services:
       - "19037:19037"
     volumes:
       - ./config:/config
-      - ./media:/media
+      - ${CSF_MOVIES_SOURCE:-./media/movies}:/media/movies
+      - ${CSF_SERIES_SOURCE:-./media/series}:/media/series
       - ./browser:/root/.cache/rod/browser

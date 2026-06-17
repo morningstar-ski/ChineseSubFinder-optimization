@@ -74,9 +74,13 @@ func (m *Manager) Enabled() bool {
 	return m != nil && m.settings != nil && m.settings.Enable
 }
 
+func (m *Manager) Ready() bool {
+	return m.validateRuntimeConfig() == nil
+}
+
 func (m *Manager) BuildChineseSubtitleFromEnglish(videoPath string, englishCandidate *subparser.FileInfo) (*subparser.FileInfo, error) {
-	if m == nil || m.Enabled() == false {
-		return nil, fmt.Errorf("llm subtitle fallback disabled")
+	if err := m.validateRuntimeConfig(); err != nil {
+		return nil, err
 	}
 	if englishCandidate == nil {
 		return nil, fmt.Errorf("english subtitle candidate is nil")
@@ -134,6 +138,22 @@ func (m *Manager) BuildChineseSubtitleFromEnglish(videoPath string, englishCandi
 	fileInfo.FileFullPath = outputPath
 
 	return fileInfo, nil
+}
+
+func (m *Manager) validateRuntimeConfig() error {
+	if m == nil || m.Enabled() == false {
+		return fmt.Errorf("llm subtitle fallback disabled")
+	}
+	if strings.TrimSpace(m.settings.Provider) == "" {
+		return fmt.Errorf("llm subtitle fallback provider is empty")
+	}
+	if strings.TrimSpace(m.settings.Model) == "" {
+		return fmt.Errorf("llm subtitle fallback model is empty")
+	}
+	if strings.TrimSpace(m.settings.APIKey) == "" {
+		return fmt.Errorf("llm subtitle fallback api key is empty")
+	}
+	return nil
 }
 
 func (m *Manager) createTaskDir(videoPath string) (string, error) {

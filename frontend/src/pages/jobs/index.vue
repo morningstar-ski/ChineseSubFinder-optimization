@@ -1,7 +1,7 @@
 <template>
-  <q-page class="q-pa-md">
-    <div class="row items-center">
-      <div class="q-gutter-xs">
+  <q-page class="page-shell jobs-page">
+    <div class="page-toolbar jobs-toolbar">
+      <div class="page-toolbar__group">
         <q-btn
           :disable="selected.length === 0"
           size="md"
@@ -23,9 +23,9 @@
         <q-btn :disable="selected.length === 0" size="md" label="修改状态" color="primary" @click="batchUpdateStatus" />
       </div>
 
-      <q-space />
+      <div class="page-toolbar__spacer"></div>
 
-      <div class="q-gutter-sm row">
+      <div class="page-toolbar__group">
         <q-select
           label="状态"
           v-model.number="form.status"
@@ -60,7 +60,7 @@
       </div>
     </div>
 
-    <q-separator class="q-mt-md" />
+    <q-separator class="q-mb-md" />
 
     <q-table
       :columns="columns"
@@ -68,7 +68,7 @@
       flat
       selection="multiple"
       v-model:selected="selected"
-      class="sticky-column-table"
+      class="sticky-column-table jobs-table"
       :pagination="{ rowsPerPage: 20 }"
     >
       <template v-slot:body-cell-jobStatus="{ row }">
@@ -295,11 +295,11 @@ onMounted(() => {
 <style lang="scss">
 .sticky-column-table {
   thead tr:last-child th:last-child {
-    background-color: #fff;
+    background-color: rgba(244, 247, 251, 0.96);
   }
 
   td:last-child {
-    background-color: #fff;
+    background-color: rgba(255, 255, 255, 0.96);
   }
 
   th:last-child,
@@ -307,10 +307,14 @@ onMounted(() => {
     position: sticky;
     right: 0;
     z-index: 1;
-    box-shadow: -5px 0px 5px -1px #ddd;
+    box-shadow: -16px 0 30px -22px rgba(15, 23, 42, 0.28);
   }
   td:last-child {
     //border-left: 1px solid $grey-3;
   }
+}
+
+.jobs-toolbar {
+  align-items: flex-start;
 }
 </style>

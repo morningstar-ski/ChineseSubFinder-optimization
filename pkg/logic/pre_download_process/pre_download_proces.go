@@ -16,6 +16,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitle_best"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitlecat"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/tvsubtitles"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/xunlei"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/notify_center"
@@ -35,9 +36,13 @@ type PreDownloadProcess struct {
 }
 
 type supplierPlan struct {
-	siteName            string
-	supplierFactory     func() ifaces.ISupplier
-	addEnglishFallbacks func(*subSupplier.SubSupplierHub)
+	siteName               string
+	supplierFactory        func() ifaces.ISupplier
+	addEnglishFallbacks    func(*subSupplier.SubSupplierHub)
+	addTranslatedFallbacks func(*subSupplier.SubSupplierHub)
+	supportMovie           bool
+	supportSeries          bool
+	skipPrimary            bool
 }
 
 func NewPreDownloadProcess(fileDownloader *file_downloader.FileDownloader) *PreDownloadProcess {
@@ -116,10 +121,14 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 		common2.SubSiteXunLei: {
 			siteName:        common2.SubSiteXunLei,
 			supplierFactory: func() ifaces.ISupplier { return xunlei.NewSupplier(fileDownloader) },
+			supportMovie:    true,
+			supportSeries:   true,
 		},
 		common2.SubSiteShooter: {
 			siteName:        common2.SubSiteShooter,
 			supplierFactory: func() ifaces.ISupplier { return shooter.NewSupplier(fileDownloader) },
+			supportMovie:    true,
+			supportSeries:   true,
 		},
 	}
 
@@ -128,6 +137,8 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 		plans[common2.SubSiteAssrt] = supplierPlan{
 			siteName:        common2.SubSiteAssrt,
 			supplierFactory: func() ifaces.ISupplier { return assrt.NewSupplier(fileDownloader) },
+			supportMovie:    true,
+			supportSeries:   true,
 		}
 	}
 
@@ -136,6 +147,8 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 		plans[common2.SubSiteSubDL] = supplierPlan{
 			siteName:        common2.SubSiteSubDL,
 			supplierFactory: func() ifaces.ISupplier { return subdl.NewSupplier(fileDownloader) },
+			supportMovie:    true,
+			supportSeries:   true,
 			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
 				hub.AddEnglishFallbackSupplier(subdl.NewEnglishSupplier(fileDownloader), true, true)
 			},
@@ -147,6 +160,8 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 		plans[common2.SubSiteSubtitleBest] = supplierPlan{
 			siteName:        common2.SubSiteSubtitleBest,
 			supplierFactory: func() ifaces.ISupplier { return subtitle_best.NewSupplier(fileDownloader) },
+			supportMovie:    true,
+			supportSeries:   true,
 		}
 	}
 
@@ -157,6 +172,8 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 		plans[common2.SubSiteOpenSubtitles] = supplierPlan{
 			siteName:        common2.SubSiteOpenSubtitles,
 			supplierFactory: func() ifaces.ISupplier { return opensubtitles.NewSupplier(fileDownloader) },
+			supportMovie:    true,
+			supportSeries:   true,
 			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
 				hub.AddEnglishFallbackSupplier(opensubtitles.NewEnglishSupplier(fileDownloader), true, true)
 			},
@@ -167,6 +184,8 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 		plans[common2.SubSiteTVSubtitles] = supplierPlan{
 			siteName:        common2.SubSiteTVSubtitles,
 			supplierFactory: func() ifaces.ISupplier { return tvsubtitles.NewSupplier(fileDownloader) },
+			supportMovie:    false,
+			supportSeries:   true,
 		}
 	}
 
@@ -174,6 +193,8 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 		plans[common2.SubSiteMovieSubtitles] = supplierPlan{
 			siteName:        common2.SubSiteMovieSubtitles,
 			supplierFactory: func() ifaces.ISupplier { return moviesubtitles.NewSupplier(fileDownloader) },
+			supportMovie:    true,
+			supportSeries:   false,
 			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
 				hub.AddEnglishFallbackSupplier(moviesubtitles.NewEnglishSupplier(fileDownloader), true, false)
 			},
@@ -184,7 +205,28 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 		plans[common2.SubSiteSubHd] = supplierPlan{
 			siteName:        common2.SubSiteSubHd,
 			supplierFactory: func() ifaces.ISupplier { return subhd.NewSupplier(fileDownloader) },
+			supportMovie:    true,
+			supportSeries:   true,
 		}
+	}
+
+	if settings.Get().SubtitleSources.SubtitleCatSettings != nil {
+		plan := supplierPlan{
+			siteName:        common2.SubSiteSubtitleCat,
+			supplierFactory: func() ifaces.ISupplier { return subtitlecat.NewEnglishSupplier(fileDownloader) },
+			supportMovie:    false,
+			supportSeries:   false,
+			skipPrimary:     true,
+			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
+				hub.AddEnglishFallbackSupplier(subtitlecat.NewEnglishSupplier(fileDownloader), true, true)
+			},
+		}
+		if settings.Get().SubtitleSources.SubtitleCatSettings.EnableTranslatedChineseFallback {
+			plan.addTranslatedFallbacks = func(hub *subSupplier.SubSupplierHub) {
+				hub.AddTranslatedFallbackSupplier(subtitlecat.NewTranslatedChineseSupplier(fileDownloader), true, true)
+			}
+		}
+		plans[common2.SubSiteSubtitleCat] = plan
 	}
 
 	return plans
@@ -196,19 +238,31 @@ func buildSubSupplierHub(plans map[string]supplierPlan) *subSupplier.SubSupplier
 		return nil
 	}
 
-	hub := subSupplier.NewSubSupplierHub(orderedPlans[0].supplierFactory())
-	if orderedPlans[0].addEnglishFallbacks != nil {
-		orderedPlans[0].addEnglishFallbacks(hub)
-	}
-
-	for _, plan := range orderedPlans[1:] {
-		hub.AddSubSupplier(plan.supplierFactory())
+	var hub *subSupplier.SubSupplierHub
+	for _, plan := range orderedPlans {
+		if hub == nil && plan.skipPrimary == false {
+			supportMovie, supportSeries := supplierPlanCapabilities(plan)
+			hub = subSupplier.NewSubSupplierHubWithCapabilities(plan.supplierFactory(), supportMovie, supportSeries)
+		} else if hub != nil && plan.skipPrimary == false {
+			supportMovie, supportSeries := supplierPlanCapabilities(plan)
+			hub.AddSubSupplierWithCapability(plan.supplierFactory(), supportMovie, supportSeries)
+		}
+		if hub == nil {
+			continue
+		}
 		if plan.addEnglishFallbacks != nil {
 			plan.addEnglishFallbacks(hub)
+		}
+		if plan.addTranslatedFallbacks != nil {
+			plan.addTranslatedFallbacks(hub)
 		}
 	}
 
 	return hub
+}
+
+func supplierPlanCapabilities(plan supplierPlan) (bool, bool) {
+	return plan.supportMovie, plan.supportSeries
 }
 
 func orderSupplierPlans(plans map[string]supplierPlan) []supplierPlan {

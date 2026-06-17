@@ -8,6 +8,7 @@ type SubtitleSources struct {
 	OpenSubtitlesSettings  OpenSubtitlesSettings `json:"opensubtitles_settings"`
 	TVsubtitlesSettings    EnabledSettings       `json:"tvsubtitles_settings"`
 	MoviesubtitlesSettings EnabledSettings       `json:"moviesubtitles_settings"`
+	SubtitleCatSettings    *SubtitleCatSettings  `json:"subtitlecat_settings"`
 }
 
 func NewSubtitleSources() *SubtitleSources {
@@ -17,5 +18,17 @@ func NewSubtitleSources() *SubtitleSources {
 		OpenSubtitlesSettings:  *NewOpenSubtitlesSettings(false, "", "", ""),
 		TVsubtitlesSettings:    *NewEnabledSettings(false),
 		MoviesubtitlesSettings: *NewEnabledSettings(false),
+		SubtitleCatSettings:    NewSubtitleCatSettings(),
+	}
+}
+
+func (s *SubtitleSources) ensureDefaults() {
+	if s == nil {
+		return
+	}
+	if s.SubtitleCatSettings == nil {
+		s.SubtitleCatSettings = NewSubtitleCatSettings()
+	} else {
+		s.SubtitleCatSettings.ensureDefaults()
 	}
 }

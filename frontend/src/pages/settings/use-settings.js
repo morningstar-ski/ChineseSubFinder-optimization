@@ -79,6 +79,9 @@ export const submitAll = async () => {
     }
   }
   submitting.value = true;
+  if (formModel.experimental_function?.local_chrome_settings) {
+    formModel.experimental_function.local_chrome_settings.configured = true;
+  }
   const [, err] = await SettingApi.update(formModel);
   submitting.value = false;
   if (err !== null) {

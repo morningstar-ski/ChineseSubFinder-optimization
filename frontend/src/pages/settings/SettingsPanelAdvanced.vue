@@ -1,10 +1,10 @@
 <template>
   <div>
-    <q-list dense style="max-width: 600px">
+    <q-list class="settings-panel-list" dense>
       <q-item tag="label" v-ripple>
         <q-item-section>
-          <q-item-label>是否使用代理</q-item-label>
-          <q-item-label caption>支持HTTP代理</q-item-label>
+          <q-item-label>启用代理</q-item-label>
+          <q-item-label caption>支持 HTTP 代理</q-item-label>
         </q-item-section>
         <q-item-section avatar top>
           <q-toggle v-model="form.proxy_settings.use_proxy" />
@@ -59,7 +59,7 @@
         </q-item-section>
       </q-item>
 
-      <q-separator spaced inset></q-separator>
+      <q-separator spaced inset />
 
       <q-item tag="label" v-ripple>
         <q-item-section>
@@ -70,7 +70,7 @@
         </q-item-section>
       </q-item>
 
-      <q-separator spaced inset></q-separator>
+      <q-separator spaced inset />
 
       <q-item tag="label" v-ripple>
         <q-item-section>
@@ -81,7 +81,7 @@
         </q-item-section>
       </q-item>
 
-      <q-separator spaced inset></q-separator>
+      <q-separator spaced inset />
 
       <q-item>
         <q-item-section>
@@ -116,11 +116,11 @@
               </q-item-label>
             </q-item-section>
           </q-item>
-          <div class="text-negative">* 修改此选项后需要重启容器，启动阶段会对所有字幕的做格式调整，耗时可能较长</div>
+          <div class="text-negative">* 修改此选项后需要重启容器。下次启动时会批量整理字幕命名，耗时可能较长。</div>
         </q-item-section>
       </q-item>
 
-      <q-separator spaced inset></q-separator>
+      <q-separator spaced inset />
 
       <q-item tag="label" v-ripple>
         <q-item-section>
@@ -150,7 +150,7 @@
         </q-item-section>
       </q-item>
 
-      <q-separator spaced inset></q-separator>
+      <q-separator spaced inset />
 
       <q-item>
         <q-item-section>
@@ -245,7 +245,7 @@
             dense
           />
           <div class="text-warning">
-            * 默认内置几个检查ip的网站，默认站点失效后才需要手动设置。内置站点列表：
+            * 程序内置了多组公网 IP 检测地址，只有默认站点失效时才需要手动填写。内置地址列表：
             https://myip.biturl.top/;https://ip4.seeip.org/;https://ipecho.net/plain;https://api-ipv4.ip.sb/ip;
             https://api.ipify.org/;http://myexternalip.com/raw
           </div>
@@ -333,9 +333,10 @@
             <q-input
               v-model.number="formModel.timeline_fixer_settings.max_offset_time"
               type="number"
-              label="Timeline max offset (sec)"
+              label="时间轴最大偏移"
               standout
               dense
+              suffix="秒"
               :rules="timelineMaxOffsetRules"
             />
           </q-item-section>
@@ -346,9 +347,10 @@
             <q-input
               v-model.number="formModel.timeline_fixer_settings.min_offset"
               type="number"
-              label="Timeline min offset (sec)"
+              label="时间轴最小偏移"
               standout
               dense
+              suffix="秒"
               step="0.1"
               :rules="timelineMinOffsetRules"
             />
@@ -360,7 +362,7 @@
 
       <q-item tag="label" v-ripple>
         <q-item-section>
-          <q-item-label>启用TMDB API</q-item-label>
+          <q-item-label>启用 TMDB API</q-item-label>
           <!--          <q-item-label caption>支持HTTP代理</q-item-label>-->
         </q-item-section>
         <q-item-section avatar top>
@@ -380,7 +382,7 @@
               v-model="form.tmdb_api_settings.api_key"
               standout
               dense
-              label="填写 TMDB ApiKey"
+              label="填写 TMDB API key"
               :rules="[(val) => (form.tmdb_api_settings.enable && !!val) || '不能为空']"
             />
           </q-item-section>
@@ -425,15 +427,15 @@ const subNameFormatDescMap = {
 };
 
 const timelineMaxOffsetRules = [
-  (val) => Number.isFinite(val) || 'Enter a number',
-  (val) => val >= 1 || 'Must be at least 1',
-  (val) => val <= 700 || 'Must be 700 or less',
+  (val) => Number.isFinite(val) || '请输入数字',
+  (val) => val >= 1 || '不能小于 1',
+  (val) => val <= 700 || '不能大于 700',
 ];
 
 const timelineMinOffsetRules = [
-  (val) => Number.isFinite(val) || 'Enter a number',
-  (val) => val > 0 || 'Must be greater than 0',
-  (val) => val <= 1 || 'Must be 1 or less',
+  (val) => Number.isFinite(val) || '请输入数字',
+  (val) => val > 0 || '必须大于 0',
+  (val) => val <= 1 || '不能大于 1',
 ];
 
 const { advanced_settings: form } = toRefs(formModel);

@@ -237,11 +237,14 @@ func TestExperimentalFunctionEnsureDefaultsFillsLLMSubtitleFallback(t *testing.T
 	if cfg.ExperimentalFunction.LLMSubtitleFallback.Model != defaultLLMSubtitleFallbackModel {
 		t.Fatalf("model = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.Model)
 	}
-	if cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir != defaultLLMSubtitleFallbackSubflowRoot {
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir != defaultLLMSubtitleFallbackSubflowRoot() {
 		t.Fatalf("subflow_root_dir = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir)
 	}
-	if cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir != defaultLLMSubtitleFallbackLogDir {
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir != defaultLLMSubtitleFallbackLogDir() {
 		t.Fatalf("log_dir = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir)
+	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.PythonExecutable != defaultLLMSubtitleFallbackPythonExecutable() {
+		t.Fatalf("python_executable = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.PythonExecutable)
 	}
 	if cfg.ExperimentalFunction.LLMSubtitleFallback.OnlyWhenNoChineseCandidate != true {
 		t.Fatal("only_when_no_chinese_candidate should default to true")
@@ -251,5 +254,55 @@ func TestExperimentalFunctionEnsureDefaultsFillsLLMSubtitleFallback(t *testing.T
 	}
 	if cfg.ExperimentalFunction.LLMSubtitleFallback.TargetLanguage != defaultLLMSubtitleFallbackTargetLang {
 		t.Fatalf("target_language = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.TargetLanguage)
+	}
+	if cfg.ExperimentalFunction.LocalChromeSettings.Enabled != true {
+		t.Fatal("local chrome should default to enabled")
+	}
+}
+
+func TestExperimentalFunctionEnsureDefaultsMigratesLegacyLocalChromeToEnabled(t *testing.T) {
+	cfg := NewSettings(t.TempDir())
+	cfg.ExperimentalFunction = &ExperimentalFunction{
+		LocalChromeSettings: LocalChromeSettings{},
+	}
+
+	cfg.ensureDefaults()
+
+	if cfg.ExperimentalFunction.LocalChromeSettings.Enabled != true {
+		t.Fatal("legacy local chrome settings should migrate to enabled")
+	}
+}
+
+func TestExperimentalFunctionEnsureDefaultsPreservesExplicitLocalChromeDisable(t *testing.T) {
+	cfg := NewSettings(t.TempDir())
+	cfg.ExperimentalFunction = &ExperimentalFunction{
+		LocalChromeSettings: LocalChromeSettings{
+			Enabled:    false,
+			Configured: true,
+		},
+	}
+
+	cfg.ensureDefaults()
+
+	if cfg.ExperimentalFunction.LocalChromeSettings.Enabled != false {
+		t.Fatal("explicit local chrome disable should be preserved")
+	}
+}
+
+func TestLLMSubtitleFallbackEnsureDefaultsMigratesLegacyWindowsSubflowRoot(t *testing.T) {
+	cfg := NewLLMSubtitleFallbackSettings()
+	cfg.SubflowRootDir = legacyLLMSubtitleFallbackSubflowRoot
+	cfg.PythonExecutable = ""
+
+	cfg.ensureDefaults()
+
+	if cfg.SubflowRootDir == legacyLLMSubtitleFallbackSubflowRoot {
+		t.Fatalf("legacy subflow root was not migrated: %q", cfg.SubflowRootDir)
+	}
+	if cfg.SubflowRootDir != defaultLLMSubtitleFallbackSubflowRoot() {
+		t.Fatalf("subflow_root_dir = %q", cfg.SubflowRootDir)
+	}
+	if cfg.PythonExecutable != defaultLLMSubtitleFallbackPythonExecutable() {
+		t.Fatalf("python_executable = %q", cfg.PythonExecutable)
 	}
 }

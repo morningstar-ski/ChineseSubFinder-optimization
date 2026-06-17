@@ -1,9 +1,13 @@
 package movie_helper
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/imdb_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
@@ -61,6 +65,46 @@ func TestOneMovieDlSubInAllSiteStopsAfterFirstSupplierWithResults(t *testing.T) 
 	}
 	if second.movieCalls != 0 {
 		t.Fatalf("expected second supplier to be skipped, got %d calls", second.movieCalls)
+	}
+}
+
+func TestMovieNeedDlSubFallsBackWithoutMetadataForRecentBDMV(t *testing.T) {
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Police Academy 4 (1987)")
+	if err := os.MkdirAll(filepath.Join(movieDir, "CERTIFICATE"), 0o755); err != nil {
+		t.Fatalf("MkdirAll CERTIFICATE error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(movieDir, "BDMV"), 0o755); err != nil {
+		t.Fatalf("MkdirAll BDMV error = %v", err)
+	}
+
+	idBDMVPath := filepath.Join(movieDir, "CERTIFICATE", "id.bdmv")
+	if err := os.WriteFile(idBDMVPath, []byte("fake-bdmv"), 0o644); err != nil {
+		t.Fatalf("WriteFile error = %v", err)
+	}
+
+	recent := time.Now().AddDate(0, 0, -1)
+	if err := os.Chtimes(idBDMVPath, recent, recent); err != nil {
+		t.Fatalf("Chtimes error = %v", err)
+	}
+
+	videoPath := filepath.Join(movieDir, "00000.m2ts")
+	got, err := MovieNeedDlSub(log_helper.GetLogger4Tester(), videoPath, 90)
+	if err != nil {
+		t.Fatalf("MovieNeedDlSub() error = %v", err)
+	}
+	if got != true {
+		t.Fatal("MovieNeedDlSub() = false, want true for recent metadata-free BDMV movie")
+	}
+}
+
+func TestFallbackMovieInfoFromPathParsesTitleAndYear(t *testing.T) {
+	got := imdb_helper.FallbackVideoNfoInfoFromPath(filepath.Join("C:\\Media", "Police Academy 4 (1987)", "00000.m2ts"), true)
+	if got.Title == "" {
+		t.Fatal("FallbackVideoNfoInfoFromPath() title is empty")
+	}
+	if got.GetYear() != 1987 {
+		t.Fatalf("FallbackVideoNfoInfoFromPath() year = %d, want 1987", got.GetYear())
 	}
 }
 

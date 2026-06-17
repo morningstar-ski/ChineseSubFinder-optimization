@@ -14,10 +14,12 @@ type ExperimentalFunction struct {
 
 func NewExperimentalFunction() *ExperimentalFunction {
 	return &ExperimentalFunction{
+		LocalChromeSettings: NewLocalChromeSettings(),
 		LLMSubtitleFallback: *NewLLMSubtitleFallbackSettings(),
 	}
 }
 
 func (e *ExperimentalFunction) ensureDefaults() {
+	e.LocalChromeSettings.ensureDefaults()
 	e.LLMSubtitleFallback.ensureDefaults()
 }

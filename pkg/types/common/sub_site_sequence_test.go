@@ -14,6 +14,8 @@ func TestDefaultSubSiteSequence(t *testing.T) {
 		SubSiteOpenSubtitles,
 		SubSiteTVSubtitles,
 		SubSiteMovieSubtitles,
+		SubSiteSubtitleCat,
+		SubSiteSubtitleCatTrans,
 	}
 
 	if len(got) != len(want) {

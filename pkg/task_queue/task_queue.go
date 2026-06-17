@@ -188,6 +188,26 @@ func (t *TaskQueue) Update(oneJob task_queue2.OneJob) (bool, error) {
 	return t.update(oneJob)
 }
 
+// RequeueForManualTrigger resets a task so a manual request can run immediately.
+func (t *TaskQueue) RequeueForManualTrigger(oneJob task_queue2.OneJob) (bool, error) {
+
+	defer t.queueLock.Unlock()
+	t.queueLock.Lock()
+
+	if t.isExist(oneJob.Id) == false {
+		return false, nil
+	}
+
+	oneJob = t.checkPriority(oneJob)
+	oneJob.JobStatus = task_queue2.Waiting
+	oneJob.RetryTimes = 0
+	oneJob.DownloadTimes = 0
+	oneJob.ErrorInfo = ""
+	oneJob.AddedTime = emby.Time(time.Now())
+
+	return t.update(oneJob)
+}
+
 // AutoDetectUpdateJobStatus 根据任务的生命周期图，进行自动判断更新，见《任务的生命周期》流程图
 func (t *TaskQueue) AutoDetectUpdateJobStatus(oneJob task_queue2.OneJob, inErr error) {
 
@@ -196,6 +216,26 @@ func (t *TaskQueue) AutoDetectUpdateJobStatus(oneJob task_queue2.OneJob, inErr e
 
 	// 检查权限范围
 	oneJob = t.checkPriority(oneJob)
+
+	if errors.Is(inErr, ErrNoSubFound) {
+		oneJob.TaskPriority = DefaultTaskPriorityLevel
+		oneJob.JobStatus = task_queue2.Failed
+		if oneJob.TaskPriority == 0 {
+			oneJob.JobStatus = task_queue2.Ignore
+		}
+		oneJob.ErrorInfo = inErr.Error()
+		oneJob.DownloadTimes += 1
+
+		bok, err := t.update(oneJob)
+		if err != nil {
+			t.log.Errorln("AutoDetectUpdateJobStatus", oneJob.VideoFPath, err)
+			return
+		}
+		if bok == false {
+			t.log.Warningln("AutoDetectUpdateJobStatus ==", oneJob.VideoFPath, "Job.ID", oneJob.Id, "Not Found")
+		}
+		return
+	}
 
 	if inErr == nil {
 

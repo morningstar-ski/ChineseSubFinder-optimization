@@ -1,10 +1,10 @@
 <template>
   <div>
-    <q-list dense style="max-width: 600px">
+    <q-list class="settings-panel-list" dense>
       <q-item tag="label" v-ripple>
         <q-item-section>
-          <q-item-label>接口失效通知</q-item-label>
-          <q-item-label caption> 项目维护人员使用，一般人员无需关心 </q-item-label>
+          <q-item-label>接口异常通知</q-item-label>
+          <q-item-label caption>仅维护者使用，普通部署无需配置。</q-item-label>
           <div v-if="form.enable" class="q-mt-sm">
             <q-input v-model="form.bark_server_address" standout dense />
           </div>

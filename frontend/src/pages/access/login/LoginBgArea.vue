@@ -1,140 +1,117 @@
 <template>
-  <div class="area">
-    <ul class="circles">
-      <li></li>
-      <li></li>
-      <li></li>
-      <li></li>
-      <li></li>
-      <li></li>
-      <li></li>
-      <li></li>
-      <li></li>
-      <li></li>
-    </ul>
+  <div class="login-bg" aria-hidden="true">
+    <div class="login-bg__frame login-bg__frame--large"></div>
+    <div class="login-bg__frame login-bg__frame--small"></div>
+    <div class="login-bg__timeline">
+      <span></span>
+      <span></span>
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
   </div>
 </template>
 
 <script setup></script>
 
-<style scoped>
-.area {
-  /* webpackIgnore: true */ background-image: url(../images/sprinkle.svg), linear-gradient(to left, #8f94fb, #4e54c8);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  width: 100vw;
-  height: 100vh;
+<style scoped lang="scss">
+.login-bg {
   position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 247, 251, 0.98) 100%);
   z-index: -1;
 }
 
-.circles {
+.login-bg::before,
+.login-bg::after {
+  content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
+  inset: 0;
 }
 
-.circles li {
+.login-bg::before {
+  background: linear-gradient(180deg, rgba(22, 119, 255, 0.04) 0%, rgba(22, 119, 255, 0) 32%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0,
+      rgba(255, 255, 255, 0) 104px,
+      rgba(20, 32, 51, 0.03) 104px,
+      rgba(20, 32, 51, 0.03) 105px
+    );
+}
+
+.login-bg::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.56) 100%);
+}
+
+.login-bg__frame {
   position: absolute;
+  border-radius: 32px;
+  border: 1px solid rgba(22, 119, 255, 0.08);
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(16px);
+}
+
+.login-bg__frame--large {
+  top: 9%;
+  left: 8%;
+  width: min(36vw, 440px);
+  height: min(54vh, 520px);
+  animation: drift 16s ease-in-out infinite;
+}
+
+.login-bg__frame--small {
+  right: 10%;
+  bottom: 10%;
+  width: min(24vw, 280px);
+  height: min(28vh, 260px);
+  animation: drift 18s ease-in-out infinite reverse;
+}
+
+.login-bg__timeline {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 12%;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+}
+
+.login-bg__timeline span {
   display: block;
-  list-style: none;
-  width: 20px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.2);
-  animation: animate 25s linear infinite;
-  bottom: -150px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(22, 119, 255, 0.1), rgba(95, 184, 255, 0.3));
 }
 
-.circles li:nth-child(1) {
-  left: 25%;
-  width: 80px;
-  height: 80px;
-  animation-delay: 0s;
-}
-
-.circles li:nth-child(2) {
-  left: 10%;
-  width: 20px;
-  height: 20px;
-  animation-delay: 2s;
-  animation-duration: 12s;
-}
-
-.circles li:nth-child(3) {
-  left: 70%;
-  width: 20px;
-  height: 20px;
-  animation-delay: 4s;
-}
-
-.circles li:nth-child(4) {
-  left: 40%;
-  width: 60px;
-  height: 60px;
-  animation-delay: 0s;
-  animation-duration: 18s;
-}
-
-.circles li:nth-child(5) {
-  left: 65%;
-  width: 20px;
-  height: 20px;
-  animation-delay: 0s;
-}
-
-.circles li:nth-child(6) {
-  left: 75%;
-  width: 110px;
-  height: 110px;
-  animation-delay: 3s;
-}
-
-.circles li:nth-child(7) {
-  left: 35%;
-  width: 150px;
-  height: 150px;
-  animation-delay: 7s;
-}
-
-.circles li:nth-child(8) {
-  left: 50%;
-  width: 25px;
-  height: 25px;
-  animation-delay: 15s;
-  animation-duration: 45s;
-}
-
-.circles li:nth-child(9) {
-  left: 20%;
-  width: 15px;
-  height: 15px;
-  animation-delay: 2s;
-  animation-duration: 35s;
-}
-
-.circles li:nth-child(10) {
-  left: 85%;
-  width: 150px;
-  height: 150px;
-  animation-delay: 0s;
-  animation-duration: 11s;
-}
-
-@keyframes animate {
-  0% {
-    transform: translateY(0) rotate(0deg);
-    opacity: 1;
-    border-radius: 0;
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
   }
 
-  100% {
-    transform: translateY(-1000px) rotate(720deg);
-    opacity: 0;
-    border-radius: 50%;
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@media (max-width: 780px) {
+  .login-bg__frame--large {
+    left: 6%;
+    width: 56vw;
+  }
+
+  .login-bg__frame--small {
+    right: 6%;
+    width: 34vw;
+  }
+
+  .login-bg__timeline {
+    left: 8%;
+    right: 8%;
   }
 }
 </style>

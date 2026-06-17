@@ -38,6 +38,47 @@ func parseSearchResults(pageHTML string) ([]searchResultItem, int, error) {
 		return nil, 0, err
 	}
 
+	cardSelection := doc.Find("div.bg-white.shadow-sm.rounded-3.mb-4")
+	if len(cardSelection.Nodes) > 0 {
+		results := make([]searchResultItem, 0, len(cardSelection.Nodes))
+		seen := make(map[string]struct{})
+		cardSelection.Each(func(_ int, card *goquery.Selection) {
+			link := card.Find(".view-text a.link-dark").First()
+			if link.Length() == 0 {
+				link = card.Find(".float-start a.link-dark").First()
+			}
+			if link.Length() == 0 {
+				link = card.Find("a.link-dark").First()
+			}
+			if link.Length() == 0 {
+				return
+			}
+
+			href, ok := link.Attr("href")
+			if ok == false || strings.TrimSpace(href) == "" {
+				return
+			}
+			href = strings.TrimSpace(href)
+			if _, ok = seen[href]; ok {
+				return
+			}
+
+			title := normalizeSearchResultTitle(link.Text())
+			if title == "" {
+				return
+			}
+
+			seen[href] = struct{}{}
+			results = append(results, searchResultItem{
+				Title: title,
+				URL:   href,
+			})
+		})
+		if len(results) > 0 {
+			return results, len(results), nil
+		}
+	}
+
 	imgSelection := doc.Find("img.rounded-start")
 	if len(imgSelection.Nodes) < 1 {
 		if count, ok := parseSearchResultCount(doc); ok && count == 0 {
@@ -79,10 +120,14 @@ func parseSearchResults(pageHTML string) ([]searchResultItem, int, error) {
 	return results, len(results), nil
 }
 
-func parseSubtitleRows(pageHTML string, siteRoot string, isMovie bool, topic int) ([]HdListItem, error) {
+func parseSubtitleRows(pageHTML string, siteRoot string, detailPageURL string, isMovie bool, topic int) ([]HdListItem, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(pageHTML))
 	if err != nil {
 		return nil, err
+	}
+
+	if single := parseSingleSubtitleDetail(doc, siteRoot, detailPageURL); len(single) > 0 {
+		return single, nil
 	}
 
 	lists := make([]HdListItem, 0)
@@ -126,6 +171,64 @@ func parseSubtitleRows(pageHTML string, siteRoot string, isMovie bool, topic int
 	}
 
 	return lists, nil
+}
+
+func parseSingleSubtitleDetail(doc *goquery.Document, siteRoot string, detailPageURL string) []HdListItem {
+	if doc == nil {
+		return nil
+	}
+
+	card := doc.Find("div.bg-white.shadow-sm.rounded-3.mt-3.mb-3").First()
+	if card.Length() == 0 {
+		return nil
+	}
+
+	downloadButton := card.Parent().Find("a.btn.btn-danger.down").First()
+	if downloadButton.Length() == 0 {
+		downloadButton = doc.Find("a.btn.btn-danger.down").First()
+	}
+	if downloadButton.Length() == 0 {
+		return nil
+	}
+
+	title := strings.Join(strings.Fields(card.Find(".f16.fw-bold.mb-2").First().Text()), " ")
+	if title == "" {
+		return nil
+	}
+
+	insideSubType := strings.Join(strings.Fields(card.Find(".p-3.my-2.bg-light.clearfix .float-start").First().Text()), " ")
+	if sub_parser_hub.IsSubTypeWanted(insideSubType) == false {
+		return nil
+	}
+
+	downCount := 0
+	statValues := make([]int, 0, 3)
+	stats := card.Find(".p-3.my-2.bg-light.clearfix .float-end span")
+	stats.Each(func(_ int, span *goquery.Selection) {
+		value := strings.TrimSpace(span.Text())
+		if value == "" {
+			return
+		}
+		parsed, err := decode.GetNumber2int(value)
+		if err != nil {
+			return
+		}
+		statValues = append(statValues, parsed)
+	})
+	if len(statValues) >= 2 {
+		downCount = statValues[1]
+	} else if len(statValues) == 1 {
+		downCount = statValues[0]
+	}
+
+	return []HdListItem{
+		{
+			Url:       pkg.AddBaseUrl(siteRoot, detailPageURL),
+			BaseUrl:   siteRoot,
+			Title:     title,
+			DownCount: downCount,
+		},
+	}
 }
 
 func parseDownloadPage(pageHTML string, siteRoot string) (string, error) {

@@ -1,6 +1,7 @@
 package decode
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -127,6 +128,30 @@ func TestGetSeasonAndEpisodeFromSubFileName1xPattern(t *testing.T) {
 	}
 }
 
+func TestGetVideoInfoFromFileFullPathFallsBackToFileNameWhenEpisodeNfoBroken(t *testing.T) {
+	rootDir := t.TempDir()
+	videoPath := filepath.Join(rootDir, "Rick.and.Morty.S01E06.1080p.WEB-DL.mkv")
+	nfoPath := filepath.Join(rootDir, "Rick.and.Morty.S01E06.1080p.WEB-DL.nfo")
+
+	if err := os.WriteFile(videoPath, []byte("test"), 0o644); err != nil {
+		t.Fatalf("write video file: %v", err)
+	}
+	if err := os.WriteFile(nfoPath, []byte("<episodedetails><title>broken"), 0o644); err != nil {
+		t.Fatalf("write nfo file: %v", err)
+	}
+
+	got, _, err := GetVideoInfoFromFileFullPath(videoPath, false)
+	if err != nil {
+		t.Fatalf("GetVideoInfoFromFileFullPath() error = %v", err)
+	}
+	if got.Season != 1 || got.Episode != 6 {
+		t.Fatalf("GetVideoInfoFromFileFullPath() = S%dE%d, want S1E6", got.Season, got.Episode)
+	}
+	if got.Title != "Rick and Morty" {
+		t.Fatalf("GetVideoInfoFromFileFullPath() title = %q, want %q", got.Title, "Rick and Morty")
+	}
+}
+
 func TestGetNumber2Float(t *testing.T) {
 	testString := "asd&^%1998.2jh aweo "
 	outNumber, err := GetNumber2Float(testString)
@@ -235,4 +260,28 @@ func TestGetImdbInfo4Movie(t *testing.T) {
 	//		}
 	//	})
 	//}
+}
+
+func TestGetVideoNfoInfoReadsOriginalTitle(t *testing.T) {
+	rootDir := t.TempDir()
+	nfoPath := filepath.Join(rootDir, "tvshow.nfo")
+	content := `<?xml version="1.0" encoding="utf-8"?>
+<tvshow>
+  <title>拥挤的房间</title>
+  <originaltitle>The Crowded Room</originaltitle>
+</tvshow>`
+	if err := os.WriteFile(nfoPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write nfo file: %v", err)
+	}
+
+	got, err := getVideoNfoInfo(nfoPath, "tvshow")
+	if err != nil {
+		t.Fatalf("getVideoNfoInfo() error = %v", err)
+	}
+	if got.Title != "拥挤的房间" {
+		t.Fatalf("title = %q", got.Title)
+	}
+	if got.OriginalTitle != "The Crowded Room" {
+		t.Fatalf("original title = %q", got.OriginalTitle)
+	}
 }

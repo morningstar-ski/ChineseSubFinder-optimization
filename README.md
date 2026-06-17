@@ -1,106 +1,91 @@
 # ChineseSubFinder
 
-基于开源项目 [ChineseSubFinder](https://github.com/ChineseSubFinder/ChineseSubFinder) 的学习与交流分支，用于中文字幕的自动扫描、下载、整理与基础管理。
+基于开源项目 [ChineseSubFinder](https://github.com/ChineseSubFinder/ChineseSubFinder) 持续修改的分支，用于中文字幕的扫描、下载、整理与基础管理。
 
-## 致敬原项目
+## 鸣谢原作者
 
-本仓库基于原项目 `ChineseSubFinder` 修改而来。
-感谢原作者及所有贡献者在字幕检索、媒体库扫描和自动化处理方面的长期投入。
+当前仓库建立在上游 `ChineseSubFinder` 的长期工作基础上。
+感谢原作者和所有贡献者在媒体库扫描、字幕检索、自动整理和 WebUI 等方面的持续投入。
 
-- 原项目仓库：<https://github.com/ChineseSubFinder/ChineseSubFinder>
-- 本仓库中的后续修改，建立在原项目已有工作的基础上
+- 上游仓库：<https://github.com/ChineseSubFinder/ChineseSubFinder>
+- 当前仓库：<https://github.com/morningstar-ski/ChineseSubFinder-optimization>
+
+## 相比原仓库的当前增强
+
+- 扩展并接入更多字幕源：`OpenSubtitles`、`TVsubtitles`、`Moviesubtitles`、`SubHD`、`SubtitleCat`。
+- 英文字幕回退链默认保留 `SubtitleCat`，在缺少直链字幕时补足英文源。
+- 增加中文字幕翻译回退能力，可按配置使用 `SubtitleCat` 远端翻译或 LLM 翻译链。
+- `SubHD` 下载链补了本地 `ddddocr` 与 SVG 直读能力，并保留外部 OCR 显式开关。
+- WebUI、Docker 文档和问题反馈入口已统一对齐到当前仓库。
 
 ## 用途说明
 
-本仓库仅供技术交流、学习研究和个人实验使用。
-请勿将本项目用于任何侵犯版权、绕过授权或其他不合规用途。
-如涉及影片、字幕和媒体资源，请自行确认来源合法性，并支持正版内容。
+本仓库仅用于技术交流、学习研究和个人实验。
+请勿将其用于侵犯版权、绕过授权或其他不合规用途。涉及影视、字幕和媒体资源时，请自行确认来源合法性并支持正版内容。
 
-## 项目简介
+## Docker 部署
 
-ChineseSubFinder 是一个面向电影与剧集媒体库的中文字幕自动检索与管理工具。
-当前仓库保留的核心能力包括：
+### 直接使用当前仓库镜像
 
-- 扫描电影与剧集目录
-- 自动检索和整理中文字幕
-- 通过 Web 页面统一管理配置
-- 支持代理、TMDB、字幕源等参数设置
-
-## 使用介绍
-
-### Docker 一键部署
-
-默认部署链路已经切换为：
-
-`GitHub tag -> GitHub Actions -> GHCR 镜像 -> 飞牛 pull/up`
-
-当前标准发布版本示例为 `v0.55.4-3`，默认镜像为：
+根目录 `compose.yaml` 默认拉取：
 
 `ghcr.io/morningstar-ski/chinesesubfinder-optimization:latest`
 
-直接在仓库根目录执行：
+执行：
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-默认会：
+默认端口：
 
-- 拉取 GHCR 上最新的正式镜像
-- 启动容器 `chinesesubfinder`
-- 保持飞牛侧部署方式稳定，不再依赖本机临时 build
+- `19035` WebUI
+- `19037` 视频列表图片读取
 
-运行配置见根目录 [compose.yaml](compose.yaml)。
+默认挂载：
 
-### 源码自构建
+- `./config:/config`
+- `./media:/media`
+- `./browser:/root/.cache/rod/browser`
 
-如果你需要在本地直接从源码构建镜像，使用：
+### 从当前源码本地构建
+
+根目录 `compose.source.yaml` 用于本地源码构建：
 
 ```bash
 docker compose -f compose.source.yaml up -d --build
 ```
 
-可选构建参数：
+可选构建参数示例：
 
 ```bash
-APP_VERSION=v0.55.4-3 GOPROXY=https://goproxy.cn,direct docker compose -f compose.source.yaml up -d --build
+APP_VERSION=dev GOPROXY=https://goproxy.cn,direct docker compose -f compose.source.yaml up -d --build
 ```
 
-### 1. 准备媒体目录
+`compose.source.yaml` 支持把现有影视库直接挂进容器：
 
-先准备电影和剧集目录，并确保程序可以访问这些路径。
+- `${CSF_MOVIES_SOURCE:-./media/movies}:/media/movies`
+- `${CSF_SERIES_SOURCE:-./media/series}:/media/series`
+
+## 使用前准备
+
+建议先保证媒体库目录结构规范，尤其是连续剧目录。相关说明可参考上游文档：
 
 - [电影目录结构示例](https://github.com/ChineseSubFinder/ChineseSubFinder/blob/docs/DesignFile/%E7%94%B5%E5%BD%B1%E5%92%8C%E8%BF%9E%E7%BB%AD%E5%89%A7%E7%9B%AE%E5%BD%95%E7%BB%93%E6%9E%84%E7%A4%BA%E4%BE%8B.md)
-- [连续剧目录结构要求](https://github.com/ChineseSubFinder/ChineseSubFinder/blob/docs/DesignFile/%E8%BF%9E%E7%BB%AD%E5%89%A7%E7%9B%AE%E5%BD%95%E7%BB%93%E6%9E%84%E8%A6%81%E6%B1%82.md)
+- [连续剧目录要求](https://github.com/ChineseSubFinder/ChineseSubFinder/blob/docs/DesignFile/%E8%BF%9E%E7%BB%AD%E5%89%A7%E7%9B%AE%E5%BD%95%E7%BB%93%E6%9E%84%E8%A6%81%E6%B1%82.md)
 
-### 2. 完成基础配置
+完成部署后访问：
 
-在设置页面中完成以下内容：
+`http://<host>:19035`
 
-- 电影目录
-- 剧集目录
-- 字幕源配置
-- TMDB 配置
-- 代理配置（如需要）
+## 相关文档
 
-### 3. 进入 Web 管理界面
-
-启动程序或容器后，通过 Web 页面完成系统初始化、参数调整、任务查看和日志排查。
-
-### 4. 执行扫描与字幕处理
-
-配置完成后执行媒体库扫描，系统会根据任务流程处理字幕匹配、下载和整理。
-
-### 5. 常用文档
-
-- Docker 部署：见 [docker/readme.md](docker/readme.md)
-- Windows 使用说明：见 [官方文档](https://github.com/ChineseSubFinder/ChineseSubFinder/blob/docs/DesignFile/v0.20%E6%95%99%E7%A8%8B/01.%E5%A6%82%E4%BD%95%E5%9C%A8Windows%E4%B8%8A%E4%BD%BF%E7%94%A8.md)
-- 使用教程：见 [官方文档目录](https://github.com/ChineseSubFinder/ChineseSubFinder/tree/docs/DesignFile/%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B)
+- Docker 说明：[docker/readme.md](docker/readme.md)
+- 当前仓库 Issues：[Issues](https://github.com/morningstar-ski/ChineseSubFinder-optimization/issues)
+- 上游使用文档：[ChineseSubFinder docs](https://github.com/ChineseSubFinder/ChineseSubFinder/tree/docs/DesignFile)
 
 ## 开发验证
-
-Windows 本地执行 `go test ./...` 前，请确保 `CGO_ENABLED=1`，并且 `PATH` 中包含可用的 MinGW `gcc`。
 
 ```bash
 go test ./...
@@ -108,19 +93,16 @@ cd frontend
 npm run build
 ```
 
-## Docker 说明
+Windows 本地运行 `go test ./...` 前，请确保：
 
-- 根目录 `compose.yaml` 是正式部署入口，默认拉取 `morningstar-ski/ChineseSubFinder-optimization` 对应的 GHCR 固定版本镜像
-- 根目录 `compose.source.yaml` 是本地源码构建入口
-- 根目录 `Dockerfile` 保留为 lite 模式源码直构建链路
-- 根目录 `Dockerfile.release` 是正式 full 功能发布镜像链路
-- `.github/workflows/release-image.yml` 负责 tag 触发的测试与镜像发布
+- `CGO_ENABLED=1`
+- `PATH` 中可用 `gcc`（例如 MinGW）
 
 ## 说明
 
-本仓库不是官方发布版本，也不应被描述为“原项目官方更新”。
-如果你需要长期稳定使用，请优先关注原项目及其正式维护版本。
+当前仓库不是上游官方发布版本，也不应描述为“上游官方更新”。
+如果你需要长期稳定使用，请优先关注上游项目及其官方维护版本。
 
 ## License
 
-请保留原项目许可证、原作者署名和相关版权说明。
+[Apache License 2.0](LICENSE)

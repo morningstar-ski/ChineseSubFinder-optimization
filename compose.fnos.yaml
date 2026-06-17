@@ -1,0 +1,17 @@
+services:
+  chinesesubfinder:
+    environment:
+      PERMS: ${PERMS:-false}
+    volumes:
+      - ./config:/config
+      - movies_bridge:/media/movies
+      - series_bridge:/media/series
+      - ./browser:/root/.cache/rod/browser
+
+volumes:
+  movies_bridge:
+    name: ${CSF_MOVIES_VOLUME:-fnos_movies_bind}
+    external: true
+  series_bridge:
+    name: ${CSF_SERIES_VOLUME:-fnos_series_bind}
+    external: true

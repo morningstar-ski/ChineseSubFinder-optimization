@@ -53,6 +53,19 @@ func TestBuildTranslateEnvIncludesFallbackCredentials(t *testing.T) {
 	}
 }
 
+func TestResolvePythonExecutableFallsBackToEnv(t *testing.T) {
+	pythonExe := filepath.Join(t.TempDir(), "python3")
+	if err := os.WriteFile(pythonExe, []byte(""), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Setenv("CSF_DDDDOCR_PYTHON", pythonExe)
+
+	got := resolvePythonExecutable("")
+	if got != pythonExe {
+		t.Fatalf("resolvePythonExecutable() = %q, want %q", got, pythonExe)
+	}
+}
+
 func makeFakeSubflowRoot(t *testing.T) string {
 	t.Helper()
 

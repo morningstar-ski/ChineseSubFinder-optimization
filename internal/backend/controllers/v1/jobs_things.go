@@ -78,14 +78,25 @@ func (cb *ControllerBase) ChangeJobStatusHandler(c *gin.Context) {
 		nowOneJob.JobStatus = task_queue3.Waiting
 	}
 
-	bok, err = cb.cronHelper.DownloadQueue.Update(nowOneJob)
-	if err != nil {
-		return
-	}
+	if nowOneJob.JobStatus == task_queue3.Waiting {
+		bok, err = cb.cronHelper.DownloadQueue.RequeueForManualTrigger(nowOneJob)
+		if err != nil {
+			return
+		}
+		if bok == false {
+			c.JSON(http.StatusOK, backend2.ReplyCommon{Message: "requeue job failed"})
+			return
+		}
+	} else {
+		bok, err = cb.cronHelper.DownloadQueue.Update(nowOneJob)
+		if err != nil {
+			return
+		}
 
-	if bok == false {
-		c.JSON(http.StatusOK, backend2.ReplyCommon{Message: "update job status failed"})
-		return
+		if bok == false {
+			c.JSON(http.StatusOK, backend2.ReplyCommon{Message: "update job status failed"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, backend2.ReplyCommon{Message: "ok"})

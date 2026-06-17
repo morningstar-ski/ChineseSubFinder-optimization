@@ -16,6 +16,28 @@ import (
 	"golang.org/x/net/context"
 )
 
+type subtitleFallbackStage int
+
+const (
+	subtitleFallbackStageTranslatedChinese subtitleFallbackStage = iota
+	subtitleFallbackStageLLM
+	subtitleFallbackStageEnglish
+)
+
+func (d *Downloader) orderedSubtitleFallbackStages() []subtitleFallbackStage {
+	stages := make([]subtitleFallbackStage, 0, 3)
+	if d.canTryTranslatedChineseFallback() {
+		stages = append(stages, subtitleFallbackStageTranslatedChinese)
+	}
+	if d.canTryLLMStageFallback() {
+		stages = append(stages, subtitleFallbackStageLLM)
+	}
+	if d.canTryEnglishFallback() {
+		stages = append(stages, subtitleFallbackStageEnglish)
+	}
+	return stages
+}
+
 func (d *Downloader) movieDlFunc(ctx context.Context, job taskQueue2.OneJob, downloadIndex int64) error {
 	nowSubSupplierHub := d.subSupplierHub
 	if nowSubSupplierHub.Suppliers == nil || len(nowSubSupplierHub.Suppliers) < 1 {
@@ -39,16 +61,65 @@ func (d *Downloader) movieDlFunc(ctx context.Context, job taskQueue2.OneJob, dow
 		}
 	}
 
-	if d.canTryLLMStageFallback() && nowSubSupplierHub.HasEnglishFallbackMovieSuppliers() {
-		fallbackSubFiles, fallbackErr := nowSubSupplierHub.DownloadEnglishFallbackSub4Movie(job.VideoFPath, downloadIndex)
-		if fallbackErr != nil {
-			err = errors.New(fmt.Sprintf("subSupplierHub.DownloadEnglishFallbackSub4Movie: %v, %v", job.VideoFPath, fallbackErr))
-			d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
-			return err
+	var englishFallbackSubFiles []string
+	englishFallbackLoaded := false
+	loadEnglishFallbackSubFiles := func() ([]string, error) {
+		if englishFallbackLoaded {
+			return englishFallbackSubFiles, nil
 		}
-		if err = d.tryWriteLLMSubtitleFallback(job.VideoFPath, fallbackSubFiles); err == nil {
-			d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
-			return d.refreshEmbyMovieSubtitle(job)
+		englishFallbackLoaded = true
+		var fallbackErr error
+		englishFallbackSubFiles, fallbackErr = nowSubSupplierHub.DownloadEnglishFallbackSub4Movie(job.VideoFPath, downloadIndex)
+		if fallbackErr != nil {
+			return nil, fallbackErr
+		}
+		return englishFallbackSubFiles, nil
+	}
+
+	for _, stage := range d.orderedSubtitleFallbackStages() {
+		switch stage {
+		case subtitleFallbackStageTranslatedChinese:
+			if nowSubSupplierHub.HasTranslatedFallbackMovieSuppliers() == false {
+				continue
+			}
+			translatedSubFiles, translatedErr := nowSubSupplierHub.DownloadTranslatedFallbackSub4Movie(job.VideoFPath, downloadIndex)
+			if translatedErr != nil {
+				err = errors.New(fmt.Sprintf("subSupplierHub.DownloadTranslatedFallbackSub4Movie: %v, %v", job.VideoFPath, translatedErr))
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
+				return err
+			}
+			if err = d.oneVideoSelectBestSub(job.VideoFPath, translatedSubFiles); err == nil {
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
+				return d.refreshEmbyMovieSubtitle(job)
+			}
+		case subtitleFallbackStageLLM:
+			if nowSubSupplierHub.HasEnglishFallbackMovieSuppliers() == false {
+				continue
+			}
+			fallbackSubFiles, fallbackErr := loadEnglishFallbackSubFiles()
+			if fallbackErr != nil {
+				err = errors.New(fmt.Sprintf("subSupplierHub.DownloadEnglishFallbackSub4Movie: %v, %v", job.VideoFPath, fallbackErr))
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
+				return err
+			}
+			if err = d.tryWriteLLMSubtitleFallback(job.VideoFPath, fallbackSubFiles); err == nil {
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
+				return d.refreshEmbyMovieSubtitle(job)
+			}
+		case subtitleFallbackStageEnglish:
+			if nowSubSupplierHub.HasEnglishFallbackMovieSuppliers() == false {
+				continue
+			}
+			fallbackSubFiles, fallbackErr := loadEnglishFallbackSubFiles()
+			if fallbackErr != nil {
+				err = errors.New(fmt.Sprintf("subSupplierHub.DownloadEnglishFallbackSub4Movie: %v, %v", job.VideoFPath, fallbackErr))
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
+				return err
+			}
+			if err = d.tryWriteEnglishSubtitleFallback(job.VideoFPath, fallbackSubFiles); err == nil {
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
+				return d.refreshEmbyMovieSubtitle(job)
+			}
 		}
 	}
 
@@ -118,20 +189,22 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 
 	var errSave2Local error
 	save2LocalSubCount := 0
-	pendingEnglishFallback := make(map[string]series.EpisodeInfo)
+	savedEpisodeKeys := make(map[string]struct{}, len(seriesInfo.NeedDlEpsKeyList))
+	pendingFallbackEpisodes := make(map[string]series.EpisodeInfo)
 
 	for epsKey, episodeInfo := range seriesInfo.NeedDlEpsKeyList {
 		err = d.selectSeriesEpisodeSubtitle(ctx, episodeInfo.FileFullPath, organizeSubFiles[epsKey])
 		if err == nil {
 			save2LocalSubCount++
+			savedEpisodeKeys[epsKey] = struct{}{}
 			continue
 		}
-		if d.canTryLLMStageFallback() && nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() && errors.Is(err, errNoUsableChineseSubtitle) {
-			pendingEnglishFallback[epsKey] = episodeInfo
+		if d.canTryEnglishFallback() && nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() && errors.Is(err, errNoUsableChineseSubtitle) {
+			pendingFallbackEpisodes[epsKey] = episodeInfo
 			continue
 		}
-		if d.canTryLLMStageFallback() && nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() && errors.Is(err, common.AllSiteDownloadSubNotFound) {
-			pendingEnglishFallback[epsKey] = episodeInfo
+		if d.canTryEnglishFallback() && nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() && errors.Is(err, common.AllSiteDownloadSubNotFound) {
+			pendingFallbackEpisodes[epsKey] = episodeInfo
 			continue
 		}
 		errSave2Local = err
@@ -139,15 +212,11 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 	}
 
 	fullSeasonSubDict := d.saveFullSeasonSub(seriesInfo, organizeSubFiles)
-	for _, episodeInfo := range seriesInfo.EpList {
-		if _, ok := seriesInfo.NeedDlSeasonDict[episodeInfo.Season]; ok == false {
-			continue
-		}
-
+	for _, episodeInfo := range pendingSeasonPackEpisodes(seriesInfo, savedEpisodeKeys) {
 		seasonEpsKey := pkg.GetEpisodeKeyName(episodeInfo.Season, episodeInfo.Episode)
 		subs := fullSeasonSubDict[seasonEpsKey]
 		if len(subs) < 1 {
-			d.log.Infoln("seriesDlFunc.saveFullSeasonSub, no sub found, Skip", seasonEpsKey)
+			d.log.Debugln("seriesDlFunc.saveFullSeasonSub, no sub found, Skip", seasonEpsKey)
 			continue
 		}
 
@@ -158,25 +227,96 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 			continue
 		}
 		save2LocalSubCount++
-		delete(pendingEnglishFallback, seasonEpsKey)
+		savedEpisodeKeys[seasonEpsKey] = struct{}{}
+		delete(pendingFallbackEpisodes, seasonEpsKey)
 	}
 
-	if len(pendingEnglishFallback) > 0 && d.canTryLLMStageFallback() && nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() {
-		fallbackSeriesInfo := buildSeriesFallbackInfo(seriesInfo, pendingEnglishFallback)
-		englishSubFiles, fallbackErr := nowSubSupplierHub.DownloadEnglishFallbackSub4Series(job.SeriesRootDirPath, fallbackSeriesInfo, downloadIndex)
-		if fallbackErr != nil {
-			err = errors.New(fmt.Sprintf("seriesDlFunc.DownloadEnglishFallbackSub4Series %v S%vE%v %v", filepath.Base(job.SeriesRootDirPath), job.Season, job.Episode, fallbackErr))
-			d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
-			return err
+	var englishFallbackSeriesSubFiles map[string][]string
+	englishFallbackSeriesLoaded := false
+	loadEnglishFallbackSeriesSubFiles := func() (map[string][]string, error) {
+		if englishFallbackSeriesLoaded {
+			return englishFallbackSeriesSubFiles, nil
 		}
-		for epsKey, episodeInfo := range pendingEnglishFallback {
-			err = d.tryLLMSeriesFallback(ctx, episodeInfo.FileFullPath, englishSubFiles[epsKey])
-			if err != nil {
-				errSave2Local = err
-				d.log.Errorln(err)
+		englishFallbackSeriesLoaded = true
+		fallbackSeriesInfo := buildSeriesFallbackInfo(seriesInfo, pendingFallbackEpisodes)
+		var fallbackErr error
+		englishFallbackSeriesSubFiles, fallbackErr = nowSubSupplierHub.DownloadEnglishFallbackSub4Series(job.SeriesRootDirPath, fallbackSeriesInfo, downloadIndex)
+		if fallbackErr != nil {
+			return nil, fallbackErr
+		}
+		return englishFallbackSeriesSubFiles, nil
+	}
+
+	for _, stage := range d.orderedSubtitleFallbackStages() {
+		if len(pendingFallbackEpisodes) == 0 {
+			break
+		}
+
+		switch stage {
+		case subtitleFallbackStageTranslatedChinese:
+			if nowSubSupplierHub.HasTranslatedFallbackSeriesSuppliers() == false {
 				continue
 			}
-			save2LocalSubCount++
+			fallbackSeriesInfo := buildSeriesFallbackInfo(seriesInfo, pendingFallbackEpisodes)
+			translatedSubFiles, fallbackErr := nowSubSupplierHub.DownloadTranslatedFallbackSub4Series(job.SeriesRootDirPath, fallbackSeriesInfo, downloadIndex)
+			if fallbackErr != nil {
+				err = errors.New(fmt.Sprintf("seriesDlFunc.DownloadTranslatedFallbackSub4Series %v S%vE%v %v", filepath.Base(job.SeriesRootDirPath), job.Season, job.Episode, fallbackErr))
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
+				return err
+			}
+			for epsKey, episodeInfo := range pendingFallbackEpisodes {
+				err = d.selectSeriesEpisodeSubtitle(ctx, episodeInfo.FileFullPath, translatedSubFiles[epsKey])
+				if err != nil {
+					errSave2Local = err
+					d.log.Errorln(err)
+					continue
+				}
+				save2LocalSubCount++
+				savedEpisodeKeys[epsKey] = struct{}{}
+				delete(pendingFallbackEpisodes, epsKey)
+			}
+		case subtitleFallbackStageLLM:
+			if nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() == false {
+				continue
+			}
+			englishSubFiles, fallbackErr := loadEnglishFallbackSeriesSubFiles()
+			if fallbackErr != nil {
+				err = errors.New(fmt.Sprintf("seriesDlFunc.DownloadEnglishFallbackSub4Series %v S%vE%v %v", filepath.Base(job.SeriesRootDirPath), job.Season, job.Episode, fallbackErr))
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
+				return err
+			}
+			for epsKey, episodeInfo := range pendingFallbackEpisodes {
+				err = d.tryLLMSeriesFallback(ctx, episodeInfo.FileFullPath, englishSubFiles[epsKey])
+				if err != nil {
+					errSave2Local = err
+					d.log.Errorln(err)
+					continue
+				}
+				save2LocalSubCount++
+				savedEpisodeKeys[epsKey] = struct{}{}
+				delete(pendingFallbackEpisodes, epsKey)
+			}
+		case subtitleFallbackStageEnglish:
+			if nowSubSupplierHub.HasEnglishFallbackSeriesSuppliers() == false {
+				continue
+			}
+			englishSubFiles, fallbackErr := loadEnglishFallbackSeriesSubFiles()
+			if fallbackErr != nil {
+				err = errors.New(fmt.Sprintf("seriesDlFunc.DownloadEnglishFallbackSub4Series %v S%vE%v %v", filepath.Base(job.SeriesRootDirPath), job.Season, job.Episode, fallbackErr))
+				d.downloadQueue.AutoDetectUpdateJobStatus(job, err)
+				return err
+			}
+			for epsKey, episodeInfo := range pendingFallbackEpisodes {
+				err = d.tryEnglishSeriesFallback(ctx, episodeInfo.FileFullPath, englishSubFiles[epsKey])
+				if err != nil {
+					errSave2Local = err
+					d.log.Errorln(err)
+					continue
+				}
+				save2LocalSubCount++
+				savedEpisodeKeys[epsKey] = struct{}{}
+				delete(pendingFallbackEpisodes, epsKey)
+			}
 		}
 	}
 
@@ -187,9 +327,7 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 	}
 
 	if save2LocalSubCount < 1 {
-		if errSave2Local == nil {
-			errSave2Local = task_queue.ErrNoSubFound
-		}
+		errSave2Local = normalizeSeriesTerminalError(errSave2Local)
 		d.downloadQueue.AutoDetectUpdateJobStatus(job, errSave2Local)
 		return errSave2Local
 	}
@@ -211,62 +349,69 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 	return nil
 }
 
-func (d *Downloader) selectSeriesEpisodeSubtitle(ctx context.Context, videoPath string, organizeSubFiles []string) error {
-	done := make(chan interface{}, 1)
-	panicChan := make(chan interface{}, 1)
+func pendingSeasonPackEpisodes(seriesInfo *series.SeriesInfo, savedEpisodeKeys map[string]struct{}) []series.EpisodeInfo {
+	if seriesInfo == nil || len(seriesInfo.EpList) == 0 || len(seriesInfo.NeedDlSeasonDict) == 0 {
+		return nil
+	}
 
-	go func() {
-		defer func() {
-			if p := recover(); p != nil {
-				panicChan <- p
-			}
-			close(done)
-			close(panicChan)
-		}()
-		done <- d.oneVideoSelectBestSub(videoPath, organizeSubFiles)
-	}()
-
-	select {
-	case errInterface := <-done:
-		if errInterface == nil {
-			return nil
+	pending := make([]series.EpisodeInfo, 0, len(seriesInfo.EpList))
+	for _, episodeInfo := range seriesInfo.EpList {
+		if _, ok := seriesInfo.NeedDlSeasonDict[episodeInfo.Season]; ok == false {
+			continue
 		}
-		return errInterface.(error)
-	case p := <-panicChan:
-		d.log.Errorln("seriesDlFunc.oneVideoSelectBestSub panicChan", p)
-		return errors.New("seriesDlFunc.oneVideoSelectBestSub panic")
-	case <-ctx.Done():
-		return errors.New(fmt.Sprintf("cancel at NeedDlEpsKeyList.oneVideoSelectBestSub, %s", filepath.Base(videoPath)))
+
+		seasonEpsKey := pkg.GetEpisodeKeyName(episodeInfo.Season, episodeInfo.Episode)
+		if _, ok := savedEpisodeKeys[seasonEpsKey]; ok {
+			continue
+		}
+
+		pending = append(pending, episodeInfo)
+	}
+
+	return pending
+}
+
+func normalizeSeriesTerminalError(err error) error {
+	switch {
+	case err == nil:
+		return task_queue.ErrNoSubFound
+	case errors.Is(err, task_queue.ErrNoSubFound):
+		return task_queue.ErrNoSubFound
+	case errors.Is(err, common.AllSiteDownloadSubNotFound):
+		return task_queue.ErrNoSubFound
+	case errors.Is(err, errNoUsableChineseSubtitle):
+		return task_queue.ErrNoSubFound
+	default:
+		return err
 	}
 }
 
+func (d *Downloader) selectSeriesEpisodeSubtitle(ctx context.Context, videoPath string, organizeSubFiles []string) error {
+	err, p, canceled := runDownloaderErrorStep(ctx, func() error {
+		return d.oneVideoSelectBestSub(videoPath, organizeSubFiles)
+	})
+	if p != nil {
+		d.log.Errorln("seriesDlFunc.oneVideoSelectBestSub panicChan", p)
+		return errors.New("seriesDlFunc.oneVideoSelectBestSub panic")
+	}
+	if canceled {
+		return errors.New(fmt.Sprintf("cancel at NeedDlEpsKeyList.oneVideoSelectBestSub, %s", filepath.Base(videoPath)))
+	}
+	return err
+}
+
 func (d *Downloader) tryLLMSeriesFallback(ctx context.Context, videoPath string, organizeSubFiles []string) error {
-	done := make(chan interface{}, 1)
-	panicChan := make(chan interface{}, 1)
-
-	go func() {
-		defer func() {
-			if p := recover(); p != nil {
-				panicChan <- p
-			}
-			close(done)
-			close(panicChan)
-		}()
-		done <- d.tryWriteLLMSubtitleFallback(videoPath, organizeSubFiles)
-	}()
-
-	select {
-	case errInterface := <-done:
-		if errInterface == nil {
-			return nil
-		}
-		return errInterface.(error)
-	case p := <-panicChan:
+	err, p, canceled := runDownloaderErrorStep(ctx, func() error {
+		return d.tryWriteLLMSubtitleFallback(videoPath, organizeSubFiles)
+	})
+	if p != nil {
 		d.log.Errorln("seriesDlFunc.tryWriteLLMSubtitleFallback panicChan", p)
 		return errors.New("seriesDlFunc.tryWriteLLMSubtitleFallback panic")
-	case <-ctx.Done():
+	}
+	if canceled {
 		return errors.New(fmt.Sprintf("cancel at NeedDlEpsKeyList.tryWriteLLMSubtitleFallback, %s", filepath.Base(videoPath)))
 	}
+	return err
 }
 
 func buildSeriesFallbackInfo(seriesInfo *series.SeriesInfo, pending map[string]series.EpisodeInfo) *series.SeriesInfo {

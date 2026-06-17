@@ -1,6 +1,7 @@
 package movie_helper
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,7 +156,23 @@ func MovieNeedDlSub(logger *logrus.Logger, videoFullPath string, ExpirationTime 
 	currentTime := time.Now()
 	videoNfoInfo4Movie, modifyTime, err := decode.GetVideoInfoFromFileFullPath(videoFullPath, true)
 	if err != nil {
-		return false, err
+		if errors.Is(err, common.NoMetadataFile) == false {
+			return false, err
+		}
+		logger.Warningln("MovieNeedDlSub", videoFullPath, "metadata missing, fallback to path-derived movie info")
+		videoNfoInfo4Movie = imdb_helper.FallbackVideoNfoInfoFromPath(videoFullPath, true)
+
+		statTarget := videoFullPath
+		if decode.IsFile(videoFullPath) == false {
+			if bok, idBDMVFPath, _ := decode.IsFakeBDMVWorked(videoFullPath); bok {
+				statTarget = idBDMVFPath
+			}
+		}
+		fInfo, statErr := os.Stat(statTarget)
+		if statErr != nil {
+			return false, statErr
+		}
+		modifyTime = fInfo.ModTime()
 	}
 	// 如果这个视频发布的时间早于现在有两个年的间隔
 	if videoNfoInfo4Movie.GetYear() > 0 && currentTime.Year()-2 > videoNfoInfo4Movie.GetYear() {

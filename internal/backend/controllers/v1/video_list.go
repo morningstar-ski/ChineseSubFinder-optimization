@@ -154,14 +154,14 @@ func (cb *ControllerBase) VideoListAddHandler(c *gin.Context) {
 	}
 	if bok == false {
 		// 任务已经存在
-		bok, err = cb.cronHelper.DownloadQueue.Update(*oneJob)
+		bok, err = cb.cronHelper.DownloadQueue.RequeueForManualTrigger(*oneJob)
 		if err != nil {
 			return
 		}
 		if bok == false {
 			c.JSON(http.StatusOK, backend2.ReplyJobThings{
 				JobID:   oneJob.Id,
-				Message: "update job status failed",
+				Message: "requeue job failed",
 			})
 			return
 		}

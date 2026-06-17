@@ -74,9 +74,20 @@ func (cb *ControllerBase) AddJobHandler(c *gin.Context) {
 		return
 	}
 	if bok == false {
+		bok, err = cb.cronHelper.DownloadQueue.RequeueForManualTrigger(*nowJob)
+		if err != nil {
+			return
+		}
+		if bok == false {
+			c.JSON(http.StatusOK, backend2.ReplyJobThings{
+				JobID:   nowJob.Id,
+				Message: "requeue job failed",
+			})
+			return
+		}
 		c.JSON(http.StatusOK, backend2.ReplyJobThings{
 			JobID:   nowJob.Id,
-			Message: "job is already in queue",
+			Message: "requeued",
 		})
 	} else {
 		c.JSON(http.StatusOK, backend2.ReplyJobThings{

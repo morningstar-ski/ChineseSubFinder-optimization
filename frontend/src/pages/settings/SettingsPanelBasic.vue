@@ -1,6 +1,6 @@
 <template>
   <div>
-    <q-list style="max-width: 600px" dense>
+    <q-list class="settings-panel-list" dense>
       <q-item>
         <q-item-section>
           <q-item-label>字幕扫描时机</q-item-label>
@@ -93,26 +93,26 @@
         </q-item-section>
       </q-item>
 
-      <q-separator spaced inset></q-separator>
+      <q-separator spaced inset />
 
       <q-item>
         <q-item-section>
-          <q-item-label>设备性能选择</q-item-label>
+          <q-item-label>运行性能档位</q-item-label>
         </q-item-section>
         <q-item-section avatar>
           <div class="row">
-            <q-radio v-model="form.threads" :val="1" label="弱鸡（1线程）" />
-            <q-radio v-model="form.threads" :val="3" label="一般（3线程）" />
-            <q-radio v-model="form.threads" :val="6" label="超猛（6线程）" />
+            <q-radio v-model="form.threads" :val="1" label="低占用（1 线程）" />
+            <q-radio v-model="form.threads" :val="3" label="标准（3 线程）" />
+            <q-radio v-model="form.threads" :val="6" label="高性能（6 线程）" />
           </div>
         </q-item-section>
       </q-item>
 
-      <q-separator spaced inset></q-separator>
+      <q-separator spaced inset />
 
       <q-item>
         <q-item-section class="items-start" top>
-          <q-item-label>电影的目录</q-item-label>
+          <q-item-label>电影目录</q-item-label>
         </q-item-section>
         <q-item-section avatar>
           <q-btn
@@ -161,11 +161,11 @@
         </q-item-section>
       </q-item>
 
-      <q-separator spaced inset></q-separator>
+      <q-separator spaced inset />
 
       <q-item>
         <q-item-section class="items-start" top>
-          <q-item-label>连续剧的目录</q-item-label>
+          <q-item-label>剧集目录</q-item-label>
         </q-item-section>
         <q-item-section avatar>
           <q-btn
