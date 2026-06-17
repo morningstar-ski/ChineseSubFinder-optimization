@@ -527,20 +527,92 @@ func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string, extraKe
 }
 
 func normalizeSeriesTitle(videoFPath string) string {
-	seriesDir := filepath.Dir(filepath.Dir(videoFPath))
-	title := filepath.Base(seriesDir)
-	title = stripShowYearSuffix(title)
-	title = pkg.ReplaceSpecString(title, " ")
-	return strings.Join(strings.Fields(title), " ")
+	return normalizePathTitleSegment(inferSeriesRootTitle(videoFPath))
 }
 
 func normalizeVideoTitle(videoFPath string) string {
-	fileName := strings.TrimSuffix(filepath.Base(videoFPath), filepath.Ext(videoFPath))
+	fileName := crossPlatformBase(videoFPath)
+	fileName = strings.TrimSuffix(fileName, filepath.Ext(fileName))
 	if fileInfo, err := decode.GetVideoInfoFromFileName(fileName); err == nil && fileInfo != nil && fileInfo.Title != "" {
 		fileName = fileInfo.Title
 	}
 	fileName = pkg.ReplaceSpecString(fileName, " ")
 	return strings.Join(strings.Fields(fileName), " ")
+}
+
+var windowsDriveLetterPattern = regexp.MustCompile(`^[a-zA-Z]:$`)
+var genericSeasonFolderPattern = regexp.MustCompile(`(?i)^season[ ._-]*\d+$`)
+
+func inferSeriesRootTitle(videoFPath string) string {
+	segments := splitPathSegments(videoFPath)
+	if len(segments) < 2 {
+		return ""
+	}
+
+	parent := segments[len(segments)-2]
+	if genericSeasonFolderPattern.MatchString(parent) && len(segments) >= 3 {
+		return segments[len(segments)-3]
+	}
+	return parent
+}
+
+func crossPlatformBase(videoFPath string) string {
+	segments := splitPathSegments(videoFPath)
+	if len(segments) == 0 {
+		return ""
+	}
+	return segments[len(segments)-1]
+}
+
+func splitPathSegments(videoFPath string) []string {
+	raw := strings.TrimSpace(videoFPath)
+	if raw == "" {
+		return nil
+	}
+
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		out = append(out, field)
+	}
+	return out
+}
+
+func normalizePathTitleSegment(segment string) string {
+	segment = strings.TrimSpace(segment)
+	if isJunkPathTitleSegment(segment) {
+		return ""
+	}
+	segment = stripShowYearSuffix(segment)
+	segment = pkg.ReplaceSpecString(segment, " ")
+	segment = strings.Join(strings.Fields(segment), " ")
+	if isJunkPathTitleSegment(segment) {
+		return ""
+	}
+	return segment
+}
+
+func isJunkPathTitleSegment(segment string) bool {
+	segment = strings.TrimSpace(segment)
+	if segment == "" {
+		return true
+	}
+	if windowsDriveLetterPattern.MatchString(segment) {
+		return true
+	}
+
+	switch strings.ToLower(segment) {
+	case ".", "..", "media", "movie", "movies", "tv", "show", "shows", "series", "video", "videos":
+		return true
+	}
+
+	return genericSeasonFolderPattern.MatchString(segment)
 }
 
 func absoluteURL(rootURL string, href string) string {

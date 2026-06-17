@@ -91,7 +91,7 @@ func (t *TaskQueue) GetOneWaitingJob() (bool, task_queue2.OneJob, error) {
 		}
 	}
 
-	return false, tOneJob, nil
+	return false, task_queue2.OneJob{}, nil
 }
 
 // GetOneDoneJob 获取一个元素，按优先级，0 - taskPriorityCount 的级别去拿去任务，不会移除任务

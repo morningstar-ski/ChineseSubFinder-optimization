@@ -992,14 +992,7 @@ func appendEpisodeNfoTitleCandidates(items []string, videoFPath string) []string
 }
 
 func normalizeSeriesRootTitle(videoFPath string) string {
-	seriesDir := filepath.Dir(filepath.Dir(videoFPath))
-	title := strings.TrimSpace(filepath.Base(seriesDir))
-	if title == "" {
-		return ""
-	}
-	title = regexp.MustCompile(`\s+\(\d{4}.*\)$`).ReplaceAllString(title, "")
-	title = pkg.ReplaceSpecString(title, " ")
-	return strings.Join(strings.Fields(title), " ")
+	return normalizeSubHDPathTitleSegment(inferSubHDSeriesRootTitle(videoFPath))
 }
 
 func selectBestSubHDCandidate(candidates []HdListItem, videoFPath string, targetSeason, targetEpisode int) HdListItem {
@@ -1464,6 +1457,8 @@ var subHDSeasonKeywordPattern = regexp.MustCompile(`(?i)\bseason[ ._-]*(\d{1,2})
 var subHDSxxKeywordPattern = regexp.MustCompile(`(?i)\bs(\d{1,2})(?:e\d{1,2})?\b`)
 var subHDYearPattern = regexp.MustCompile(`(?i)(?:\(|\b)((?:19|20)\d{2})(?:\)|\b)`)
 var subHDChineseDigitSeasonPattern = regexp.MustCompile(`^$`)
+var subHDWindowsDriveLetterPattern = regexp.MustCompile(`^[a-zA-Z]:$`)
+var subHDGenericSeasonFolderPattern = regexp.MustCompile(`(?i)^season[ ._-]*\d+$`)
 
 func extractSearchResultSeason(title string) int {
 	title = strings.TrimSpace(title)
@@ -1611,6 +1606,70 @@ func normalizeComparableSeriesTitle(title string) string {
 		return ""
 	}
 	return variants[0]
+}
+
+func inferSubHDSeriesRootTitle(videoFPath string) string {
+	segments := splitSubHDPathSegments(videoFPath)
+	if len(segments) < 2 {
+		return ""
+	}
+
+	parent := segments[len(segments)-2]
+	if subHDGenericSeasonFolderPattern.MatchString(parent) && len(segments) >= 3 {
+		return segments[len(segments)-3]
+	}
+	return parent
+}
+
+func splitSubHDPathSegments(videoFPath string) []string {
+	raw := strings.TrimSpace(videoFPath)
+	if raw == "" {
+		return nil
+	}
+
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		out = append(out, field)
+	}
+	return out
+}
+
+func normalizeSubHDPathTitleSegment(segment string) string {
+	segment = strings.TrimSpace(segment)
+	if isJunkSubHDPathTitleSegment(segment) {
+		return ""
+	}
+	segment = regexp.MustCompile(`\s+\(\d{4}.*\)$`).ReplaceAllString(segment, "")
+	segment = pkg.ReplaceSpecString(segment, " ")
+	segment = strings.Join(strings.Fields(segment), " ")
+	if isJunkSubHDPathTitleSegment(segment) {
+		return ""
+	}
+	return segment
+}
+
+func isJunkSubHDPathTitleSegment(segment string) bool {
+	segment = strings.TrimSpace(segment)
+	if segment == "" {
+		return true
+	}
+	if subHDWindowsDriveLetterPattern.MatchString(segment) {
+		return true
+	}
+
+	switch strings.ToLower(segment) {
+	case ".", "..", "media", "movie", "movies", "tv", "show", "shows", "series", "video", "videos":
+		return true
+	}
+
+	return subHDGenericSeasonFolderPattern.MatchString(segment)
 }
 
 func compactStrings(items ...string) []string {
