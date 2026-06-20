@@ -9,6 +9,7 @@ import (
 	backend2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/backend"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	TTaskqueue "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/task_queue"
+	types2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/decode"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/video_scan_and_refresh_helper"
@@ -134,7 +135,8 @@ func (cb *ControllerBase) VideoListAddHandler(c *gin.Context) {
 
 	if videoType == common.Series {
 		// 如果是连续剧，需要额外的读取这一个剧集的信息
-		epsVideoNfoInfo, err := decode.GetVideoNfoInfo4OneSeriesEpisode(videoListAdd.PhysicalVideoFileFullPath)
+		var epsVideoNfoInfo types2.VideoNfoInfo
+		epsVideoNfoInfo, err = decode.GetVideoNfoInfo4OneSeriesEpisode(videoListAdd.PhysicalVideoFileFullPath)
 		if err != nil {
 			return
 		}

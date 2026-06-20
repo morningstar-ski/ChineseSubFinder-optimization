@@ -709,6 +709,15 @@ func shouldRetrySubHDSearchPageWithBrowser(err error) bool {
 	}
 }
 
+func shouldContinueSeriesKeywordSearch(err error) bool {
+	switch reasonOf(err) {
+	case ReasonSearchLayoutChanged, ReasonProbeFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Supplier) DownFile(browser *rod.Browser, subDownloadPageUrl string, TopN int64, Season, Episode int) (*supplier.SubInfo, error) {
 	var err error
 	defer func() {
@@ -1040,6 +1049,7 @@ func (s *Supplier) searchSeriesDetailPageURLs(season uint64, keyWord string, tit
 	allDetailPageURLs := make([]string, 0, len(baseKeywords))
 	seenKeywords := make(map[string]struct{})
 	seenDetailPageURLs := make(map[string]struct{})
+	var lastRecoverableErr error
 	var browser *rod.Browser
 	defer func() {
 		if browser != nil {
@@ -1069,6 +1079,11 @@ func (s *Supplier) searchSeriesDetailPageURLs(season uint64, keyWord string, tit
 				detailPageURLs, err = s.step0(browser, keyword, titleCandidates, int(season), 0)
 			}
 			if err != nil {
+				if shouldContinueSeriesKeywordSearch(err) {
+					lastRecoverableErr = err
+					s.log.Warningln("subhd step0 keyword failed, continue next keyword", keyword, err)
+					continue
+				}
 				s.log.Errorln("subhd step0", keyword)
 				return nil, err
 			}
@@ -1096,6 +1111,11 @@ func (s *Supplier) searchSeriesDetailPageURLs(season uint64, keyWord string, tit
 
 	if len(allDetailPageURLs) > 0 {
 		return allDetailPageURLs, nil
+	}
+
+	if lastRecoverableErr != nil {
+		s.log.Warningln("subhd search keywords exhausted after recoverable errors", baseKeywords, lastRecoverableErr)
+		return nil, lastRecoverableErr
 	}
 
 	s.log.Warning("subhd search keywords not found", baseKeywords)

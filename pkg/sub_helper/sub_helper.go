@@ -28,7 +28,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var numericSeriesArchiveEntryPattern = regexp.MustCompile(`^(\d{1,3})$`)
+var (
+	numericSeriesArchiveEntryPattern     = regexp.MustCompile(`^(\d{1,3})$`)
+	episodeOnlyArchiveEntryPattern      = regexp.MustCompile(`(?i)(?:^|[\W_])E(\d{1,3})(?:$|[\W_])`)
+)
 
 // OrganizeDlSubFiles 需要从汇总来是网站字幕中，解压对应的压缩包中的字幕出来
 func OrganizeDlSubFiles(log *logrus.Logger, tmpFolderName string, subInfos []supplier.SubInfo, isMovie bool) (map[string][]string, error) {
@@ -193,18 +196,25 @@ func mapSeriesArchiveEntryFallback(subInfo supplier.SubInfo, fileName string) (i
 		return 0, 0, false
 	}
 	baseName := strings.TrimSpace(strings.TrimSuffix(filepath.Base(fileName), filepath.Ext(fileName)))
-	matches := numericSeriesArchiveEntryPattern.FindStringSubmatch(baseName)
-	if len(matches) != 2 {
-		return 0, 0, false
+	if matches := numericSeriesArchiveEntryPattern.FindStringSubmatch(baseName); len(matches) == 2 {
+		episode, err := strconv.Atoi(matches[1])
+		if err == nil && episode > 0 {
+			if subInfo.IsFullSeason == false && subInfo.Episode > 0 && episode != subInfo.Episode {
+				return 0, 0, false
+			}
+			return subInfo.Season, episode, true
+		}
 	}
-	episode, err := strconv.Atoi(matches[1])
-	if err != nil || episode <= 0 {
-		return 0, 0, false
+	if matches := episodeOnlyArchiveEntryPattern.FindStringSubmatch(baseName); len(matches) == 2 {
+		episode, err := strconv.Atoi(matches[1])
+		if err == nil && episode > 0 {
+			if subInfo.IsFullSeason == false && subInfo.Episode > 0 && episode != subInfo.Episode {
+				return 0, 0, false
+			}
+			return subInfo.Season, episode, true
+		}
 	}
-	if subInfo.IsFullSeason == false && subInfo.Episode > 0 && episode != subInfo.Episode {
-		return 0, 0, false
-	}
-	return subInfo.Season, episode, true
+	return 0, 0, false
 }
 
 // ChangeVideoExt2SubExt 检测 Name，如果是视频的后缀名就改为字幕的后缀名

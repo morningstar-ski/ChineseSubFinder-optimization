@@ -230,7 +230,7 @@ func (s *Supplier) getSubListFromFile(videoFPath string, isMovie bool, season, e
 }
 
 func (s *Supplier) resolveCandidatesWithFallback(client *resty.Client, mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, season, episode int) ([]subtitleCandidate, error) {
-	for _, keyword := range buildSearchKeywords(mediaInfo, videoFPath) {
+	for _, keyword := range buildSearchKeywords(mediaInfo, videoFPath, isMovie, season, episode) {
 		if keyword == "" {
 			continue
 		}
@@ -245,6 +245,7 @@ func (s *Supplier) resolveCandidatesWithFallback(client *resty.Client, mediaInfo
 			s.log.Warningln(s.GetSupplierName(), "filterCandidates", keyword, err)
 			continue
 		}
+		candidates = filterLowConfidenceCandidates(candidates, mediaInfo, videoFPath, isMovie, season, episode)
 		rankCandidates(candidates, videoFPath, isMovie, season, episode)
 		if len(candidates) == 0 {
 			continue
@@ -256,6 +257,123 @@ func (s *Supplier) resolveCandidatesWithFallback(client *resty.Client, mediaInfo
 	}
 
 	return nil, nil
+}
+
+func filterLowConfidenceCandidates(candidates []subtitleCandidate, mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, season, episode int) []subtitleCandidate {
+	if len(candidates) == 0 {
+		return candidates
+	}
+
+	matcher := ranking.NewTargetMatcher(videoFPath, isMovie)
+	targetTitles := candidateTargetTitles(mediaInfo, videoFPath)
+	filtered := make([]subtitleCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if len(targetTitles) > 0 && candidateTitleMatchesTargets(candidate, targetTitles) == false {
+			continue
+		}
+		if isMovie == false && season > 0 && episode > 0 && seriesEpisodeMatchesTarget(candidate, season, episode) == false {
+			continue
+		}
+		releaseScore := matcher.BestScore(candidateMetadata(candidate).ReleaseNamesWithName(), ranking.StandardReleaseMatchWeights)
+		if isMovie && releaseScore < 0 {
+			continue
+		}
+		filtered = append(filtered, candidate)
+	}
+
+	return filtered
+}
+
+func seriesEpisodeMatchesTarget(candidate subtitleCandidate, targetSeason, targetEpisode int) bool {
+	meta := candidateMetadata(candidate)
+	score := ranking.ScoreEpisodeMatch(meta.Season, meta.Episode, targetSeason, targetEpisode, ranking.EpisodeMatchWeights{
+		ExactMatch:   120,
+		SeasonPack:   15,
+		WrongEpisode: -120,
+	})
+	return score > 0
+}
+
+func candidateTargetTitles(mediaInfo *models.MediaInfo, videoFPath string) []string {
+	items := make([]string, 0, 5)
+	if mediaInfo != nil {
+		items = append(items, mediaInfo.TitleEn, mediaInfo.OriginalTitle, mediaInfo.TitleCn)
+	}
+	items = append(items,
+		getLocalNfoOriginalTitle(videoFPath),
+		getLocalNfoTitle(videoFPath),
+		normalizeVideoTitle(videoFPath),
+	)
+	return compactNonEmptyTitles(items...)
+}
+
+func candidateTitleMatchesTargets(candidate subtitleCandidate, targetTitles []string) bool {
+	if len(targetTitles) == 0 {
+		return true
+	}
+
+	candidateTitles := compactNonEmptyTitles(extractCandidateComparableTitle(candidate.name), candidate.name)
+	for _, candidateTitle := range candidateTitles {
+		for _, targetTitle := range targetTitles {
+			if scoreComparableTitle(candidateTitle, targetTitle) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func extractCandidateComparableTitle(input string) string {
+	parsed, err := decode.GetVideoInfoFromFileName(input)
+	if err == nil && parsed != nil && strings.TrimSpace(parsed.Title) != "" {
+		return parsed.Title
+	}
+	return input
+}
+
+func scoreComparableTitle(left string, right string) int {
+	left = normalizeComparableTitle(left)
+	right = normalizeComparableTitle(right)
+	if left == "" || right == "" {
+		return 0
+	}
+	switch {
+	case left == right:
+		return 100
+	case strings.Contains(left, right):
+		return 60
+	case strings.Contains(right, left):
+		return 40
+	default:
+		return 0
+	}
+}
+
+func normalizeComparableTitle(title string) string {
+	parsed, err := decode.GetVideoInfoFromFileName(title)
+	if err == nil && parsed != nil && strings.TrimSpace(parsed.Title) != "" {
+		title = parsed.Title
+	}
+	title = pkg.ReplaceSpecString(title, " ")
+	return strings.ToLower(strings.Join(strings.Fields(title), " "))
+}
+
+func compactNonEmptyTitles(items ...string) []string {
+	out := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
 }
 
 func (s *Supplier) filterCandidates(client *resty.Client, results []searchResult) ([]subtitleCandidate, error) {
@@ -411,18 +529,56 @@ func candidateMetadata(candidate subtitleCandidate) ranking.CandidateMetadata {
 	return meta
 }
 
-func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string) []string {
+func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string, isMovie bool, season, episode int) []string {
+	baseTitles := make([]string, 0, 5)
 	if mediaInfo == nil {
-		return expandSearchKeywordVariants([]string{
+		baseTitles = []string{
+			getLocalNfoTitle(videoFPath),
+			getLocalNfoOriginalTitle(videoFPath),
 			normalizeVideoTitle(videoFPath),
-		})
+		}
+	} else {
+		baseTitles = []string{
+			mediaInfo.TitleEn,
+			mediaInfo.OriginalTitle,
+			getLocalNfoTitle(videoFPath),
+			getLocalNfoOriginalTitle(videoFPath),
+			normalizeVideoTitle(videoFPath),
+		}
 	}
 
-	return expandSearchKeywordVariants([]string{
-		mediaInfo.TitleEn,
-		mediaInfo.OriginalTitle,
-		normalizeVideoTitle(videoFPath),
-	})
+	baseTitles = compactNonEmptyTitles(baseTitles...)
+	if isMovie {
+		return expandSearchKeywordVariants(baseTitles)
+	}
+
+	return expandSeriesSearchKeywordVariants(baseTitles, season, episode)
+}
+
+func getLocalNfoTitle(videoFPath string) string {
+	info, err := decode.GetVideoNfoInfoFromEpisode(videoFPath)
+	if err == nil && strings.TrimSpace(info.Title) != "" {
+		return info.Title
+	}
+
+	info, err = decode.GetVideoNfoInfo4Movie(videoFPath)
+	if err == nil {
+		return strings.TrimSpace(info.Title)
+	}
+	return ""
+}
+
+func getLocalNfoOriginalTitle(videoFPath string) string {
+	info, err := decode.GetVideoNfoInfoFromEpisode(videoFPath)
+	if err == nil && strings.TrimSpace(info.OriginalTitle) != "" {
+		return info.OriginalTitle
+	}
+
+	info, err = decode.GetVideoNfoInfo4Movie(videoFPath)
+	if err == nil {
+		return strings.TrimSpace(info.OriginalTitle)
+	}
+	return ""
 }
 
 func normalizeVideoTitle(videoFPath string) string {
@@ -451,6 +607,58 @@ func expandSearchKeywordVariants(items []string) []string {
 		}
 	}
 	return out
+}
+
+func expandSeriesSearchKeywordVariants(items []string, season, episode int) []string {
+	out := expandSearchKeywordVariants(items)
+	if season <= 0 || episode <= 0 {
+		return out
+	}
+
+	seen := make(map[string]struct{}, len(out))
+	for _, item := range out {
+		seen[strings.ToLower(strings.TrimSpace(item))] = struct{}{}
+	}
+
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		for _, episodeVariant := range seriesEpisodeKeywordVariants(item, season, episode) {
+			key := strings.ToLower(strings.TrimSpace(episodeVariant))
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, episodeVariant)
+		}
+	}
+
+	return out
+}
+
+func seriesEpisodeKeywordVariants(title string, season, episode int) []string {
+	title = strings.TrimSpace(title)
+	if title == "" || season <= 0 || episode <= 0 {
+		return nil
+	}
+
+	return []string{
+		title + " " + formatSeasonEpisodeTag(season, episode),
+		title + " " + formatSeasonXEpisodeTag(season, episode),
+	}
+}
+
+func formatSeasonEpisodeTag(season, episode int) string {
+	return "S" + strconv.Itoa(season/10) + strconv.Itoa(season%10) + "E" + strconv.Itoa(episode/10) + strconv.Itoa(episode%10)
+}
+
+func formatSeasonXEpisodeTag(season, episode int) string {
+	return strconv.Itoa(season) + "x" + strconv.Itoa(episode)
 }
 
 func keywordVariants(input string) []string {

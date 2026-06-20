@@ -56,6 +56,7 @@ func (d *Downloader) movieDlFunc(ctx context.Context, job taskQueue2.OneJob, dow
 	if len(organizeSubFiles) > 0 {
 		primaryErr = d.oneVideoSelectBestSub(job.VideoFPath, organizeSubFiles)
 		if primaryErr == nil {
+			d.logSubtitleRouteStage(job.VideoFPath, "primary_chinese")
 			d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
 			return d.refreshEmbyMovieSubtitle(job)
 		}
@@ -89,6 +90,7 @@ func (d *Downloader) movieDlFunc(ctx context.Context, job taskQueue2.OneJob, dow
 				return err
 			}
 			if err = d.oneVideoSelectBestSub(job.VideoFPath, translatedSubFiles); err == nil {
+				d.logSubtitleRouteStage(job.VideoFPath, "translated_chinese")
 				d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
 				return d.refreshEmbyMovieSubtitle(job)
 			}
@@ -103,6 +105,7 @@ func (d *Downloader) movieDlFunc(ctx context.Context, job taskQueue2.OneJob, dow
 				return err
 			}
 			if err = d.tryWriteLLMSubtitleFallback(job.VideoFPath, fallbackSubFiles); err == nil {
+				d.logSubtitleRouteStage(job.VideoFPath, "llm_fallback")
 				d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
 				return d.refreshEmbyMovieSubtitle(job)
 			}
@@ -117,6 +120,7 @@ func (d *Downloader) movieDlFunc(ctx context.Context, job taskQueue2.OneJob, dow
 				return err
 			}
 			if err = d.tryWriteEnglishSubtitleFallback(job.VideoFPath, fallbackSubFiles); err == nil {
+				d.logSubtitleRouteStage(job.VideoFPath, "english_fallback")
 				d.downloadQueue.AutoDetectUpdateJobStatus(job, nil)
 				return d.refreshEmbyMovieSubtitle(job)
 			}
@@ -128,6 +132,7 @@ func (d *Downloader) movieDlFunc(ctx context.Context, job taskQueue2.OneJob, dow
 		return primaryErr
 	}
 
+	d.logSubtitleRouteStage(job.VideoFPath, "safe_fail")
 	d.log.Infoln(task_queue.ErrNoSubFound.Error(), filepath.Base(job.VideoFPath))
 	d.downloadQueue.AutoDetectUpdateJobStatus(job, task_queue.ErrNoSubFound)
 	return nil
@@ -195,6 +200,7 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 	for epsKey, episodeInfo := range seriesInfo.NeedDlEpsKeyList {
 		err = d.selectSeriesEpisodeSubtitle(ctx, episodeInfo.FileFullPath, organizeSubFiles[epsKey])
 		if err == nil {
+			d.logSubtitleRouteStage(episodeInfo.FileFullPath, "primary_chinese")
 			save2LocalSubCount++
 			savedEpisodeKeys[epsKey] = struct{}{}
 			continue
@@ -226,6 +232,7 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 			d.log.Errorln(err)
 			continue
 		}
+		d.logSubtitleRouteStage(episodeInfo.FileFullPath, "primary_chinese")
 		save2LocalSubCount++
 		savedEpisodeKeys[seasonEpsKey] = struct{}{}
 		delete(pendingFallbackEpisodes, seasonEpsKey)
@@ -271,6 +278,7 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 					d.log.Errorln(err)
 					continue
 				}
+				d.logSubtitleRouteStage(episodeInfo.FileFullPath, "translated_chinese")
 				save2LocalSubCount++
 				savedEpisodeKeys[epsKey] = struct{}{}
 				delete(pendingFallbackEpisodes, epsKey)
@@ -292,6 +300,7 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 					d.log.Errorln(err)
 					continue
 				}
+				d.logSubtitleRouteStage(episodeInfo.FileFullPath, "llm_fallback")
 				save2LocalSubCount++
 				savedEpisodeKeys[epsKey] = struct{}{}
 				delete(pendingFallbackEpisodes, epsKey)
@@ -313,6 +322,7 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 					d.log.Errorln(err)
 					continue
 				}
+				d.logSubtitleRouteStage(episodeInfo.FileFullPath, "english_fallback")
 				save2LocalSubCount++
 				savedEpisodeKeys[epsKey] = struct{}{}
 				delete(pendingFallbackEpisodes, epsKey)
@@ -328,6 +338,7 @@ func (d *Downloader) seriesDlFunc(ctx context.Context, job taskQueue2.OneJob, do
 
 	if save2LocalSubCount < 1 {
 		errSave2Local = normalizeSeriesTerminalError(errSave2Local)
+		d.logSubtitleRouteStage(job.VideoFPath, "safe_fail")
 		d.downloadQueue.AutoDetectUpdateJobStatus(job, errSave2Local)
 		return errSave2Local
 	}

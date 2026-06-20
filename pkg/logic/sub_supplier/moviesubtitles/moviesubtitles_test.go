@@ -3,6 +3,7 @@ package moviesubtitles
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -129,6 +130,28 @@ func TestBuildSearchKeywordsFallsBackToFileNameWithoutMediaInfo(t *testing.T) {
 	}
 }
 
+func TestBuildSearchKeywordsUsesMovieNfoOriginalTitleWhenMediaInfoMissing(t *testing.T) {
+	dir := t.TempDir()
+	videoPath := filepath.Join(dir, "鏃舵椂鍒诲埢 (2002) - 1080p.mkv")
+	nfoPath := filepath.Join(dir, "鏃舵椂鍒诲埢 (2002) - 1080p.nfo")
+	if err := os.WriteFile(nfoPath, []byte(`<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>鏃舵椂鍒诲埢</title>
+  <originaltitle>The Hours</originaltitle>
+  <imdbid>tt0274558</imdbid>
+</movie>`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	keywords := buildSearchKeywords(nil, videoPath)
+	if len(keywords) < 2 {
+		t.Fatalf("expected nfo-backed keywords, got %#v", keywords)
+	}
+	if keywords[0] != "The Hours" {
+		t.Fatalf("expected nfo original title first, got %#v", keywords)
+	}
+}
+
 func TestParseMoviePageChineseOnly(t *testing.T) {
 	html := `
 <table>
@@ -244,6 +267,36 @@ func TestFetchFinalDownloadURL(t *testing.T) {
 	}
 	if got != server.URL+"/files/movie.zh.zip" {
 		t.Fatalf("fetchFinalDownloadURL() = %q", got)
+	}
+}
+
+func TestFetchDownloadPageURLResolvesRelativeSubtitlePageURL(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cfg := settings.Get()
+	oldRootURL := cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl
+	t.Cleanup(func() {
+		cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl = oldRootURL
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/subtitle-2.html" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`<div class="download_container"><a href="download-59143.html" class="download_link"><h3>Download</h3></a></div>`))
+	}))
+	defer server.Close()
+
+	cfg.AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl = server.URL
+
+	client := newTestHTTPClient(t)
+	supplier := &Supplier{}
+
+	got, err := supplier.fetchDownloadPageURL(client, "/subtitle-2.html")
+	if err != nil {
+		t.Fatalf("fetchDownloadPageURL() error = %v", err)
+	}
+	if got != server.URL+"/download-59143.html" {
+		t.Fatalf("fetchDownloadPageURL() = %q", got)
 	}
 }
 

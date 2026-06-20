@@ -229,8 +229,8 @@ func TestOneVideoSelectBestSubUsesCurrentDefaultSourcePriority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile(savedPath) error = %v", err)
 	}
-	if string(savedContent) != makeASSContent("subtitle_best") {
-		t.Fatalf("saved subtitle content did not come from highest-priority current source")
+	if string(savedContent) != makeASSContent("assrt") {
+		t.Fatalf("saved subtitle content did not come from the current default-priority source")
 	}
 }
 
@@ -664,6 +664,54 @@ func TestOneVideoSelectBestSubPrefersNativeChineseOverSubtitleCatTranslated(t *t
 	}
 }
 
+func TestOneVideoSelectBestSubRejectsSubtitleCatTranslatedWithoutChineseContent(t *testing.T) {
+	settings.SetConfigRootPath(t.TempDir())
+	cfg := settings.Get()
+	cfg.AdvancedSettings.DebugMode = false
+	cfg.AdvancedSettings.SaveMultiSub = false
+	cfg.AdvancedSettings.FixTimeLine = false
+	cfg.ExperimentalFunction.AutoChangeSubEncode.Enable = false
+	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
+
+	videoDir := t.TempDir()
+	videoPath := filepath.Join(videoDir, "Episode.mkv")
+	if err := os.WriteFile(videoPath, []byte("video"), 0o600); err != nil {
+		t.Fatalf("WriteFile(video) error = %v", err)
+	}
+
+	downloadDir := t.TempDir()
+	disguisedPath := filepath.Join(downloadDir, "["+common2.SubSiteSubtitleCatTrans+"]_0_translated.srt")
+	disguisedBody := strings.Join([]string{
+		"1",
+		"00:00:01,000 --> 00:00:02,000",
+		"Hello there",
+		"",
+		"2",
+		"00:00:03,000 --> 00:00:04,000",
+		"General Kenobi",
+		"",
+	}, "\n")
+	if err := os.WriteFile(disguisedPath, []byte(disguisedBody), 0o600); err != nil {
+		t.Fatalf("WriteFile(disguised) error = %v", err)
+	}
+
+	log := logrus.New()
+	d := &Downloader{
+		log:              log,
+		mk:               markSystem.NewMarkingSystem(log, common2.DefaultSubSiteSequence(), 0),
+		SaveSubHelper:    save_sub_helper.NewSaveSubHelper(log, formatterEmby.NewFormatter(), nil),
+		subNameFormatter: formatterCommon.Emby,
+	}
+
+	err := d.oneVideoSelectBestSub(videoPath, []string{disguisedPath})
+	if err == nil {
+		t.Fatal("expected disguised translated subtitle without chinese content to be rejected")
+	}
+	if errors.Is(err, errNoUsableChineseSubtitle) == false {
+		t.Fatalf("unexpected error = %v", err)
+	}
+}
+
 func TestTryWriteLLMSubtitleFallbackTranslatesEnglishCandidateInFallbackStage(t *testing.T) {
 	settings.SetConfigRootPath(t.TempDir())
 	cfg := settings.Get()
@@ -807,6 +855,7 @@ func TestTryWriteLLMSubtitleFallbackSkipsWhenAPIKeyMissing(t *testing.T) {
 		t.Fatalf("unexpected files after skipped llm fallback: %#v", entries)
 	}
 }
+
 
 func TestTryWriteLLMSubtitleFallbackOpenAICompatibleEndToEnd(t *testing.T) {
 	settings.SetConfigRootPath(t.TempDir())

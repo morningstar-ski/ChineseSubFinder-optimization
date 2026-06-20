@@ -21,7 +21,7 @@
         <div class="app-toolbar__right">
           <version-update-item>
             <q-item clickable class="app-toolbar__link">
-              <q-item-section class="q-px-sm"> 版本说明 </q-item-section>
+              <q-item-section class="q-px-sm"> 版本更新 </q-item-section>
             </q-item>
           </version-update-item>
 
@@ -62,7 +62,7 @@
             <div class="app-brand__name">ChineseSubFinder</div>
             <div class="app-brand__meta">
               <q-badge v-if="displayVersion" class="app-brand__badge">{{ displayVersion }}</q-badge>
-              <span>字幕任务面板</span>
+              <span>本地字幕服务</span>
             </div>
           </div>
         </div>

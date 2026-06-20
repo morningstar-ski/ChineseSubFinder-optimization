@@ -74,7 +74,10 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 		updateTimeString, code, err := codeProvider.GetCode()
 		if err != nil {
 			if errors.Is(err, subtitle_best_api.ErrAuthKeyNotSet) {
-				p.log.Warningln("SubtitleBestCodeProvider.GetCode auth key is not set continue without shared code")
+				// The shared subtitle.best code helper is optional. Missing auth
+				// should not read like an operational warning when the runtime is
+				// intentionally configured without it.
+				p.log.Infoln("SubtitleBestCodeProvider.GetCode auth key is not set continue without shared code")
 			} else {
 				notify_center.Notify.Add("GetSubhdCode", "GetCodeFromWeb,"+err.Error())
 				p.log.Errorln("SubtitleBestCodeProvider.GetCode", err)
@@ -149,6 +152,7 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 			supplierFactory: func() ifaces.ISupplier { return subdl.NewSupplier(fileDownloader) },
 			supportMovie:    true,
 			supportSeries:   true,
+			skipPrimary:     true,
 			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
 				hub.AddEnglishFallbackSupplier(subdl.NewEnglishSupplier(fileDownloader), true, true)
 			},
@@ -186,6 +190,7 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 			supplierFactory: func() ifaces.ISupplier { return tvsubtitles.NewSupplier(fileDownloader) },
 			supportMovie:    false,
 			supportSeries:   true,
+			skipPrimary:     true,
 		}
 	}
 
@@ -195,6 +200,7 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 			supplierFactory: func() ifaces.ISupplier { return moviesubtitles.NewSupplier(fileDownloader) },
 			supportMovie:    true,
 			supportSeries:   false,
+			skipPrimary:     true,
 			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
 				hub.AddEnglishFallbackSupplier(moviesubtitles.NewEnglishSupplier(fileDownloader), true, false)
 			},
@@ -233,26 +239,28 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 }
 
 func buildSubSupplierHub(plans map[string]supplierPlan) *subSupplier.SubSupplierHub {
-	orderedPlans := orderSupplierPlans(plans)
-	if len(orderedPlans) == 0 {
+	primaryPlans := orderPrimarySupplierPlans(plans)
+	if len(primaryPlans) == 0 {
 		return nil
 	}
 
 	var hub *subSupplier.SubSupplierHub
-	for _, plan := range orderedPlans {
-		if hub == nil && plan.skipPrimary == false {
-			supportMovie, supportSeries := supplierPlanCapabilities(plan)
-			hub = subSupplier.NewSubSupplierHubWithCapabilities(plan.supplierFactory(), supportMovie, supportSeries)
-		} else if hub != nil && plan.skipPrimary == false {
-			supportMovie, supportSeries := supplierPlanCapabilities(plan)
-			hub.AddSubSupplierWithCapability(plan.supplierFactory(), supportMovie, supportSeries)
-		}
+	for _, plan := range primaryPlans {
+		supportMovie, supportSeries := supplierPlanCapabilities(plan)
 		if hub == nil {
+			hub = subSupplier.NewSubSupplierHubWithCapabilities(plan.supplierFactory(), supportMovie, supportSeries)
 			continue
 		}
+		hub.AddSubSupplierWithCapability(plan.supplierFactory(), supportMovie, supportSeries)
+	}
+
+	for _, plan := range orderEnglishFallbackSupplierPlans(plans) {
 		if plan.addEnglishFallbacks != nil {
 			plan.addEnglishFallbacks(hub)
 		}
+	}
+
+	for _, plan := range orderTranslatedFallbackSupplierPlans(plans) {
 		if plan.addTranslatedFallbacks != nil {
 			plan.addTranslatedFallbacks(hub)
 		}
@@ -266,6 +274,43 @@ func supplierPlanCapabilities(plan supplierPlan) (bool, bool) {
 }
 
 func orderSupplierPlans(plans map[string]supplierPlan) []supplierPlan {
+	return orderSupplierPlansByPreference(plans, common2.DefaultSubSiteSequence())
+}
+
+func orderPrimarySupplierPlans(plans map[string]supplierPlan) []supplierPlan {
+	filtered := make(map[string]supplierPlan)
+	for siteName, plan := range plans {
+		if plan.skipPrimary {
+			continue
+		}
+		filtered[siteName] = plan
+	}
+	return orderSupplierPlansByPreference(filtered, common2.DefaultPrimarySubSiteSequence())
+}
+
+func orderEnglishFallbackSupplierPlans(plans map[string]supplierPlan) []supplierPlan {
+	filtered := make(map[string]supplierPlan)
+	for siteName, plan := range plans {
+		if plan.addEnglishFallbacks == nil {
+			continue
+		}
+		filtered[siteName] = plan
+	}
+	return orderSupplierPlansByPreference(filtered, common2.DefaultEnglishFallbackSubSiteSequence())
+}
+
+func orderTranslatedFallbackSupplierPlans(plans map[string]supplierPlan) []supplierPlan {
+	filtered := make(map[string]supplierPlan)
+	for siteName, plan := range plans {
+		if plan.addTranslatedFallbacks == nil {
+			continue
+		}
+		filtered[siteName] = plan
+	}
+	return orderSupplierPlansByPreference(filtered, common2.DefaultTranslatedFallbackSubSiteSequence())
+}
+
+func orderSupplierPlansByPreference(plans map[string]supplierPlan, preferred []string) []supplierPlan {
 	if len(plans) == 0 {
 		return nil
 	}
@@ -275,7 +320,7 @@ func orderSupplierPlans(plans map[string]supplierPlan) []supplierPlan {
 		siteNames = append(siteNames, siteName)
 	}
 
-	orderedSiteNames := common2.OrderSubSiteNames(siteNames, common2.DefaultSubSiteSequence())
+	orderedSiteNames := common2.OrderSubSiteNames(siteNames, preferred)
 	orderedPlans := make([]supplierPlan, 0, len(orderedSiteNames))
 	for _, siteName := range orderedSiteNames {
 		orderedPlans = append(orderedPlans, plans[siteName])

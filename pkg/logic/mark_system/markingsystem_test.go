@@ -125,3 +125,24 @@ func TestSelectBestEnglishSubFilePrefersSRTOverASSWhenScoresClose(t *testing.T) 
 		t.Fatalf("SelectBestEnglishSubFile() FileFullPath = %q; want %q", got.FileFullPath, srtPath)
 	}
 }
+
+func TestSelectBestEnglishSubFileAcceptsFalseChineseLabelWhenNoChineseContent(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	disguisedPath := filepath.Join(tmpDir, "["+common.SubSiteSubtitleCatTrans+"]_0_My.Show.S01E03.1080p.WEB-DL-GROUP.fake-zh.srt")
+	disguisedContent := "1\n00:00:01,000 --> 00:00:02,000\nHello there\n\n2\n00:00:03,000 --> 00:00:04,000\nGeneral Kenobi\n"
+
+	if err := os.WriteFile(disguisedPath, []byte(disguisedContent), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", disguisedPath, err)
+	}
+
+	mk := NewMarkingSystem(log_helper.GetLogger4Tester(), common.DefaultSubSiteSequence(), 0)
+	got := mk.SelectBestEnglishSubFile([]string{disguisedPath}, filepath.Join("C:\\", "Media", "My.Show.S01E03.1080p.WEB-DL-GROUP.mkv"))
+	if got == nil {
+		t.Fatal("SelectBestEnglishSubFile() returned nil for english-only disguised subtitle")
+	}
+	if got.FileFullPath != disguisedPath {
+		t.Fatalf("SelectBestEnglishSubFile() FileFullPath = %q; want %q", got.FileFullPath, disguisedPath)
+	}
+}

@@ -21,6 +21,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const maxAudioFallbackTimelineFixDurationSeconds = 3600
+
 type SubTimelineFixerHelperEx struct {
 	log                 *logrus.Logger
 	ffmpegHelper        *ffmpeg_helper.FFMPEGHelper
@@ -93,6 +95,17 @@ func (s *SubTimelineFixerHelperEx) Process(videoFileFullPath, srcSubFPath string
 	}
 	// 内置的字幕，这里只列举一种格式出来，其实会有一个字幕的 srt 和 ass 两种格式都导出存在
 	if ffmpegInfo.SubtitleInfoList == nil || len(ffmpegInfo.SubtitleInfoList) <= 0 || oneSubAndIsError == true {
+		if shouldSkipAudioFallbackTimelineFix(ffmpegInfo.Duration) {
+			s.log.Infoln(
+				"Skip TimeLine Fix -- audio fallback duration too long:",
+				ffmpegInfo.Duration,
+				"video:",
+				videoFileFullPath,
+				"subtitle:",
+				srcSubFPath,
+			)
+			return nil
+		}
 
 		if ffmpegInfo.AudioInfoList == nil || len(ffmpegInfo.AudioInfoList) == 0 {
 			return errors.New("SubTimelineFixerHelperEx.Process.ExportFFMPEGInfo Can`t Find SubTitle And Audio To Export -- " + videoFileFullPath)
@@ -151,6 +164,10 @@ func (s *SubTimelineFixerHelperEx) Process(videoFileFullPath, srcSubFPath string
 	s.log.Infoln("BackUp Org SubFile:", srcSubFPath+sub_timeline_fixer.BackUpExt)
 
 	return nil
+}
+
+func shouldSkipAudioFallbackTimelineFix(videoDurationSeconds float64) bool {
+	return videoDurationSeconds > maxAudioFallbackTimelineFixDurationSeconds
 }
 
 func (s *SubTimelineFixerHelperEx) ProcessBySubFileInfo(infoBase *subparser.FileInfo, infoSrc *subparser.FileInfo) (bool, *subparser.FileInfo, sub_timeline_fixer.PipeResult, error) {

@@ -10,7 +10,7 @@ export const PROJECT_UPDATE_MARKDOWN = `
 当前仓库基于 [ChineseSubFinder](https://github.com/ChineseSubFinder/ChineseSubFinder) 持续修改而来。
 保留对原作者和所有贡献者的感谢，现有能力建立在上游长期积累的扫描、匹配和字幕处理基础上。
 
-## 相比原仓库的当前增强
+## 当前版本增强
 
 - 扩展并接入更多字幕源：\`OpenSubtitles\`、\`TVsubtitles\`、\`Moviesubtitles\`、\`SubHD\`、\`SubtitleCat\`。
 - 英文字幕回退链默认保留 \`SubtitleCat\`，在缺少直链字幕时补足英文源。

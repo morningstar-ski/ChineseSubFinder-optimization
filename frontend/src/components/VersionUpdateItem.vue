@@ -1,7 +1,7 @@
 <template>
   <span @click="visible = true">
     <slot v-if="$slots.default"></slot>
-    <q-badge v-else class="cursor-pointer" label="版本说明" title="查看当前版本说明" />
+    <q-badge v-else class="cursor-pointer" label="版本更新" title="查看当前版本更新" />
   </span>
   <q-dialog v-model="visible">
     <q-card class="column version-note-card">
@@ -81,7 +81,7 @@ import {
 const visible = ref(false);
 const tab = ref('summary');
 const displayVersion = computed(() => normalizeDisplayVersion(systemState.systemInfo?.version));
-const dialogTitle = computed(() => (displayVersion.value ? `当前版本说明 (${displayVersion.value})` : '当前版本说明'));
+const dialogTitle = computed(() => (displayVersion.value ? `当前版本更新 (${displayVersion.value})` : '当前版本更新'));
 
 const navigateToRepoPage = () => {
   window.open(PROJECT_REPO_URL, '_blank');

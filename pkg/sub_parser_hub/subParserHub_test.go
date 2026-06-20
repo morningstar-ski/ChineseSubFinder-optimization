@@ -9,6 +9,7 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/ass"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_parser/srt"
+	language2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/unit_test_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/subparser"
 )
@@ -152,6 +153,28 @@ func TestDetermineFileTypeFromBytesFallsBackToOriginalBytes(t *testing.T) {
 	}
 	if bFind == false || subFileInfo == nil {
 		t.Fatal("expected fallback parser to match original bytes")
+	}
+}
+
+func TestSubParserHubIsSubHasChineseRejectsFalseChineseLabelWithoutChineseContent(t *testing.T) {
+	test4Log := log_helper.GetLogger4Tester()
+	subParserHub := NewSubParserHub(test4Log, ass.NewParser(test4Log), srt.NewParser(test4Log))
+
+	fileInfo := &subparser.FileInfo{
+		Lang:    language2.ChineseSimple,
+		Content: "Hello there\nGeneral Kenobi\n",
+		OtherLines: []string{
+			"Hello there",
+			"General Kenobi",
+		},
+		DialoguesFilter: []subparser.OneDialogue{
+			{Lines: []string{"Hello there"}},
+			{Lines: []string{"General Kenobi"}},
+		},
+	}
+
+	if subParserHub.IsSubHasChinese(fileInfo) {
+		t.Fatal("expected false chinese label without chinese content to be rejected")
 	}
 }
 

@@ -98,6 +98,62 @@ func TestTaskQueue_AddAndGetAndDel(t *testing.T) {
 	}
 }
 
+func TestTaskQueue_PreservesChineseVideoPath(t *testing.T) {
+
+	taskQueue := newTestTaskQueue(t)
+	videoPath := "/media/movies/外语电影/记忆碎片 (2000)/记忆碎片 (2000) - 1080p.mkv"
+
+	bok, err := taskQueue.Add(*task_queue2.NewOneJob(common.Movie, videoPath, DefaultTaskPriorityLevel))
+	if err != nil {
+		t.Fatal("TestTaskQueue.Add", err)
+	}
+	if bok == false {
+		t.Fatal("TestTaskQueue.Add == false")
+	}
+
+	bok, jobs, err := taskQueue.GetAllJobs()
+	if err != nil {
+		t.Fatal("TestTaskQueue.GetAllJobs", err)
+	}
+	if bok == false {
+		t.Fatal("TestTaskQueue.GetAllJobs == false")
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("len(jobs) = %d, want 1", len(jobs))
+	}
+	if jobs[0].VideoFPath != videoPath {
+		t.Fatalf("VideoFPath = %q, want %q", jobs[0].VideoFPath, videoPath)
+	}
+	if jobs[0].VideoName != "记忆碎片 (2000) - 1080p.mkv" {
+		t.Fatalf("VideoName = %q", jobs[0].VideoName)
+	}
+
+	taskQueue.Close()
+
+	reloaded := newTaskQueueOrSkip(t)
+	t.Cleanup(func() {
+		reloaded.Close()
+		cache_center.DelDb(taskQueueName)
+	})
+
+	bok, jobs, err = reloaded.GetAllJobs()
+	if err != nil {
+		t.Fatal("Reloaded.GetAllJobs", err)
+	}
+	if bok == false {
+		t.Fatal("Reloaded.GetAllJobs == false")
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("len(reloaded jobs) = %d, want 1", len(jobs))
+	}
+	if jobs[0].VideoFPath != videoPath {
+		t.Fatalf("reloaded VideoFPath = %q, want %q", jobs[0].VideoFPath, videoPath)
+	}
+	if jobs[0].VideoName != "记忆碎片 (2000) - 1080p.mkv" {
+		t.Fatalf("reloaded VideoName = %q", jobs[0].VideoName)
+	}
+}
+
 func TestTaskQueue_AddAndClear(t *testing.T) {
 
 	taskQueue := newTestTaskQueue(t)

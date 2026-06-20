@@ -100,3 +100,38 @@ func TestProbeSupplierStatusesDisabledSupplierDoesNotMutateTopic(t *testing.T) {
 		t.Fatalf("topic mutated to %d; want 3", cfg.AdvancedSettings.Topic)
 	}
 }
+
+func TestProbeSupplierStatusesSubtitleBestReportsCredentialMissingWhenEnabledWithoutKey(t *testing.T) {
+	settings.SetConfigRootPath(t.TempDir())
+	cfg := settings.Get()
+	cfg.SubtitleSources.SubtitleBestSettings.Enabled = true
+	cfg.SubtitleSources.SubtitleBestSettings.ApiKey = ""
+
+	oldLiteMode := pkg.LiteMode()
+	pkg.SetLiteMode(false)
+	defer pkg.SetLiteMode(oldLiteMode)
+
+	fileDownloader := &file_downloader.FileDownloader{Log: logrus.New()}
+	reply := ProbeSupplierStatuses(fileDownloader, []string{common2.SubSiteSubtitleBest})
+
+	if len(reply.SubSiteStatus) != 1 {
+		t.Fatalf("status count = %d; want 1", len(reply.SubSiteStatus))
+	}
+
+	got := reply.SubSiteStatus[0]
+	if got.Name != common2.SubSiteSubtitleBest {
+		t.Fatalf("status name = %q; want %q", got.Name, common2.SubSiteSubtitleBest)
+	}
+	if got.Enabled != true {
+		t.Fatalf("status enabled = %v; want true", got.Enabled)
+	}
+	if got.Valid != false {
+		t.Fatalf("status valid = %v; want false", got.Valid)
+	}
+	if got.Reason != subhd.ReasonCredentialMissing {
+		t.Fatalf("status reason = %q; want %q", got.Reason, subhd.ReasonCredentialMissing)
+	}
+	if got.RuntimeMode != RuntimeModeLite {
+		t.Fatalf("status runtime mode = %q; want %q", got.RuntimeMode, RuntimeModeLite)
+	}
+}

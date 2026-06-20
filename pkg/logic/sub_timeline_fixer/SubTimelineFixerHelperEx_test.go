@@ -8,6 +8,27 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 )
 
+func TestShouldSkipAudioFallbackTimelineFix(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration float64
+		want     bool
+	}{
+		{name: "short video", duration: 3599, want: false},
+		{name: "one hour boundary", duration: 3600, want: false},
+		{name: "long movie", duration: 3600.1, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldSkipAudioFallbackTimelineFix(tt.duration)
+			if got != tt.want {
+				t.Fatalf("shouldSkipAudioFallbackTimelineFix(%v) = %v, want %v", tt.duration, got, tt.want)
+			}
+		})
+	}
+}
+
 // TODO 暂不方便在其他环境进行单元测试
 func TestSubTimelineFixerHelperEx_Check(t *testing.T) {
 

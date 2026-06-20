@@ -200,7 +200,7 @@ func (m MarkingSystem) parseSubFileInfo(organizeSubFiles []string) map[string][]
 }
 
 func isEnglishFallbackCandidate(info subparser.FileInfo) bool {
-	if language.HasChineseLang(info.Lang) {
+	if language.HasChineseLang(info.Lang) && len(info.CHLines) > 0 {
 		return false
 	}
 	if info.Lang == language2.English {

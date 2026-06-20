@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 ARG NODE_IMAGE=node:20-bookworm-slim
 ARG GO_IMAGE=golang:1.22-bookworm
 ARG RUNTIME_IMAGE=debian:bookworm-slim
@@ -57,7 +55,7 @@ RUN set -eux; \
       ./cmd/chinesesubfinder
 
 FROM ${RUNTIME_IMAGE}
-ARG INSTALL_BROWSER=false
+ARG INSTALL_BROWSER=true
 ENV TZ=Asia/Shanghai \
     PERMS=true \
     PUID=1026 \

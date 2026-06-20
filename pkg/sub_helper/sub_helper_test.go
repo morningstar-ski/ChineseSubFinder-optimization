@@ -205,6 +205,41 @@ func TestOrganizeDlSubFilesMapsNumericFullSeasonArchiveEntries(t *testing.T) {
 	}
 }
 
+func TestOrganizeDlSubFilesMapsEpisodeOnlyArchiveEntries(t *testing.T) {
+	zipPayload, err := buildTestZip(map[string]string{
+		"E01.chs&eng.ass": string(bytes.Repeat([]byte("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello boys\n"), 24)),
+		"E02.chs&eng.ass": string(bytes.Repeat([]byte("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello again\n"), 24)),
+	})
+	if err != nil {
+		t.Fatalf("buildTestZip() error = %v", err)
+	}
+
+	subInfos := []supplier.SubInfo{
+		{
+			FromWhere: "subhd",
+			TopN:      0,
+			Name:      "season-pack.zip",
+			FileUrl:   "https://subhd.me/a/s6uTM8",
+			Ext:       ".zip",
+			Data:      zipPayload,
+			Season:    2,
+			Episode:   0,
+		},
+	}
+
+	organized, err := OrganizeDlSubFiles(log_helper.GetLogger4Tester(), "TestOrganizeDlSubFilesMapsEpisodeOnlyArchiveEntries", subInfos, false)
+	if err != nil {
+		t.Fatalf("OrganizeDlSubFiles() error = %v", err)
+	}
+
+	if got := organized[pkg.GetEpisodeKeyName(2, 1)]; len(got) != 1 || filepath.Base(got[0]) != "[subhd]_0_E01.chs&eng.ass" {
+		t.Fatalf("organized S2E1 = %#v", got)
+	}
+	if got := organized[pkg.GetEpisodeKeyName(2, 2)]; len(got) != 1 || filepath.Base(got[0]) != "[subhd]_0_E02.chs&eng.ass" {
+		t.Fatalf("organized S2E2 = %#v", got)
+	}
+}
+
 func buildTestZip(files map[string]string) ([]byte, error) {
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)

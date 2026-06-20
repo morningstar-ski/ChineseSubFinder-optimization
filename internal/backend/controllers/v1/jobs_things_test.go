@@ -12,14 +12,14 @@ import (
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/cache_center"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/cron_helper"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	taskqueue "github.com/ChineseSubFinder/ChineseSubFinder/pkg/task_queue"
+	backend2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/backend"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/emby"
-	backend2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/backend"
 	task_queue2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/task_queue"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 )
@@ -119,5 +119,86 @@ func TestChangeJobStatusHandlerWaitingUsesManualRequeue(t *testing.T) {
 	}
 	if waitingJob.ErrorInfo != "" {
 		t.Fatalf("error info = %q, want empty", waitingJob.ErrorInfo)
+	}
+}
+
+func TestVideoListAddHandlerPreservesChineseVideoPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	queue := newControllerTestTaskQueue(t)
+	cb := &ControllerBase{
+		log:        logrus.New(),
+		cronHelper: &cron_helper.CronHelper{DownloadQueue: queue},
+	}
+
+	videoPath := "/media/movies/外语电影/记忆碎片 (2000)/记忆碎片 (2000) - 1080p.mkv"
+	reqBody, err := json.Marshal(backend2.ReqVideoListAdd{
+		VideoType:                 0,
+		PhysicalVideoFileFullPath: videoPath,
+		TaskPriorityLevel:         taskqueue.DefaultTaskPriorityLevel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/video/list/add", bytes.NewReader(reqBody))
+	ctx.Request.Header.Set("Content-Type", "application/json; charset=utf-8")
+
+	cb.VideoListAddHandler(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status code = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	bok, jobs, err := queue.GetAllJobs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bok == false {
+		t.Fatal("expected queue.GetAllJobs to succeed")
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("len(jobs) = %d, want 1", len(jobs))
+	}
+	if jobs[0].VideoFPath != videoPath {
+		t.Fatalf("VideoFPath = %q, want %q", jobs[0].VideoFPath, videoPath)
+	}
+	if jobs[0].VideoName != "记忆碎片 (2000) - 1080p.mkv" {
+		t.Fatalf("VideoName = %q", jobs[0].VideoName)
+	}
+}
+
+func TestVideoListAddHandlerReturnsErrorForSeriesEpisodeWithoutNfo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	queue := newControllerTestTaskQueue(t)
+	cb := &ControllerBase{
+		log:        logrus.New(),
+		cronHelper: &cron_helper.CronHelper{DownloadQueue: queue},
+	}
+
+	reqBody, err := json.Marshal(backend2.ReqVideoListAdd{
+		VideoType:                 1,
+		PhysicalVideoFileFullPath: "/media/series/欧美剧/黑袍纠察队 (2019)/Season 1/黑袍纠察队 - S01E03 - 第 3 集.mkv",
+		TaskPriorityLevel:         taskqueue.DefaultTaskPriorityLevel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/video/list/add", bytes.NewReader(reqBody))
+	ctx.Request.Header.Set("Content-Type", "application/json; charset=utf-8")
+
+	cb.VideoListAddHandler(ctx)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status code = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if strings.TrimSpace(recorder.Body.String()) == "" {
+		t.Fatal("expected non-empty error body")
 	}
 }

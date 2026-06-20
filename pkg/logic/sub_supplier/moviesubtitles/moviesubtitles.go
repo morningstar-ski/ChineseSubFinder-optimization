@@ -274,7 +274,7 @@ func (s *Supplier) fetchMovieCandidates(client *resty.Client, movieURL string, v
 }
 
 func (s *Supplier) fetchDownloadPageURL(client *resty.Client, subtitlePageURL string) (string, error) {
-	resp, err := client.R().Get(subtitlePageURL)
+	resp, err := client.R().Get(absoluteURL(settings.Get().AdvancedSettings.SuppliersSettings.MovieSubtitles.RootUrl, subtitlePageURL))
 	if err != nil {
 		return "", err
 	}
@@ -523,17 +523,26 @@ func parseCandidateFields(block *goquery.Selection) map[string]string {
 }
 
 func buildSearchKeywords(mediaInfo *models.MediaInfo, videoFPath string) []string {
+	nfoKeywords := buildMovieNfoKeywords(videoFPath)
 	if mediaInfo == nil {
-		return expandSearchKeywordVariants([]string{
+		return expandSearchKeywordVariants(append(nfoKeywords,
 			normalizeVideoTitle(videoFPath),
-		})
+		))
 	}
 
-	return expandSearchKeywordVariants([]string{
+	return expandSearchKeywordVariants(append([]string{
 		mediaInfo.TitleEn,
 		mediaInfo.OriginalTitle,
 		normalizeVideoTitle(videoFPath),
-	})
+	}, nfoKeywords...))
+}
+
+func buildMovieNfoKeywords(videoFPath string) []string {
+	videoNfoInfo, err := decode.GetVideoNfoInfo4Movie(videoFPath)
+	if err != nil {
+		return nil
+	}
+	return compactStrings(videoNfoInfo.OriginalTitle, videoNfoInfo.Title)
 }
 
 func normalizeVideoTitle(videoFPath string) string {

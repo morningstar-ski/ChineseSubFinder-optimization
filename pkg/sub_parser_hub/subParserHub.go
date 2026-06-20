@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/filter"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	languageConst "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/subparser"
-
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/filter"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/language"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,7 +21,7 @@ type SubParserHub struct {
 	Parser []ifaces.ISubParser
 }
 
-// NewSubParserHub 处理的字幕文件需要符合 [siteName]_ 的前缀描述，是本程序专用的
+// NewSubParserHub 澶勭悊鐨勫瓧骞曟枃浠堕渶瑕佺鍚?[siteName]_ 鐨勫墠缂€鎻忚堪锛屾槸鏈▼搴忎笓鐢ㄧ殑
 func NewSubParserHub(log *logrus.Logger, parser ifaces.ISubParser, _parser ...ifaces.ISubParser) *SubParserHub {
 	s := SubParserHub{}
 	s.log = log
@@ -35,7 +35,7 @@ func NewSubParserHub(log *logrus.Logger, parser ifaces.ISubParser, _parser ...if
 	return &s
 }
 
-// DetermineFileTypeFromFile 确定字幕文件的类型，是双语字幕或者某一种语言等等信息，如果返回 nil ，那么就说明都没有字幕的格式匹配上
+// DetermineFileTypeFromFile 纭畾瀛楀箷鏂囦欢鐨勭被鍨嬶紝鏄弻璇瓧骞曟垨鑰呮煇涓€绉嶈瑷€绛夌瓑淇℃伅锛屽鏋滆繑鍥?nil 锛岄偅涔堝氨璇存槑閮芥病鏈夊瓧骞曠殑鏍煎紡鍖归厤涓?
 func (p SubParserHub) DetermineFileTypeFromFile(filePath string) (bool, *subparser.FileInfo, error) {
 	for _, parser := range p.Parser {
 		bFind, subFileInfo, err := parser.DetermineFileTypeFromFile(filePath)
@@ -45,8 +45,8 @@ func (p SubParserHub) DetermineFileTypeFromFile(filePath string) (bool, *subpars
 		if bFind == false {
 			continue
 		}
-		// 正常至少应该匹配一个吧，不然就是最外层继续返回 nil 出去了
-		// 简体和繁体字幕的判断，通过文件名来做到的，基本就算个补判而已
+		// 姝ｅ父鑷冲皯搴旇鍖归厤涓€涓惂锛屼笉鐒跺氨鏄渶澶栧眰缁х画杩斿洖 nil 鍑哄幓浜?
+		// 绠€浣撳拰绻佷綋瀛楀箷鐨勫垽鏂紝閫氳繃鏂囦欢鍚嶆潵鍋氬埌鐨勶紝鍩烘湰灏辩畻涓ˉ鍒よ€屽凡
 		//newLang := IsChineseSimpleOrTraditional(filePath, subFileInfo.Lang)
 		subFileInfo.Name = filepath.Base(filePath)
 		//subFileInfo.Lang = newLang
@@ -54,12 +54,12 @@ func (p SubParserHub) DetermineFileTypeFromFile(filePath string) (bool, *subpars
 		subFileInfo.FromWhereSite = p.getFromWhereSite(filePath)
 		return true, subFileInfo, nil
 	}
-	// 如果返回 nil ，那么就说明都没有字幕的格式匹配上
+	// 濡傛灉杩斿洖 nil 锛岄偅涔堝氨璇存槑閮芥病鏈夊瓧骞曠殑鏍煎紡鍖归厤涓?
 	return false, nil, nil
 }
 
-// DetermineFileTypeFromBytes 确定字幕文件的类型，是双语字幕或者某一种语言等等信息，如果返回 nil ，那么就说明都没有字幕的格式匹配上
-// 如果要做字幕的时间轴匹配，很可能需要一个功能 sub_helper.MergeMultiDialogue4EngSubtitle，但是仅仅是合并了 English 字幕时间轴
+// DetermineFileTypeFromBytes 纭畾瀛楀箷鏂囦欢鐨勭被鍨嬶紝鏄弻璇瓧骞曟垨鑰呮煇涓€绉嶈瑷€绛夌瓑淇℃伅锛屽鏋滆繑鍥?nil 锛岄偅涔堝氨璇存槑閮芥病鏈夊瓧骞曠殑鏍煎紡鍖归厤涓?
+// 濡傛灉瑕佸仛瀛楀箷鐨勬椂闂磋酱鍖归厤锛屽緢鍙兘闇€瑕佷竴涓姛鑳?sub_helper.MergeMultiDialogue4EngSubtitle锛屼絾鏄粎浠呮槸鍚堝苟浜?English 瀛楀箷鏃堕棿杞?
 func (p SubParserHub) DetermineFileTypeFromBytes(inBytes []byte, nowExt string) (bool, *subparser.FileInfo, error) {
 	normalizedBytes, err := language.ChangeFileCoding2UTF8(inBytes)
 	if err != nil {
@@ -94,10 +94,13 @@ func (p SubParserHub) determineFileTypeFromBytesWithPayload(inBytes []byte, nowE
 	return false, nil, nil
 }
 
-// IsSubHasChinese 字幕文件是否包含中文
+// IsSubHasChinese 瀛楀箷鏂囦欢鏄惁鍖呭惈涓枃
 func (p SubParserHub) IsSubHasChinese(fileInfo *subparser.FileInfo) bool {
+	if fileInfo == nil {
+		return false
+	}
 
-	// 增加判断已存在的字幕是否有中文
+	// 澧炲姞鍒ゆ柇宸插瓨鍦ㄧ殑瀛楀箷鏄惁鏈変腑鏂?
 	if language.HasChineseLang(fileInfo.Lang) == false {
 		if p.log != nil {
 			p.log.Warnln("IsSubHasChinese.HasChineseLang", fileInfo.FileFullPath, "not chinese sub, is ", fileInfo.Lang.String())
@@ -105,10 +108,50 @@ func (p SubParserHub) IsSubHasChinese(fileInfo *subparser.FileInfo) bool {
 		return false
 	}
 
+	if fileInfoHasChineseContent(fileInfo) == false {
+		if p.log != nil {
+			p.log.Warnln("IsSubHasChinese.NoChineseContent", fileInfo.FileFullPath, "lang", fileInfo.Lang.String())
+		}
+		return false
+	}
+
 	return true
 }
 
-// getFromWhereSite 从文件名找出是从那个网站下载的。这里的文件名的前缀是下载时候标记好的，比较特殊
+func fileInfoHasChineseContent(fileInfo *subparser.FileInfo) bool {
+	if fileInfo == nil {
+		return false
+	}
+	for _, line := range fileInfo.CHLines {
+		if containsChineseRune(line) {
+			return true
+		}
+	}
+	for _, dialogueEx := range fileInfo.DialoguesFilterEx {
+		if containsChineseRune(dialogueEx.ChLine) {
+			return true
+		}
+	}
+	for _, dialogue := range fileInfo.DialoguesFilter {
+		for _, line := range dialogue.Lines {
+			if containsChineseRune(line) {
+				return true
+			}
+		}
+	}
+	return containsChineseRune(fileInfo.Content)
+}
+
+func containsChineseRune(input string) bool {
+	for _, r := range input {
+		if unicode.Is(unicode.Han, r) {
+			return true
+		}
+	}
+	return false
+}
+
+// getFromWhereSite 浠庢枃浠跺悕鎵惧嚭鏄粠閭ｄ釜缃戠珯涓嬭浇鐨勩€傝繖閲岀殑鏂囦欢鍚嶇殑鍓嶇紑鏄笅杞芥椂鍊欐爣璁板ソ鐨勶紝姣旇緝鐗规畩
 func (p SubParserHub) getFromWhereSite(filePath string) string {
 	fileName := filepath.Base(filePath)
 	var re = regexp.MustCompile(`^\[(\w+)\]_`)
@@ -119,7 +162,7 @@ func (p SubParserHub) getFromWhereSite(filePath string) string {
 	return matched[1]
 }
 
-// IsSubTypeWanted 这里匹配的字幕的格式，不包含 Ext 的 . 小数点，注意，仅仅是包含关系
+// IsSubTypeWanted 杩欓噷鍖归厤鐨勫瓧骞曠殑鏍煎紡锛屼笉鍖呭惈 Ext 鐨?. 灏忔暟鐐癸紝娉ㄦ剰锛屼粎浠呮槸鍖呭惈鍏崇郴
 func IsSubTypeWanted(subName string) bool {
 	nowLowerName := strings.ToLower(subName)
 	if strings.Contains(nowLowerName, common.SubTypeASS) ||
@@ -131,7 +174,7 @@ func IsSubTypeWanted(subName string) bool {
 	return false
 }
 
-// IsSubExtWanted 输入的字幕文件名，判断后缀名是否符合期望的字幕后缀名列表
+// IsSubExtWanted 杈撳叆鐨勫瓧骞曟枃浠跺悕锛屽垽鏂悗缂€鍚嶆槸鍚︾鍚堟湡鏈涚殑瀛楀箷鍚庣紑鍚嶅垪琛?
 func IsSubExtWanted(subName string) bool {
 	inExt := filepath.Ext(subName)
 	switch strings.ToLower(inExt) {
@@ -142,7 +185,7 @@ func IsSubExtWanted(subName string) bool {
 	}
 }
 
-// IsEmbySubCodecWanted 从 Emby api 拿到字幕的 sub 类型 string (Codec) 是否是符合本程序要求的
+// IsEmbySubCodecWanted 浠?Emby api 鎷垮埌瀛楀箷鐨?sub 绫诲瀷 string (Codec) 鏄惁鏄鍚堟湰绋嬪簭瑕佹眰鐨?
 func IsEmbySubCodecWanted(inSubCodec string) bool {
 
 	tmpString := strings.ToLower(inSubCodec)
@@ -155,7 +198,7 @@ func IsEmbySubCodecWanted(inSubCodec string) bool {
 	return false
 }
 
-// IsEmbySubChineseLangStringWanted 是否是 Emby 自己解析出来的中文语言类型
+// IsEmbySubChineseLangStringWanted 鏄惁鏄?Emby 鑷繁瑙ｆ瀽鍑烘潵鐨勪腑鏂囪瑷€绫诲瀷
 func IsEmbySubChineseLangStringWanted(inLangString string) bool {
 
 	isWanted := false
@@ -164,23 +207,22 @@ func IsEmbySubChineseLangStringWanted(inLangString string) bool {
 	nextString := tmpString
 	spStrings := strings.Split(tmpString, "[")
 	if len(spStrings) > 1 {
-		// 去除 chi[xunlie] 类似的标记
+		// 鍘婚櫎 chi[xunlie] 绫讳技鐨勬爣璁?
 		nextString = spStrings[0]
 	} else {
-		// 去除 chinese（简英,zimuku）
+		// 鍘婚櫎 chinese锛堢畝鑻?zimuku锛?
 		spStrings = strings.Split(tmpString, "(")
 		if len(spStrings) > 1 {
 			nextString = spStrings[0]
 		}
 	}
 
-	// 先判断 ISO 标准的和变种的支持列表，仅仅是中文的
+	// 鍏堝垽鏂?ISO 鏍囧噯鐨勫拰鍙樼鐨勬敮鎸佸垪琛紝浠呬粎鏄腑鏂囩殑
 	if language.IsSupportISOChineseString(nextString) {
-		// fmt.Println("###: ERROR")
 		isWanted = true
 	}
 
-	// 再判断之前支持的列表
+	// 鍐嶅垽鏂箣鍓嶆敮鎸佺殑鍒楄〃
 	switch nextString {
 	case languageConst.Emby_chinese_chs,
 		languageConst.Emby_chinese_cht,
@@ -188,14 +230,14 @@ func IsEmbySubChineseLangStringWanted(inLangString string) bool {
 		// chi chs cht
 		isWanted = true
 	case replaceLangString(languageConst.Emby_chinese):
-		// chinese，这个比较特殊，是本程序定义的 chinese 的字段，再 Emby API 下特殊的字幕命名字段
+		// chinese锛岃繖涓瘮杈冪壒娈婏紝鏄湰绋嬪簭瀹氫箟鐨?chinese 鐨勫瓧娈碉紝鍐?Emby API 涓嬬壒娈婄殑瀛楀箷鍛藉悕瀛楁
 		isWanted = true
 	}
 
 	return isWanted
 }
 
-// SearchMatchedSubFile 搜索符合后缀名的字幕文件
+// SearchMatchedSubFile 鎼滅储绗﹀悎鍚庣紑鍚嶇殑瀛楀箷鏂囦欢
 func SearchMatchedSubFile(log *logrus.Logger, dir string) ([]string, error) {
 
 	var fileFullPathList = make([]string, 0)
@@ -207,18 +249,18 @@ func SearchMatchedSubFile(log *logrus.Logger, dir string) ([]string, error) {
 	for _, curFile := range files {
 		fullPath := dir + pathSep + curFile.Name()
 		if curFile.IsDir() {
-			// 内层的错误就无视了
+			// 鍐呭眰鐨勯敊璇氨鏃犺浜?
 			oneList, _ := SearchMatchedSubFile(log, fullPath)
 			if oneList != nil {
 				fileFullPathList = append(fileFullPathList, oneList...)
 			}
 		} else {
-			// 这里就是文件了
+			// 杩欓噷灏辨槸鏂囦欢浜?
 			if IsSubExtWanted(curFile.Name()) == false {
 				continue
 			} else {
 
-				// 跳过不符合的文件，比如 MAC OS 下可能有缓存文件，见 #138
+				// 璺宠繃涓嶇鍚堢殑鏂囦欢锛屾瘮濡?MAC OS 涓嬪彲鑳芥湁缂撳瓨鏂囦欢锛岃 #138
 				if filter.SkipFileInfo(log, curFile, fullPath) == true {
 					continue
 				}

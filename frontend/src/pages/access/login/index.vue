@@ -19,7 +19,7 @@
 
               <div class="login-panel__status">
                 <div class="login-panel__status-dot"></div>
-                <span>字幕任务面板</span>
+                <span>本地字幕服务</span>
               </div>
             </div>
 

@@ -40,7 +40,7 @@
             <q-item-label caption>
               <div>文档：https://subdl.com/api-doc</div>
               <ul class="q-pl-md">
-                <li>当前接入默认关闭，优先走 IMDB/TMDB 和季集参数搜索。</li>
+                <li>当前接入默认关闭，优先走 IMDB/TMDB 和季集信息搜索。</li>
                 <li>保存后会立即生效，无需重启程序或者容器。</li>
                 <li>当前实现默认只请求中文字幕结果。</li>
               </ul>
@@ -161,9 +161,9 @@
           <q-item-section>
             <q-item-label>SubtitleCat</q-item-label>
             <q-item-label caption>
-              英文字幕回退链默认启用 SubtitleCat，不再提供单独开关。
+              英文字幕回退链默认保留 SubtitleCat，不提供单独开关。
               <br />
-              只有远端翻译中文字幕回退需要用户显式确认。
+              中文字幕远端翻译回退需要用户显式确认。
             </q-item-label>
           </q-item-section>
         </q-item>

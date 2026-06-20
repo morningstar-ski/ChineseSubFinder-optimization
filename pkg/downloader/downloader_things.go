@@ -162,6 +162,10 @@ func (d *Downloader) tryWriteEnglishSubtitleFallback(videoPath string, organizeS
 	return d.writeSingleSubtitle(videoPath, *englishCandidate)
 }
 
+func (d *Downloader) logSubtitleRouteStage(videoPath string, stage string) {
+	d.log.Infoln("SubtitleRouteStage", stage, filepath.Base(videoPath))
+}
+
 // saveFullSeasonSub 需要单独存储到连续剧每一季的特殊缓存目录中。
 func (d *Downloader) saveFullSeasonSub(seriesInfo *series.SeriesInfo, organizeSubFiles map[string][]string) map[string][]string {
 	fullSeasonSubDict := make(map[string][]string)

@@ -342,13 +342,11 @@ const showLLMRuntimeInputs = computed(() => !isRunningInDocker.value);
 const localChromeLabel = computed(() => (isRunningInDocker.value ? '内置 Chrome' : '本地 Chrome'));
 const localChromeCaption = computed(() =>
   isRunningInDocker.value
-    ? '开启后直接启动镜像内置 Chrome。Docker 一键部署默认就走这条浏览器链路。'
-    : '开启后使用本机可用的 Chrome 运行时处理依赖浏览器的流程。'
+    ? 'Docker 一键部署默认直接启动镜像内置 Chrome。'
+    : '开启后使用本机可用的 Chrome 处理依赖浏览器的流程。'
 );
 const localChromeEnabledNote = computed(() =>
-  isRunningInDocker.value
-    ? '当前环境会直接启动镜像内置 Chrome，不需要额外安装浏览器或填写路径。'
-    : '当前环境会直接使用本机可用的 Chrome 运行时。'
+  isRunningInDocker.value ? '当前环境不需要额外安装浏览器，也不需要填写路径。' : '当前环境会直接使用本机可用的 Chrome。'
 );
 
 const apiKeyDocUrl = [

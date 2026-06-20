@@ -5,16 +5,15 @@ import "testing"
 func TestDefaultSubSiteSequence(t *testing.T) {
 	got := DefaultSubSiteSequence()
 	want := []string{
-		SubSiteSubtitleBest,
 		SubSiteAssrt,
-		SubSiteSubDL,
 		SubSiteSubHd,
 		SubSiteShooter,
 		SubSiteXunLei,
 		SubSiteOpenSubtitles,
+		SubSiteSubDL,
+		SubSiteSubtitleCat,
 		SubSiteTVSubtitles,
 		SubSiteMovieSubtitles,
-		SubSiteSubtitleCat,
 		SubSiteSubtitleCatTrans,
 	}
 
@@ -28,18 +27,72 @@ func TestDefaultSubSiteSequence(t *testing.T) {
 	}
 }
 
+func TestDefaultPrimarySubSiteSequence(t *testing.T) {
+	got := DefaultPrimarySubSiteSequence()
+	want := []string{
+		SubSiteAssrt,
+		SubSiteSubHd,
+		SubSiteShooter,
+		SubSiteXunLei,
+		SubSiteOpenSubtitles,
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("DefaultPrimarySubSiteSequence len = %d; want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("DefaultPrimarySubSiteSequence[%d] = %q; want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestDefaultEnglishFallbackSubSiteSequence(t *testing.T) {
+	got := DefaultEnglishFallbackSubSiteSequence()
+	want := []string{
+		SubSiteOpenSubtitles,
+		SubSiteSubDL,
+		SubSiteSubtitleCat,
+		SubSiteMovieSubtitles,
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("DefaultEnglishFallbackSubSiteSequence len = %d; want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("DefaultEnglishFallbackSubSiteSequence[%d] = %q; want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestDefaultTranslatedFallbackSubSiteSequence(t *testing.T) {
+	got := DefaultTranslatedFallbackSubSiteSequence()
+	want := []string{SubSiteSubtitleCatTrans}
+
+	if len(got) != len(want) {
+		t.Fatalf("DefaultTranslatedFallbackSubSiteSequence len = %d; want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("DefaultTranslatedFallbackSubSiteSequence[%d] = %q; want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestOrderSubSiteNames(t *testing.T) {
 	got := OrderSubSiteNames(
-		[]string{SubSiteShooter, "custom_site", SubSiteAssrt, SubSiteOpenSubtitles, SubSiteSubDL, SubSiteSubHd, SubSiteShooter},
+		[]string{SubSiteShooter, "custom_site", SubSiteAssrt, SubSiteOpenSubtitles, SubSiteSubDL, SubSiteSubHd, SubSiteSubtitleBest, SubSiteShooter},
 		DefaultSubSiteSequence(),
 	)
 	want := []string{
 		SubSiteAssrt,
-		SubSiteSubDL,
 		SubSiteSubHd,
 		SubSiteShooter,
 		SubSiteOpenSubtitles,
+		SubSiteSubDL,
 		"custom_site",
+		SubSiteSubtitleBest,
 	}
 
 	if len(got) != len(want) {

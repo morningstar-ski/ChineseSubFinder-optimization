@@ -54,12 +54,7 @@ func (s *SaveSubHelper) WriteSubFile2VideoPath(videoFileFullPath string, finalSu
 	}
 
 	// 然后还需要判断是否需要校正字幕的时间轴
-	if settings.Get().AdvancedSettings.FixTimeLine == true {
-		err = s.subTimelineFixerHelperEx.Process(videoFileFullPath, desSubFullPath)
-		if err != nil {
-			return err
-		}
-	}
+	s.tryFixTimeline(videoFileFullPath, desSubFullPath)
 	// 判断是否需要转换字幕的编码
 	if settings.Get().ExperimentalFunction.AutoChangeSubEncode.Enable == true {
 		s.log.Infoln("----------------------------------")
@@ -89,4 +84,18 @@ func (s *SaveSubHelper) WriteSubFile2VideoPath(videoFileFullPath string, finalSu
 	s.log.Infoln("SubDownAt:", desSubFullPath)
 
 	return nil
+}
+
+func (s *SaveSubHelper) tryFixTimeline(videoFileFullPath, desSubFullPath string) {
+	if settings.Get().AdvancedSettings.FixTimeLine == false {
+		return
+	}
+	if s.subTimelineFixerHelperEx == nil {
+		s.log.Warnln("FixTimeLine enabled but timeline fixer helper is nil, skip time fix --", desSubFullPath)
+		return
+	}
+
+	if err := s.subTimelineFixerHelperEx.Process(videoFileFullPath, desSubFullPath); err != nil {
+		s.log.Warnln("Skip TimeLine Fix --", desSubFullPath, err)
+	}
 }

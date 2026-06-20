@@ -174,6 +174,28 @@ func TestShouldRetrySubHDSearchPageWithBrowserOnlyForSearchProbeFailures(t *test
 	}
 }
 
+func TestShouldContinueSeriesKeywordSearchOnlyForRecoverableSearchFailures(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "search layout", err: wrapReason(ReasonSearchLayoutChanged, fmt.Errorf("search html changed")), want: true},
+		{name: "probe", err: wrapReason(ReasonProbeFailed, fmt.Errorf("eof")), want: true},
+		{name: "detail layout", err: wrapReason(ReasonDetailLayoutChanged, fmt.Errorf("detail html changed")), want: false},
+		{name: "captcha", err: wrapReason(ReasonCaptchaOcrFailed, fmt.Errorf("bad captcha")), want: false},
+		{name: "nil", err: nil, want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldContinueSeriesKeywordSearch(tc.err); got != tc.want {
+				t.Fatalf("shouldContinueSeriesKeywordSearch() = %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestShouldSkipDuplicateMovieFallback(t *testing.T) {
 	cases := []struct {
 		name     string

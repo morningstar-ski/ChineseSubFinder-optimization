@@ -18,6 +18,23 @@ from .subtitle_io import SubtitleCue, display_width, read_srt, write_srt
 MAX_SUBTITLE_LINES = 2
 TARGET_LINE_WIDTH = 22
 IRRELEVANT_FILE_EXTENSIONS = ("srt", "ass", "ssa", "sub", "idx", "sup", "vtt")
+KNOWN_NAMED_ENTITY_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(?<![A-Za-z])Murph(?![A-Za-z])", re.IGNORECASE), "墨菲"),
+    (re.compile(r"(?<![A-Za-z])Tom(?![A-Za-z])", re.IGNORECASE), "汤姆"),
+    (re.compile(r"(?<![A-Za-z])Hughie(?![A-Za-z])", re.IGNORECASE), "休伊"),
+    (re.compile(r"(?<![A-Za-z])Translucent(?![A-Za-z])", re.IGNORECASE), "透明人"),
+    (re.compile(r"(?<![A-Za-z])Homelander(?![A-Za-z])", re.IGNORECASE), "祖国人"),
+    (re.compile(r"(?<![A-Za-z])Starlight(?![A-Za-z])", re.IGNORECASE), "星光"),
+    (re.compile(r"(?<![A-Za-z])Shockwave(?![A-Za-z])", re.IGNORECASE), "冲击波"),
+    (re.compile(r"(?<![A-Za-z])A\s*-\s*Train(?![A-Za-z])", re.IGNORECASE), "火车头"),
+    (re.compile(r"(?<![A-Za-z])Mother(?:'s|’s)\s+Milk(?![A-Za-z])", re.IGNORECASE), "母乳"),
+    (re.compile(r"(?<![A-Za-z])M\.?\s*M\.?(?![A-Za-z])", re.IGNORECASE), "母乳"),
+    (re.compile(r"(?<![A-Za-z])Compound\s+V(?![A-Za-z])", re.IGNORECASE), "五号化合物"),
+    (re.compile(r"(?<![A-Za-z])Gargantua(?![A-Za-z])", re.IGNORECASE), "卡冈图雅"),
+    (re.compile(r"(?<![A-Za-z])Lazarus(?![A-Za-z])", re.IGNORECASE), "拉撒路"),
+    (re.compile(r"(?<![A-Za-z])TARS(?![A-Za-z])", re.IGNORECASE), "塔斯"),
+    (re.compile(r"(?<![A-Za-z])CASE(?![A-Za-z])", re.IGNORECASE), "凯斯"),
+]
 
 
 @dataclass(frozen=True)
@@ -129,6 +146,10 @@ def _is_irrelevant_subtitle_line(line: str) -> bool:
         return True
     if "MY-SUBS" in upper:
         return True
+    if "EASY SUBTITLES SYNCHRONIZER" in upper:
+        return True
+    if "REPAIR AND SYNCHRONIZATION BY" in upper:
+        return True
     if _looks_like_local_path(plain):
         return True
     if _looks_like_release_filename(plain):
@@ -175,7 +196,8 @@ def _cue_kind(cue: SubtitleCue) -> str:
     plain = _plain_source_text(cue)
     if plain and "\n" not in plain:
         letters = [char for char in plain if char.isalpha()]
-        if letters and plain.upper() == plain and len(plain.split()) <= 5:
+        looks_like_dialogue_punctuation = bool(re.search(r"[?!！？。.]$", plain))
+        if letters and plain.upper() == plain and len(plain.split()) <= 5 and not looks_like_dialogue_punctuation:
             return "screen_text"
     if "<i>" in cue.text.lower():
         return "italic_dialogue_or_lyric"
@@ -317,7 +339,15 @@ def _postprocess_translation_text(text: str, request: TranslateJobRequest) -> st
     lines = [line for line in lines if not _is_irrelevant_subtitle_line(line)]
     if _style_requests_no_punctuation(request.style):
         lines = [_replace_punctuation_with_spaces_preserving_states(line).strip() for line in lines]
+    lines = [_normalize_known_named_entities(line) for line in lines]
     return "\n".join(line for line in lines if line).strip()
+
+
+def _normalize_known_named_entities(text: str) -> str:
+    normalized = text
+    for pattern, replacement in KNOWN_NAMED_ENTITY_REPLACEMENTS:
+        normalized = pattern.sub(replacement, normalized)
+    return normalized
 
 
 def _cue_prompt_payload(cue: SubtitleCue) -> dict[str, Any]:
@@ -329,9 +359,17 @@ def _cue_prompt_payload(cue: SubtitleCue) -> dict[str, Any]:
     }
 
 
-def _write_chunk_debug_artifacts(chunk_dir: Path, chunk_index: int, prompt: str, payload: dict[str, Any]) -> None:
+def _write_chunk_debug_artifacts(
+    chunk_dir: Path,
+    chunk_index: int,
+    prompt: str,
+    payload: dict[str, Any],
+    *,
+    variant: str = "",
+) -> None:
     chunk_dir.mkdir(parents=True, exist_ok=True)
-    prefix = f"chunk-{chunk_index:03d}"
+    suffix = f".{variant}" if variant else ""
+    prefix = f"chunk-{chunk_index:03d}{suffix}"
     (chunk_dir / f"{prefix}.prompt.txt").write_text(prompt, encoding="utf-8")
 
     raw_payload = payload.get("__raw_api_payload")
@@ -352,6 +390,155 @@ def _write_chunk_debug_artifacts(chunk_dir: Path, chunk_index: int, prompt: str,
     )
 
 
+def _contains_chinese(text: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
+
+
+def _contains_ascii_letters(text: str) -> bool:
+    return bool(re.search(r"[A-Za-z]", text))
+
+
+def _has_untranslated_label_fragment(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    patterns = [
+        r'^(?:[-—–]\s*)?[\[\(（【<]\s*[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}(?:\s+[A-Z][A-Za-z]+)?\s*[\]\)）】>]\s*',
+        r'^(?:[-—–]\s*)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,2}\s*[:：]\s*',
+    ]
+    return any(re.match(pattern, stripped) for pattern in patterns)
+
+
+def _is_allowed_english_only_line(text: str, cue: SubtitleCue) -> bool:
+    plain = _plain_source_line(text)
+    if not plain:
+        return True
+    if _is_irrelevant_subtitle_line(plain):
+        return True
+
+    words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", plain)
+    compact = re.sub(r"[^A-Za-z]", "", plain)
+    if not words:
+        return True
+
+    if len(words) == 1:
+        word = words[0]
+        if (
+            len(word) >= 2
+            and len(word) <= 6
+            and word.upper() == word
+            and re.fullmatch(r"[A-Z]{2,6}", plain) is not None
+        ):
+            return True
+
+    cue_kind = _cue_kind(cue)
+    if cue_kind != "dialogue" and len(compact) >= 2 and len(compact) <= 8 and len(words) <= 2 and plain.upper() == plain:
+        return True
+
+    return False
+
+
+def _needs_untranslated_repair(text: str, cue: SubtitleCue) -> bool:
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    for line in lines:
+        if not _contains_ascii_letters(line):
+            continue
+        if _has_untranslated_label_fragment(line):
+            return True
+        if _contains_chinese(line):
+            continue
+        if _is_allowed_english_only_line(line, cue):
+            continue
+        return True
+    return False
+
+
+def _repair_prompt_payload(cue: SubtitleCue, current_text: str) -> dict[str, Any]:
+    return {
+        "id": cue.index,
+        "kind": _cue_kind(cue),
+        "source_lines": _source_lines(cue.text),
+        "current_lines": [line.strip() for line in current_text.split("\n") if line.strip()],
+    }
+
+
+def _build_repair_prompt(request: TranslateJobRequest, cue_texts: list[tuple[SubtitleCue, str]]) -> str:
+    lines = [
+        f"Repair the following subtitle cues into clean {request.target_language} subtitle text.",
+        "The previous translation left some English unchanged.",
+        "Rules:",
+        "1. Return exactly one item for every cue id below. Do not drop, merge, reorder, or skip any cue.",
+        "2. Rewrite every remaining English dialogue fragment into natural Chinese. Do not keep English sentences unchanged.",
+        "2a. This also applies to very short dialogue fragments and line-leading dash dialogue such as - In secret., - Why secret?, - Come on., or - Wait. They must be rendered as natural Chinese subtitle lines, not copied through in English.",
+        "2b. Do not leave an isolated acronym, abbreviation, or alphanumeric shorthand as the whole subtitle cue when that cue is spoken dialogue. Short lines such as NASA?, RPM., 1G., 2G, or Plan B must be expanded or translated into natural Chinese from local context unless the cue is clearly a literal on-screen code or product/model mark.",
+        "3. Proper names and acronyms may stay in their original script only when Chinese viewers normally expect that exact form. For recurring spoken character names, family given names, nicknames, places, spacecraft, missions, or named objects such as Tom, Murph, Hughie, Translucent, Gargantua, Lazarus, TARS, or CASE, prefer the standard Chinese transliteration or conventional Chinese rendering when it is clear from local context instead of leaving a bare English token behind.",
+        "4. If a cue is only a speaker label or on-screen label, convert it into concise Chinese bracketed form and do not leave a raw English-only or mixed English-label form such as [Matty] or [Rya] 我去了 unchanged.",
+        "5. Do not leave broken OCR letter fragments or clipped name tails unchanged. Fragments such as S., T., A., Y., rph? must be repaired into natural Chinese from the local cue context instead of being copied through.",
+        "6. Keep globally familiar institutional or technical acronyms such as NASA, GPS, FBI, CIA, USB, AI, and RPM only when Chinese subtitle readers commonly recognize them in that raw form and the raw acronym is not the whole spoken subtitle line by itself. Do not use this exception to leave ordinary dialogue names untranslated.",
+        "7. Remove watermark, synchronization-credit, and release-noise text completely while still returning a valid Chinese subtitle line for that cue when the cue carries scene meaning.",
+        "8. Keep the subtitle concise and return a JSON array only. Each item must be {\"id\": <int>, \"lines\": [<line1>, <optional line2>]} with no commentary.",
+        "CUES:",
+    ]
+    for cue, current_text in cue_texts:
+        lines.append(json.dumps(_repair_prompt_payload(cue, current_text), ensure_ascii=False))
+    return "\n".join(lines)
+
+
+def _repair_chunk_translations(
+    client: Any | None,
+    *,
+    provider: str,
+    model: str,
+    request: TranslateJobRequest,
+    cue_texts: list[tuple[SubtitleCue, str]],
+    chunk_index: int,
+    chunk_debug_dir: Path | None,
+) -> dict[int, str]:
+    prompt = _build_repair_prompt(request, cue_texts)
+    cue_by_id = {cue.index: cue for cue, _text in cue_texts}
+    repaired: dict[int, str] = {cue.index: text for cue, text in cue_texts}
+
+    for attempt in range(1, 3):
+        payload = _request_translation_payload(
+            client,
+            provider=provider,
+            model=model,
+            prompt=prompt,
+            request=request,
+        )
+        if chunk_debug_dir is not None:
+            _write_chunk_debug_artifacts(
+                chunk_debug_dir,
+                chunk_index,
+                prompt,
+                payload,
+                variant=f"repair-{attempt}",
+            )
+
+        items = payload.get("translations", [])
+        if not isinstance(items, list):
+            raise RuntimeError("Repair translation response did not contain translations.")
+
+        repaired = {}
+        for item in items:
+            cue_id = int(item["id"])
+            cue = cue_by_id.get(cue_id)
+            if cue is None:
+                continue
+            repaired[cue_id] = _translation_text_from_item(item, request, cue)
+
+        remaining = [
+            (cue_by_id[cue_id], text)
+            for cue_id, text in repaired.items()
+            if cue_id in cue_by_id and text and _needs_untranslated_repair(text, cue_by_id[cue_id])
+        ]
+        if not remaining:
+            break
+        prompt = _build_repair_prompt(request, remaining)
+    return repaired
+
+
 def _build_prompt(request: TranslateJobRequest, cues: list[SubtitleCue]) -> str:
     lines = [
         f"Translate the following subtitle cues from {request.source_language or 'the source language'} to {request.target_language}.",
@@ -359,7 +546,7 @@ def _build_prompt(request: TranslateJobRequest, cues: list[SubtitleCue]) -> str:
         "Rules:",
         "1. Return exactly one item for every cue id below. Do not drop, merge, reorder, or skip any cue.",
         "2. Translate every meaningful cue into natural spoken Chinese. Do not leave an English sentence unchanged. If unsure, give the safest Chinese paraphrase instead of copying the English source.",
-        "3. Exceptions: keep proper names, acronyms, HTML markup, and inline control markers such as {n8} unchanged. Keep a standalone name in its original script unless a standard Chinese form is obvious from the cue.",
+        "3. Exceptions: keep proper names, acronyms, HTML markup, and inline control markers such as {n8} unchanged only when Chinese viewers normally expect that exact raw form. However, a bare speaker label, a line-leading English label, or an isolated acronym/alphanumeric shorthand used as the whole spoken cue must not remain as raw English text; convert that kind of cue into concise natural Chinese. For recurring spoken character names, family given names, nicknames, places, spacecraft, missions, or named objects such as Tom, Murph, Hughie, Translucent, Gargantua, Lazarus, TARS, or CASE, prefer the standard Chinese transliteration or conventional Chinese rendering when local context makes it obvious.",
         "4. Very short cues still need translation when they carry meaning: questions, calls, shouts, fragments, trailing phrases, confirmations, and commands.",
         "5. If one sentence is split across neighboring cues, translate each cue as the matching fragment of that same sentence. Keep unfinished openings such as than, but, and, or because naturally unfinished when the source is unfinished.",
         "6. Use nearby cues only to disambiguate damaged text or unfinished clauses. Do not pull words, facts, conclusions, or emotional color from another cue into the current cue. Do not anticipate the next cue or repeat it early.",
@@ -368,9 +555,11 @@ def _build_prompt(request: TranslateJobRequest, cues: list[SubtitleCue]) -> str:
         "9. Keep concrete nouns, objects, destinations, and requests concrete. Do not smooth them into vague or abstract Chinese.",
         "10. Prefer concise natural subtitle Chinese over mirrored English word order. Compress only when needed for subtitle readability.",
         "11. Translate on-screen labels, lyrics, and stylized lines into concise readable Chinese. Keep non-dialogue cues visibly distinct with bracketed Chinese such as [sound] style cues translated into Chinese brackets.",
-        "12. Drop local file paths, release filenames, site watermarks, URL-only lines, and release-group prefixes unrelated to the scene.",
-        "13. Each item's lines array must contain 1 or 2 subtitle lines only, short enough to read on screen.",
-        "14. Return a JSON array only. Each item must be {\"id\": <int>, \"lines\": [<line1>, <optional line2>]} with no commentary.",
+        "12. Never leave broken OCR letter fragments or clipped name tails unchanged. Repair pieces such as S., T., A., Y., rph? into natural Chinese from the local cue context.",
+        "13. Keep globally familiar institutional or technical acronyms such as NASA, GPS, FBI, CIA, USB, AI, and RPM only when Chinese subtitle readers commonly recognize them in that raw form and the cue is not just that raw acronym or shorthand by itself. Short spoken cues such as NASA?, RPM., 1G., or 2G should be rendered into natural Chinese from context unless they are clearly literal on-screen codes. Do not use this exception to leave ordinary dialogue names untranslated.",
+        "14. Drop local file paths, release filenames, site watermarks, URL-only lines, and release-group prefixes unrelated to the scene.",
+        "15. Each item's lines array must contain 1 or 2 subtitle lines only, short enough to read on screen.",
+        "16. Return a JSON array only. Each item must be {\"id\": <int>, \"lines\": [<line1>, <optional line2>]} with no commentary.",
     ]
     if request.style:
         lines.append(f"Follow this style guide exactly after preserving the meaning: {request.style}")
@@ -502,6 +691,7 @@ def _translate_chunks(
 ) -> dict[int, str]:
     translated: dict[int, str] = {}
     chunk_debug_dir = (request.output_path.parent / "chunk-debug") if request.output_path else None
+    provider = _normalize_provider(request.provider)
     for chunk_index, chunk in enumerate(chunks, start=1):
         prompt = _build_prompt(request, chunk)
         cue_by_id = {cue.index: cue for cue in chunk}
@@ -511,7 +701,7 @@ def _translate_chunks(
             try:
                 payload = _request_translation_payload(
                     client,
-                    provider=_normalize_provider(request.provider),
+                    provider=provider,
                     model=model,
                     prompt=prompt,
                     request=request,
@@ -533,8 +723,28 @@ def _translate_chunks(
             if cue is None:
                 raise RuntimeError(f"Gemini returned unexpected cue id {cue_id}.")
             text = _translation_text_from_item(item, request, cue)
-            if text:
-                translated[cue_id] = text
+            translated[cue_id] = text
+
+        repair_candidates: list[tuple[SubtitleCue, str]] = []
+        for cue in chunk:
+            current_text = translated.get(cue.index, "")
+            if current_text and _needs_untranslated_repair(current_text, cue):
+                repair_candidates.append((cue, current_text))
+        if repair_candidates:
+            try:
+                repaired = _repair_chunk_translations(
+                    client,
+                    provider=provider,
+                    model=model,
+                    request=request,
+                    cue_texts=repair_candidates,
+                    chunk_index=chunk_index,
+                    chunk_debug_dir=chunk_debug_dir,
+                )
+                for cue_id, repaired_text in repaired.items():
+                    translated[cue_id] = repaired_text
+            except Exception:
+                pass
     return translated
 
 
@@ -560,11 +770,15 @@ def run_translate_job(request: TranslateJobRequest) -> dict[str, Any]:
             if cue is None:
                 continue
             text = _translation_text_from_item(item, request, cue)
-            if text:
-                translations[cue_id] = text
+            translations[cue_id] = text
         output_cues: list[SubtitleCue] = []
         for cue in cues:
-            translated_text = translations.get(cue.index, cue.text)
+            if cue.index in translations:
+                translated_text = translations[cue.index]
+                if not translated_text:
+                    continue
+            else:
+                translated_text = cue.text
             output_cues.append(SubtitleCue(index=cue.index, start=cue.start, end=cue.end, text=translated_text))
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(write_srt(output_cues), encoding="utf-8")
@@ -610,7 +824,12 @@ def run_translate_job(request: TranslateJobRequest) -> dict[str, Any]:
 
     output_cues: list[SubtitleCue] = []
     for cue in cues:
-        translated_text = translations.get(cue.index, cue.text)
+        if cue.index in translations:
+            translated_text = translations[cue.index]
+            if not translated_text:
+                continue
+        else:
+            translated_text = cue.text
         output_cues.append(SubtitleCue(index=cue.index, start=cue.start, end=cue.end, text=translated_text))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

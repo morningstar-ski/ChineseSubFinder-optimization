@@ -10,6 +10,7 @@ import (
 
 	backend2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/backend"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
+	types2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types"
 	TTaskqueue "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/task_queue"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/internal/dao"
@@ -55,7 +56,8 @@ func (cb *ControllerBase) AddJobHandler(c *gin.Context) {
 	if videoListAdd.VideoType == 1 {
 		// 连续剧
 		// 连续剧的时候需要额外提交信息
-		epsVideoNfoInfo, err := decode.GetVideoNfoInfo4OneSeriesEpisode(videoListAdd.PhysicalVideoFileFullPath)
+		var epsVideoNfoInfo types2.VideoNfoInfo
+		epsVideoNfoInfo, err = decode.GetVideoNfoInfo4OneSeriesEpisode(videoListAdd.PhysicalVideoFileFullPath)
 		if err != nil {
 			return
 		}

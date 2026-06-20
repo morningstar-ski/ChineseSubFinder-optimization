@@ -2,21 +2,45 @@ package common
 
 import "sort"
 
-// DefaultSubSiteSequence 定义默认的字幕站点优先级。
-func DefaultSubSiteSequence() []string {
+// DefaultPrimarySubSiteSequence defines the default native-Chinese supplier priority.
+func DefaultPrimarySubSiteSequence() []string {
 	return []string{
-		SubSiteSubtitleBest,
 		SubSiteAssrt,
-		SubSiteSubDL,
 		SubSiteSubHd,
 		SubSiteShooter,
 		SubSiteXunLei,
 		SubSiteOpenSubtitles,
-		SubSiteTVSubtitles,
-		SubSiteMovieSubtitles,
+	}
+}
+
+// DefaultEnglishFallbackSubSiteSequence defines the default English fallback supplier priority.
+func DefaultEnglishFallbackSubSiteSequence() []string {
+	return []string{
+		SubSiteOpenSubtitles,
+		SubSiteSubDL,
 		SubSiteSubtitleCat,
+		SubSiteMovieSubtitles,
+	}
+}
+
+// DefaultTranslatedFallbackSubSiteSequence defines the default translated-Chinese fallback priority.
+func DefaultTranslatedFallbackSubSiteSequence() []string {
+	return []string{
 		SubSiteSubtitleCatTrans,
 	}
+}
+
+// DefaultSubSiteSequence 定义默认的字幕站点优先级。
+func DefaultSubSiteSequence() []string {
+	sequence := append([]string{}, DefaultPrimarySubSiteSequence()...)
+	sequence = append(sequence,
+		SubSiteSubDL,
+		SubSiteSubtitleCat,
+		SubSiteTVSubtitles,
+		SubSiteMovieSubtitles,
+	)
+	sequence = append(sequence, DefaultTranslatedFallbackSubSiteSequence()...)
+	return sequence
 }
 
 // OrderSubSiteNames 按给定优先级排序站点名，未命中的站点按字典序追加在后面。
