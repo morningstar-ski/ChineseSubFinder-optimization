@@ -20,6 +20,7 @@ import (
 	formatterEmby "github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_formatter/emby"
 	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/series"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/subparser"
 	"github.com/sirupsen/logrus"
 )
 
@@ -345,6 +346,20 @@ func TestOneVideoSelectBestSubSkipsAbsurdTimelineSubtitle(t *testing.T) {
 	}
 	if string(savedContent) != validContent {
 		t.Fatalf("saved subtitle content did not skip invalid high-priority candidate")
+	}
+}
+
+func TestInvalidSubtitleReasonDetectsNonMonotonicWrappedTimeline(t *testing.T) {
+	fileInfo := &subparser.FileInfo{
+		Dialogues: []subparser.OneDialogue{
+			{StartTime: "23:59:10,560", EndTime: "23:59:16,010", Lines: []string{"line 1"}},
+			{StartTime: "00:00:25,160", EndTime: "00:00:27,700", Lines: []string{"line 2"}},
+		},
+	}
+
+	reason := invalidSubtitleReason(fileInfo, 3395.296)
+	if reason == "" {
+		t.Fatal("expected non-monotonic wrapped timeline to be rejected")
 	}
 }
 

@@ -2,10 +2,12 @@ package pkg
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +49,247 @@ func TestCloseChromeIgnoresNoProcessExit(t *testing.T) {
 	if isCloseChromeNoProcessErr("windows", errors.New("exit status 128")) == false {
 		t.Fatal("expected windows exit status text to be ignored")
 	}
+}
+
+func TestExtractChromeUserDataDir(t *testing.T) {
+	testCases := []struct {
+		name string
+		cmd  string
+		want string
+	}{
+		{
+			name: "quoted value",
+			cmd:  `"C:\Program Files\Google\Chrome\Application\chrome.exe" --headless=new --user-data-dir="C:\work\rod\a1b2" about:blank`,
+			want: `C:\work\rod\a1b2`,
+		},
+		{
+			name: "unquoted value",
+			cmd:  `"C:\Program Files\Google\Chrome\Application\chrome.exe" --user-data-dir=C:\work\rod\a1b2 --remote-debugging-port=0`,
+			want: `C:\work\rod\a1b2`,
+		},
+		{
+			name: "missing",
+			cmd:  `"C:\Program Files\Google\Chrome\Application\chrome.exe"`,
+			want: ``,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := extractChromeUserDataDir(tc.cmd); got != tc.want {
+				t.Fatalf("extractChromeUserDataDir() = %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestShouldCloseOwnedChromeProcessWindows(t *testing.T) {
+	rodRoot := filepath.Clean(`C:\csf\cache\rod`)
+	testCases := []struct {
+		name string
+		cmd  string
+		want bool
+	}{
+		{
+			name: "owned root child",
+			cmd:  `"C:\Program Files\Google\Chrome\Application\chrome.exe" --headless=new --user-data-dir="C:\csf\cache\rod\abc123" about:blank`,
+			want: true,
+		},
+		{
+			name: "owned exact root",
+			cmd:  `"C:\Program Files\Google\Chrome\Application\chrome.exe" --user-data-dir=C:\csf\cache\rod`,
+			want: true,
+		},
+		{
+			name: "normal user chrome",
+			cmd:  `"C:\Program Files\Google\Chrome\Application\chrome.exe" --type=renderer --user-data-dir="C:\Users\yang\AppData\Local\Google\Chrome\User Data"`,
+			want: false,
+		},
+		{
+			name: "no user data dir",
+			cmd:  `"C:\Program Files\Google\Chrome\Application\chrome.exe"`,
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldCloseOwnedChromeProcessWindows(tc.cmd, rodRoot); got != tc.want {
+				t.Fatalf("shouldCloseOwnedChromeProcessWindows() = %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseWindowsChromeProcessList(t *testing.T) {
+	many := `[{"ProcessId":1,"ParentProcessId":2,"CommandLine":"a"},{"ProcessId":3,"ParentProcessId":4,"CommandLine":"b"}]`
+	gotMany, err := parseWindowsChromeProcessList([]byte(many))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotMany) != 2 {
+		t.Fatalf("parseWindowsChromeProcessList() len = %d; want 2", len(gotMany))
+	}
+
+	one := `{"ProcessId":5,"ParentProcessId":6,"CommandLine":"c"}`
+	gotOne, err := parseWindowsChromeProcessList([]byte(one))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotOne) != 1 || gotOne[0].ProcessId != 5 {
+		t.Fatalf("parseWindowsChromeProcessList() single = %+v", gotOne)
+	}
+
+	none, err := parseWindowsChromeProcessList([]byte(`null`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("parseWindowsChromeProcessList() null len = %d; want 0", len(none))
+	}
+}
+
+func TestCloseChromeWindowsOnlyClosesOwnedBrowser(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows only")
+	}
+
+	chromePath := testChromePath(t)
+	rodOwnedDir := filepath.Join(DefRodTmpRootFolder(), "test-owned-browser")
+	externalDir := filepath.Join(t.TempDir(), "test-external-browser")
+	if err := os.MkdirAll(rodOwnedDir, os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(externalDir, os.ModePerm); err != nil {
+		t.Fatal(err)
+	}
+
+	ownedCmd := exec.Command(chromePath,
+		"--headless=new",
+		"--no-sandbox",
+		"--disable-dev-shm-usage",
+		"--user-data-dir="+rodOwnedDir,
+		"--remote-debugging-address=127.0.0.1",
+		"--remote-debugging-port=0",
+		"about:blank",
+	)
+	if err := ownedCmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	externalCmd := exec.Command(chromePath,
+		"--headless=new",
+		"--no-sandbox",
+		"--disable-dev-shm-usage",
+		"--user-data-dir="+externalDir,
+		"--remote-debugging-address=127.0.0.1",
+		"--remote-debugging-port=0",
+		"about:blank",
+	)
+	if err := externalCmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		killChromeByUserDataDir(t, rodOwnedDir)
+		killChromeByUserDataDir(t, externalDir)
+	})
+
+	waitForChromeUserDataDir(t, rodOwnedDir, true, 10*time.Second)
+	waitForChromeUserDataDir(t, externalDir, true, 10*time.Second)
+
+	CloseChrome(logrus.New())
+
+	waitForChromeUserDataDir(t, rodOwnedDir, false, 10*time.Second)
+	waitForChromeUserDataDir(t, externalDir, true, 10*time.Second)
+}
+
+func waitForChromeUserDataDir(t *testing.T, userDataDir string, want bool, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		found, err := hasChromeUserDataDir(userDataDir)
+		if err == nil && found == want {
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	found, err := hasChromeUserDataDir(userDataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("hasChromeUserDataDir(%q) = %v; want %v", userDataDir, found, want)
+}
+
+func hasChromeUserDataDir(userDataDir string) (bool, error) {
+	processes, err := listWindowsChromeProcesses()
+	if err != nil {
+		return false, err
+	}
+	normalizedWant := strings.ToLower(filepath.Clean(userDataDir))
+	for _, proc := range processes {
+		gotDir := extractChromeUserDataDir(proc.CommandLine)
+		if gotDir == "" {
+			continue
+		}
+		if strings.ToLower(filepath.Clean(gotDir)) == normalizedWant {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func listWindowsChromeProcesses() ([]windowsChromeProcessInfo, error) {
+	script := `$ErrorActionPreference = 'Stop'
+$procs = @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Select-Object ProcessId,ParentProcessId,CommandLine)
+$procs | ConvertTo-Json -Depth 3 -Compress`
+	output, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		return nil, err
+	}
+	return parseWindowsChromeProcessList(output)
+}
+
+func killChromeByUserDataDir(t *testing.T, userDataDir string) {
+	t.Helper()
+
+	processes, err := listWindowsChromeProcesses()
+	if err != nil {
+		return
+	}
+	normalizedWant := strings.ToLower(filepath.Clean(userDataDir))
+	for _, proc := range processes {
+		gotDir := extractChromeUserDataDir(proc.CommandLine)
+		if gotDir == "" {
+			continue
+		}
+		if strings.ToLower(filepath.Clean(gotDir)) != normalizedWant {
+			continue
+		}
+		_ = exec.Command("taskkill.exe", "/F", "/T", "/PID", strconv.Itoa(proc.ProcessId)).Run()
+	}
+}
+
+func testChromePath(t *testing.T) string {
+	t.Helper()
+
+	candidates := []string{
+		filepath.Join(os.Getenv("ProgramFiles"), "Google", "Chrome", "Application", "chrome.exe"),
+		filepath.Join(os.Getenv("ProgramFiles(x86)"), "Google", "Chrome", "Application", "chrome.exe"),
+		filepath.Join(os.Getenv("LocalAppData"), "Google", "Chrome", "Application", "chrome.exe"),
+	}
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	t.Fatal("chrome.exe not found")
+	return ""
 }
 
 func exitErrorWithCode(t *testing.T, code int) error {

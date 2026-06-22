@@ -266,9 +266,14 @@ func filterLowConfidenceCandidates(candidates []subtitleCandidate, mediaInfo *mo
 
 	matcher := ranking.NewTargetMatcher(videoFPath, isMovie)
 	targetTitles := candidateTargetTitles(mediaInfo, videoFPath)
+	targetVideoInfo, _ := decode.GetVideoInfoFromFileName(filepath.Base(videoFPath))
 	filtered := make([]subtitleCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
+		candidateParsed, _ := decode.GetVideoInfoFromFileName(candidate.name)
 		if len(targetTitles) > 0 && candidateTitleMatchesTargets(candidate, targetTitles) == false {
+			continue
+		}
+		if isMovie && targetVideoInfo != nil && targetVideoInfo.Year != 0 && candidateParsed != nil && candidateParsed.Year != 0 && targetVideoInfo.Year != candidateParsed.Year {
 			continue
 		}
 		if isMovie == false && season > 0 && episode > 0 && seriesEpisodeMatchesTarget(candidate, season, episode) == false {

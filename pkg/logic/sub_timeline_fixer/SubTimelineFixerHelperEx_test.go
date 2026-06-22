@@ -3,113 +3,37 @@ package sub_timeline_fixer
 import (
 	"testing"
 
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/log_helper"
-
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/subparser"
 )
 
-func TestShouldSkipAudioFallbackTimelineFix(t *testing.T) {
-	tests := []struct {
-		name     string
-		duration float64
-		want     bool
-	}{
-		{name: "short video", duration: 3599, want: false},
-		{name: "one hour boundary", duration: 3600, want: false},
-		{name: "long movie", duration: 3600.1, want: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := shouldSkipAudioFallbackTimelineFix(tt.duration)
-			if got != tt.want {
-				t.Fatalf("shouldSkipAudioFallbackTimelineFix(%v) = %v, want %v", tt.duration, got, tt.want)
-			}
-		})
-	}
-}
-
-// TODO 暂不方便在其他环境进行单元测试
-func TestSubTimelineFixerHelperEx_Check(t *testing.T) {
-
-	//if NewSubTimelineFixerHelperEx(config.GetConfig().SubTimelineFixerConfig).Check() == false {
-	//	t.Fatal("Need Install FFMPEG")
-	//}
-}
-
-// TODO 暂不方便在其他环境进行单元测试
-func TestSubTimelineFixerHelperEx_Process(t *testing.T) {
-	t.Skip("manual integration test depends on local media files")
-
-	//rootDir := unit_test_helper.GetTestDataResourceRootPath([]string{"sub_timeline_fixer"}, 4, true)
-	type args struct {
-		videoFileFullPath string
-		srcSubFPath       string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
-	}{
-		{
-			name: "Foundation (2021) - S01E09", args: args{
-				//videoFileFullPath: "C:\\temp\\video\\瑞克和莫蒂 - S04E05 - Rick and Morty.mp4",
-				videoFileFullPath: "C:\\temp\\video\\Rick and Morty - S05E01 - Mort Dinner Rick Andre WEBDL-1080p.mkv",
-				srcSubFPath:       "C:\\temp\\video\\瑞克和莫蒂 - S04E05 - Rick and Morty.chinese(简英,zimuku).org.ass"}, // Score,48281
-			//srcSubFPath: "C:\\temp\\video\\The Boys - S03E01 - Payback WEBRip-1080p.chinese(简英,subhd).ass"}, // Score,19796
-			//srcSubFPath: "C:\\temp\\video\\Rick and Morty - S05E01 - Mort Dinner Rick Andre WEBDL-1080p.chinese(简英,fix).srt"}, // Score,2
-			//srcSubFPath: "C:\\temp\\video\\Quo Vadis, Aida! (2021) Bluray-1080p.chinese(简,csf).default.srt"}, // Score,2
-			wantErr: false,
+func TestInvalidTimelineFixedSubtitleReasonRejectsWrappedTimeline(t *testing.T) {
+	fileInfo := &subparser.FileInfo{
+		Dialogues: []subparser.OneDialogue{
+			{StartTime: "23:59:10,560", EndTime: "23:59:16,010", Lines: []string{"line 1"}},
+			{StartTime: "00:00:25,160", EndTime: "00:00:27,700", Lines: []string{"line 2"}},
 		},
 	}
 
-	s := NewSubTimelineFixerHelperEx(log_helper.GetLogger4Tester(), *settings.NewTimelineFixerSettings())
-	s.Check()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-
-			if err := s.Process(tt.args.videoFileFullPath, tt.args.srcSubFPath); (err != nil) != tt.wantErr {
-				t.Errorf("Process() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
+	reason := invalidTimelineFixedSubtitleReason(fileInfo, 3395.296)
+	if reason == "" {
+		t.Fatal("expected wrapped timeline to be rejected")
 	}
 }
 
-func TestSubTimelineFixerHelperEx_IsMatchBySubFile(t *testing.T) {
-	t.Skip("manual integration test depends on local media files")
-
-	videoFPath := "C:\\temp\\video\\Rick and Morty - S05E01 - Mort Dinner Rick Andre WEBDL-1080p.mkv"
-	NowTargetSubFPath := "X:\\连续剧\\瑞克和莫蒂 (2013)\\Season 5\\Rick and Morty - S05E01 - Mort Dinner Rick Andre WEBDL-1080p.chinese(简,subhd).ass"
-
-	logger := log_helper.GetLogger4Tester()
-	s := NewSubTimelineFixerHelperEx(logger, *settings.NewTimelineFixerSettings())
-	bok, ffmpegInfo, audioVADInfos, infoBase, err := s.IsVideoCanExportSubtitleAndAudio(videoFPath)
-	if err != nil {
-		logger.Errorln("IsVideoCanExportSubtitleAndAudio", err)
-		return
-	}
-	if bok == false {
-		logger.Errorln("IsVideoCanExportSubtitleAndAudio", "bok == false")
-		return
+func TestInvalidTimelineFixedSubtitleReasonAllowsLongMovieEndTimeWithinTolerance(t *testing.T) {
+	fileInfo := &subparser.FileInfo{
+		Dialogues: []subparser.OneDialogue{
+			{StartTime: "00:00:45,690", EndTime: "00:00:48,290", Lines: []string{"（英国，萨塞克斯）"}},
+			{StartTime: "00:48:17,893", EndTime: "00:48:18,693", Lines: []string{"谁？"}},
+			{StartTime: "01:45:32,296", EndTime: "01:45:34,537", Lines: []string{"生命中的时时刻刻"}},
+		},
 	}
 
-	bok, matchResult, err := s.IsMatchBySubFile(
-		ffmpegInfo,
-		audioVADInfos,
-		infoBase,
-		NowTargetSubFPath,
-		CompareConfig{
-			MinScore:                      40000,
-			OffsetRange:                   2,
-			DialoguesDifferencePercentage: 0.25,
-		})
-	if err != nil {
-		logger.Errorln("IsMatchBySubFile", err)
-		return
+	if end := pkg.Time2SecondNumber(fileInfo.GetEndTime()); end <= 3600 {
+		t.Fatalf("fixture end time = %v; want > 3600", end)
 	}
-
-	if bok == false && matchResult == nil {
-		return
+	if reason := invalidTimelineFixedSubtitleReason(fileInfo, 6886.881); reason != "" {
+		t.Fatalf("invalidTimelineFixedSubtitleReason() = %q; want empty", reason)
 	}
 }

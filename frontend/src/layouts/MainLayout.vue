@@ -122,6 +122,7 @@ const openPage = (url) => {
 }
 
 .app-toolbar {
+  box-sizing: border-box;
   margin: 16px 16px 0;
   min-height: 72px;
   padding: 10px 14px 10px 12px;
@@ -146,6 +147,7 @@ const openPage = (url) => {
 .app-toolbar__right {
   margin-left: auto;
   gap: 8px;
+  min-width: 0;
 }
 
 .app-toolbar__menu {
@@ -293,12 +295,36 @@ const openPage = (url) => {
     padding: 10px;
   }
 
+  .app-toolbar__left {
+    flex: 1 1 auto;
+  }
+
+  .app-toolbar__title-group {
+    max-width: 148px;
+  }
+
+  .app-toolbar__eyebrow {
+    font-size: 10px;
+  }
+
+  .app-toolbar__title {
+    margin-top: 4px;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .app-toolbar__right .app-toolbar__link {
     display: none;
   }
 
+  .app-toolbar__account {
+    padding: 0 2px 0 6px;
+  }
+
   .app-toolbar__username {
-    max-width: 88px;
+    display: none;
   }
 }
 </style>

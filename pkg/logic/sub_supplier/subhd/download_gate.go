@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -638,12 +639,9 @@ func shouldIgnoreSubHDDownloadNavigateError(err error) bool {
 }
 
 func runDDDDOCR(imageBytes []byte) (string, error) {
-	pythonExe := strings.TrimSpace(os.Getenv("CSF_DDDDOCR_PYTHON"))
-	if pythonExe == "" {
-		pythonExe = "python3"
-	}
-	if _, err := exec.LookPath(pythonExe); err != nil {
-		return "", fmt.Errorf("%s not found in PATH: %w", pythonExe, err)
+	pythonExe, err := resolveDDDDOCRPythonExecutable()
+	if err != nil {
+		return "", err
 	}
 
 	cmd := exec.Command(
@@ -663,6 +661,30 @@ sys.stdout.write(ocr.classification(sys.stdin.buffer.read()))
 	}
 
 	return string(out), nil
+}
+
+func resolveDDDDOCRPythonExecutable() (string, error) {
+	candidates := []string{
+		strings.TrimSpace(os.Getenv("CSF_DDDDOCR_PYTHON")),
+	}
+	if runtime.GOOS == "windows" {
+		candidates = append(candidates, "python", "py")
+	} else {
+		candidates = append(candidates, "python3", "python")
+	}
+
+	tried := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		tried = append(tried, candidate)
+		if resolved, err := exec.LookPath(candidate); err == nil {
+			return resolved, nil
+		}
+	}
+
+	return "", fmt.Errorf("python runtime for ddddocr not found; tried %s", strings.Join(tried, ", "))
 }
 
 func prepareCaptchaPNGForOCR(pngBytes []byte) ([]byte, error) {

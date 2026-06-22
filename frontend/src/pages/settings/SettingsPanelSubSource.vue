@@ -1,227 +1,408 @@
 <template>
-  <div>
-    <q-list class="settings-panel-list" dense>
-      <q-item tag="label">
-        <q-item-section>
-          <q-item-label>Assrt（https://assrt.net/api/doc）</q-item-label>
-          <q-item-label caption>
-            <div>注册：https://assrt.net/user/register.xml，用户面板：https://assrt.net/usercp.php</div>
-            <ul class="q-pl-md">
-              <li>一般用户是 5 次/min 的 API 请求限制</li>
-              <li>保存后会立即生效，无需重启程序或者容器。</li>
-              <li>搜索字幕效果未知，如果不用就关闭即可。</li>
-              <li>建议配合“保存多字幕”的选项使用。</li>
-            </ul>
-          </q-item-label>
-        </q-item-section>
-        <q-item-section avatar top>
-          <q-toggle v-model="form.assrt_settings.enabled" />
-        </q-item-section>
-      </q-item>
+  <div class="sub-source-panel">
+    <section class="sub-source-section">
+      <div class="sub-source-section__header">
+        <h3 class="sub-source-section__title">字幕源地址与限额</h3>
+        <p class="sub-source-section__subtitle">统一维护各字幕源的根地址和每日限额。</p>
+      </div>
 
-      <q-item class="q-mt-sm">
-        <q-item-section>
+      <div class="sub-source-provider-list">
+        <div v-for="item in visibleSuppliers" :key="item.name" class="sub-source-provider-row">
+          <div class="sub-source-provider-row__meta">
+            <div class="sub-source-provider-row__name">{{ item.name }}</div>
+            <div class="sub-source-provider-row__url">{{ item.root_url }}</div>
+            <div v-if="item.name !== 'csf'" class="sub-source-provider-row__limit">
+              每日下载限制：{{ item.daily_download_limit }}
+            </div>
+          </div>
+          <edit-sub-source-btn-dialog :data="item" @update="(data) => handleSubSourceUpdate(item, data)" />
+        </div>
+      </div>
+    </section>
+
+    <section class="sub-source-section">
+      <div class="sub-source-section__header">
+        <h3 class="sub-source-section__title">供应商配置</h3>
+        <p class="sub-source-section__subtitle">每个源在同一块里完成启用和凭据填写。</p>
+      </div>
+
+      <div class="supplier-card-list">
+        <article class="supplier-card">
+          <div class="supplier-card__top">
+            <div class="supplier-card__heading">
+              <div class="supplier-card__title-row">
+                <h4 class="supplier-card__title">Assrt</h4>
+                <span class="supplier-card__link">https://assrt.net/api/doc</span>
+              </div>
+              <p class="supplier-card__caption">
+                注册：https://assrt.net/user/register.xml，用户面板：https://assrt.net/usercp.php
+              </p>
+            </div>
+            <q-toggle v-model="form.assrt_settings.enabled" color="primary" />
+          </div>
+
+          <ul class="supplier-card__tips">
+            <li>普通用户接口频率较低，建议按需开启。</li>
+            <li>保存后立即生效，无需重启程序或容器。</li>
+            <li>不使用时直接关闭即可。</li>
+          </ul>
+
           <q-input
-            :disable="!form.assrt_settings.enabled"
             v-model="form.assrt_settings.token"
-            placeholder="填写你的 API Token"
-            label="Assrt API Token"
+            :disable="!form.assrt_settings.enabled"
             standout
             dense
-            :rules="[(val) => !!val || '不能为空']"
+            label="Assrt API Token"
+            placeholder="填写你的 API Token"
           />
-        </q-item-section>
-      </q-item>
+        </article>
 
-      <template v-if="form.subdl_settings">
-        <q-item tag="label">
-          <q-item-section>
-            <q-item-label>SubDL</q-item-label>
-            <q-item-label caption>
-              <div>文档：https://subdl.com/api-doc</div>
-              <ul class="q-pl-md">
-                <li>当前接入默认关闭，优先走 IMDB/TMDB 和季集信息搜索。</li>
-                <li>保存后会立即生效，无需重启程序或者容器。</li>
-                <li>当前实现默认只请求中文字幕结果。</li>
-              </ul>
-            </q-item-label>
-          </q-item-section>
-          <q-item-section avatar top>
-            <q-toggle v-model="form.subdl_settings.enabled" />
-          </q-item-section>
-        </q-item>
+        <article v-if="form.subdl_settings" class="supplier-card">
+          <div class="supplier-card__top">
+            <div class="supplier-card__heading">
+              <div class="supplier-card__title-row">
+                <h4 class="supplier-card__title">SubDL</h4>
+                <span class="supplier-card__link">https://subdl.com/api-doc</span>
+              </div>
+              <p class="supplier-card__caption">默认关闭，启用后按现有逻辑参与字幕检索。</p>
+            </div>
+            <q-toggle v-model="form.subdl_settings.enabled" color="primary" />
+          </div>
 
-        <q-item class="q-mt-sm">
-          <q-item-section>
+          <q-input
+            v-model="form.subdl_settings.key"
+            :disable="!form.subdl_settings.enabled"
+            standout
+            dense
+            label="SubDL ApiKey"
+            placeholder="填写你的 ApiKey"
+          />
+        </article>
+
+        <article v-if="form.opensubtitles_settings" class="supplier-card">
+          <div class="supplier-card__top">
+            <div class="supplier-card__heading">
+              <div class="supplier-card__title-row">
+                <h4 class="supplier-card__title">OpenSubtitles</h4>
+              </div>
+              <p class="supplier-card__caption">同一块内配置启用状态、API key、用户名和密码。</p>
+            </div>
+            <q-toggle v-model="form.opensubtitles_settings.enabled" color="primary" />
+          </div>
+
+          <div class="supplier-card__fields supplier-card__fields--double">
             <q-input
-              :disable="!form.subdl_settings.enabled"
-              v-model="form.subdl_settings.key"
-              placeholder="填写你的 ApiKey"
-              label="SubDL ApiKey"
-              standout
-              dense
-              :rules="[(val) => !!val || '不能为空']"
-            />
-          </q-item-section>
-        </q-item>
-      </template>
-
-      <template v-if="form.opensubtitles_settings">
-        <q-item tag="label">
-          <q-item-section>
-            <q-item-label>OpenSubtitles</q-item-label>
-          </q-item-section>
-          <q-item-section avatar top>
-            <q-toggle v-model="form.opensubtitles_settings.enabled" />
-          </q-item-section>
-        </q-item>
-
-        <q-item class="q-mt-sm">
-          <q-item-section>
-            <q-input
-              :disable="!form.opensubtitles_settings.enabled"
               v-model="form.opensubtitles_settings.api_key"
+              :disable="!form.opensubtitles_settings.enabled"
+              standout
+              dense
+              label="API key"
               placeholder="填写 API key"
-              label="OpenSubtitles API key"
-              standout
-              dense
-              :rules="[(val) => !!val || '不能为空']"
             />
-          </q-item-section>
-        </q-item>
-
-        <q-item class="q-mt-sm">
-          <q-item-section>
             <q-input
-              :disable="!form.opensubtitles_settings.enabled"
               v-model="form.opensubtitles_settings.username"
-              placeholder="用户名"
-              label="OpenSubtitles 用户名"
+              :disable="!form.opensubtitles_settings.enabled"
               standout
               dense
-              :rules="[(val) => !!val || '不能为空']"
+              label="用户名"
+              placeholder="填写用户名"
             />
-          </q-item-section>
-        </q-item>
-
-        <q-item class="q-mt-sm">
-          <q-item-section>
             <q-input
-              :disable="!form.opensubtitles_settings.enabled"
               v-model="form.opensubtitles_settings.password"
-              placeholder="密码"
-              label="OpenSubtitles 密码"
+              :disable="!form.opensubtitles_settings.enabled"
               standout
               dense
               type="password"
-              :rules="[(val) => !!val || '不能为空']"
+              label="密码"
+              placeholder="填写密码"
             />
-          </q-item-section>
-        </q-item>
-      </template>
+          </div>
+        </article>
 
-      <template v-if="form.tvsubtitles_settings">
-        <q-item tag="label">
-          <q-item-section>
-            <q-item-label>TVsubtitles</q-item-label>
-          </q-item-section>
-          <q-item-section avatar top>
-            <q-toggle v-model="form.tvsubtitles_settings.enabled" />
-          </q-item-section>
-        </q-item>
-      </template>
+        <article v-if="form.tvsubtitles_settings" class="supplier-card supplier-card--compact">
+          <div class="supplier-card__top">
+            <div class="supplier-card__heading">
+              <div class="supplier-card__title-row">
+                <h4 class="supplier-card__title">TVsubtitles</h4>
+              </div>
+            </div>
+            <q-toggle v-model="form.tvsubtitles_settings.enabled" color="primary" />
+          </div>
+        </article>
 
-      <template v-if="form.moviesubtitles_settings">
-        <q-item tag="label">
-          <q-item-section>
-            <q-item-label>Moviesubtitles</q-item-label>
-            <q-item-label caption>
-              暂时默认关闭：上游站点当前未发现可用中文字幕库存，已影响真实下载验证。
-            </q-item-label>
-          </q-item-section>
-          <q-item-section avatar top>
-            <q-toggle v-model="form.moviesubtitles_settings.enabled" />
-          </q-item-section>
-        </q-item>
-      </template>
+        <article v-if="form.moviesubtitles_settings" class="supplier-card supplier-card--compact">
+          <div class="supplier-card__top">
+            <div class="supplier-card__heading">
+              <div class="supplier-card__title-row">
+                <h4 class="supplier-card__title">Moviesubtitles</h4>
+              </div>
+              <p class="supplier-card__caption">当前仍建议按需启用。</p>
+            </div>
+            <q-toggle v-model="form.moviesubtitles_settings.enabled" color="primary" />
+          </div>
+        </article>
 
-      <template v-if="form.subhd_settings">
-        <q-item tag="label">
-          <q-item-section>
-            <q-item-label>SubHD</q-item-label>
-          </q-item-section>
-          <q-item-section avatar top>
-            <q-toggle v-model="form.subhd_settings.enabled" />
-          </q-item-section>
-        </q-item>
-      </template>
+        <article v-if="form.subhd_settings" class="supplier-card supplier-card--compact">
+          <div class="supplier-card__top">
+            <div class="supplier-card__heading">
+              <div class="supplier-card__title-row">
+                <h4 class="supplier-card__title">SubHD</h4>
+              </div>
+            </div>
+            <q-toggle v-model="form.subhd_settings.enabled" color="primary" />
+          </div>
+        </article>
 
-      <template v-if="form.subtitlecat_settings">
-        <q-item>
-          <q-item-section>
-            <q-item-label>SubtitleCat</q-item-label>
-            <q-item-label caption>
-              英文字幕回退链默认保留 SubtitleCat，不提供单独开关。
-              <br />
-              中文字幕远端翻译回退需要用户显式确认。
-            </q-item-label>
-          </q-item-section>
-        </q-item>
+        <article v-if="form.subtitlecat_settings" class="supplier-card">
+          <div class="supplier-card__top">
+            <div class="supplier-card__heading">
+              <div class="supplier-card__title-row">
+                <h4 class="supplier-card__title">SubtitleCat</h4>
+              </div>
+              <p class="supplier-card__caption">英文字幕下载回退默认保留；这里只控制中文字幕远端翻译回退。</p>
+            </div>
+          </div>
 
-        <q-item tag="label" class="q-mt-sm">
-          <q-item-section>
-            <q-item-label>SubtitleCat 中文字幕远端翻译回退</q-item-label>
-            <q-item-label caption>
-              默认关闭，需要手动开启。
-              <br />
-              仅使用 SubtitleCat 上已经生成且可直接下载的中文字幕翻译结果。
-            </q-item-label>
-          </q-item-section>
-          <q-item-section avatar top>
-            <q-toggle v-model="form.subtitlecat_settings.enable_translated_chinese_fallback" />
-          </q-item-section>
-        </q-item>
-      </template>
+          <div class="supplier-card__inline-toggle">
+            <div class="supplier-card__inline-copy">
+              <div class="supplier-card__inline-title">中文字幕远端翻译回退</div>
+              <div class="supplier-card__inline-caption">默认关闭，需要用户显式确认后再启用。</div>
+            </div>
+            <q-toggle v-model="form.subtitlecat_settings.enable_translated_chinese_fallback" color="primary" />
+          </div>
+        </article>
 
-      <template v-if="form.subtitle_best_settings">
-        <q-item tag="label">
-          <q-item-section>
-            <q-item-label>SubtitleBest</q-item-label>
-            <q-item-label caption>
-              <div>注册：用 telegram Bot 注册，https://t.me/SubtitleBestBot，使用 /help 指令会有提示</div>
-              <ul class="q-pl-md">
-                <li>此接口依赖 IMDB ID 搜索，会依赖公共信息查询接口。</li>
-                <li>一般用户是每天 50 次下载限制。</li>
-                <li>保存后会立即生效，无需重启程序或者容器。</li>
-              </ul>
-            </q-item-label>
-          </q-item-section>
-          <q-item-section avatar top>
-            <q-toggle v-model="form.subtitle_best_settings.enabled" />
-          </q-item-section>
-        </q-item>
+        <article v-if="form.subtitle_best_settings" class="supplier-card">
+          <div class="supplier-card__top">
+            <div class="supplier-card__heading">
+              <div class="supplier-card__title-row">
+                <h4 class="supplier-card__title">SubtitleBest</h4>
+                <span class="supplier-card__link">https://t.me/SubtitleBestBot</span>
+              </div>
+              <p class="supplier-card__caption">通过 Telegram Bot 注册后填写 ApiKey。</p>
+            </div>
+            <q-toggle v-model="form.subtitle_best_settings.enabled" color="primary" />
+          </div>
 
-        <q-item class="q-mt-sm">
-          <q-item-section>
-            <q-input
-              :disable="!form.subtitle_best_settings.enabled"
-              v-model="form.subtitle_best_settings.api_key"
-              placeholder="填写你的 ApiKey"
-              label="SubtitleBest ApiKey"
-              standout
-              dense
-              :rules="[(val) => !!val || '不能为空']"
-            />
-          </q-item-section>
-        </q-item>
-      </template>
-    </q-list>
+          <q-input
+            v-model="form.subtitle_best_settings.api_key"
+            :disable="!form.subtitle_best_settings.enabled"
+            standout
+            dense
+            label="SubtitleBest ApiKey"
+            placeholder="填写你的 ApiKey"
+          />
+        </article>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { toRefs } from '@vueuse/core';
+import EditSubSourceBtnDialog from 'pages/settings/BtnDialogEditSubSource';
 import { formModel } from 'pages/settings/use-settings';
 
 const { subtitle_sources: form } = toRefs(formModel);
+const hiddenSupplierNames = new Set(['a4k', 'zimuku']);
+
+const visibleSuppliers = computed(() =>
+  Object.values(formModel.advanced_settings?.suppliers_settings ?? {}).filter(
+    (item) => item && !hiddenSupplierNames.has(item.name)
+  )
+);
+
+const handleSubSourceUpdate = (item, data) => {
+  formModel.advanced_settings.suppliers_settings[item.name].root_url = data.url;
+  formModel.advanced_settings.suppliers_settings[item.name].daily_download_limit = data.dailyLimit;
+};
 </script>
+
+<style scoped lang="scss">
+.sub-source-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.sub-source-section {
+  border: 1px solid rgba(15, 23, 42, 0.05);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
+}
+
+.sub-source-section__header {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+  background: rgba(248, 250, 253, 0.85);
+}
+
+.sub-source-section__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #122033;
+}
+
+.sub-source-section__subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #6a7b91;
+}
+
+.sub-source-provider-list,
+.supplier-card-list {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.sub-source-provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.sub-source-provider-row__meta {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.sub-source-provider-row__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #122033;
+}
+
+.sub-source-provider-row__url,
+.sub-source-provider-row__limit {
+  font-size: 12px;
+  color: #6a7b91;
+  word-break: break-all;
+}
+
+.supplier-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.supplier-card--compact {
+  gap: 0;
+}
+
+.supplier-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.supplier-card__heading {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.supplier-card__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.supplier-card__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #122033;
+}
+
+.supplier-card__link {
+  font-size: 12px;
+  color: #74859b;
+  word-break: break-all;
+}
+
+.supplier-card__caption {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #66768c;
+}
+
+.supplier-card__tips {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: #66768c;
+  font-size: 13px;
+}
+
+.supplier-card__fields {
+  display: grid;
+  gap: 12px;
+}
+
+.supplier-card__fields--double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.supplier-card__fields--double :deep(.q-field):last-child {
+  grid-column: 1 / -1;
+}
+
+.supplier-card__inline-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(244, 247, 251, 0.95);
+}
+
+.supplier-card__inline-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.supplier-card__inline-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #122033;
+}
+
+.supplier-card__inline-caption {
+  font-size: 12px;
+  color: #6a7b91;
+}
+
+@media (max-width: 768px) {
+  .sub-source-provider-row,
+  .supplier-card__top,
+  .supplier-card__inline-toggle {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .supplier-card__fields--double {
+    grid-template-columns: 1fr;
+  }
+
+  .supplier-card__fields--double :deep(.q-field):last-child {
+    grid-column: auto;
+  }
+}
+</style>

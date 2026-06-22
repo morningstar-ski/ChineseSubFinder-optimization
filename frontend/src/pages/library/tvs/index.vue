@@ -22,7 +22,7 @@
     <q-separator class="q-mb-md" />
 
     <div v-if="tvs.length" class="tv-index__grid">
-      <q-intersection v-for="item in filteredTvs" :key="item.root_dir_path" style="width: 160px; height: 280px" once>
+      <q-intersection v-for="item in filteredTvs" :key="item.root_dir_path" class="tv-index__grid-item" once>
         <div
           class="item-wrapper cursor-pointer"
           @click="toggleSelection(item)"
@@ -138,11 +138,19 @@ const setLock = async (flag) => {
 
 .tv-index__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.tv-index__grid-item {
+  min-width: 0;
+  height: 100%;
 }
 
 .item-wrapper {
+  position: relative;
+  height: 100%;
   overflow: hidden;
   border-radius: 22px;
   padding: 4px;
@@ -160,5 +168,12 @@ const setLock = async (flag) => {
 
 .tv-index__checkbox {
   margin: 10px;
+}
+
+@media (max-width: 599px) {
+  .tv-index__grid {
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 10px;
+  }
 }
 </style>

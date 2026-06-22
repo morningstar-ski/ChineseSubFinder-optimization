@@ -1,106 +1,108 @@
 <template>
   <div>
     <q-list class="settings-panel-list" dense>
-      <q-item>
+      <q-item class="basic-settings__scan-item">
         <q-item-section>
           <q-item-label>字幕扫描时机</q-item-label>
-          <q-item>
-            <q-item-section avatar top>
-              <q-radio v-model="scanType" :val="0" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>扫描的间隔</q-item-label>
-              <q-item-label caption> 间隔小时数 </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-select
-                v-model="scanCronString0"
-                :options="scanIntervalOptions"
-                standout
-                dense
-                style="width: 200px"
-                :rules="[(val) => !!val || '不能为空']"
-                emit-value
-                map-options
-                :disable="scanType !== 0"
-                @update:model-value="handleScanIntervalChange"
-              />
-            </q-item-section>
-          </q-item>
+          <div class="scan-mode-list">
+            <div class="scan-mode-row">
+              <div class="scan-mode-row__radio">
+                <q-radio v-model="scanType" :val="0" />
+              </div>
+              <div class="scan-mode-row__content">
+                <div class="scan-mode-row__title">扫描的间隔</div>
+                <div class="scan-mode-row__caption">间隔小时数</div>
+              </div>
+              <div class="scan-mode-row__control">
+                <q-select
+                  v-model="scanCronString0"
+                  :options="scanIntervalOptions"
+                  standout
+                  dense
+                  class="scan-mode-row__field"
+                  :rules="[(val) => !!val || '不能为空']"
+                  emit-value
+                  map-options
+                  :disable="scanType !== 0"
+                  @update:model-value="handleScanIntervalChange"
+                />
+              </div>
+            </div>
 
-          <q-item>
-            <q-item-section avatar top>
-              <q-radio v-model="scanType" :val="1" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>指定扫描时间</q-item-label>
-              <q-item-label caption> 选择每天固定时间点 </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-select
-                v-model="scanCronString1"
-                :options="scanSpecTimeOptions"
-                standout
-                dense
-                emit-value
-                map-options
-                style="width: 200px"
-                :rules="[
-                  (val) => !!val || !!val?.length || '不能为空',
-                  (val) => val.length <= 4 || '最多选择4个时间点',
-                ]"
-                :disable="scanType !== 1"
-                @update:model-value="handleScanSpecTimeChange"
-                multiple
-              />
-            </q-item-section>
-          </q-item>
+            <div class="scan-mode-row">
+              <div class="scan-mode-row__radio">
+                <q-radio v-model="scanType" :val="1" />
+              </div>
+              <div class="scan-mode-row__content">
+                <div class="scan-mode-row__title">指定扫描时间</div>
+                <div class="scan-mode-row__caption">选择每天固定时间点</div>
+              </div>
+              <div class="scan-mode-row__control">
+                <q-select
+                  v-model="scanCronString1"
+                  :options="scanSpecTimeOptions"
+                  standout
+                  dense
+                  class="scan-mode-row__field"
+                  :rules="[
+                    (val) => !!val || !!val?.length || '不能为空',
+                    (val) => val.length <= 4 || '最多选择4个时间点',
+                  ]"
+                  emit-value
+                  map-options
+                  :disable="scanType !== 1"
+                  @update:model-value="handleScanSpecTimeChange"
+                  multiple
+                />
+              </div>
+            </div>
 
-          <q-item>
-            <q-item-section avatar top>
-              <q-radio v-model="scanType" :val="2" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>自定义规则</q-item-label>
-              <q-item-label caption>
-                详细规则参考
-                <a href="https://pkg.go.dev/github.com/robfig/cron/v3" target="_blank" class="text-primary"
-                  >robfig/cron 文档</a
-                >
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-input
-                v-model="scanCronString2"
-                standout
-                dense
-                style="width: 200px"
-                :rules="[(val) => !!val || '不能为空', validateCronTime]"
-                @update:model-value="handleScanCustomChange"
-                :disable="scanType !== 2"
-              />
-            </q-item-section>
-          </q-item>
+            <div class="scan-mode-row">
+              <div class="scan-mode-row__radio">
+                <q-radio v-model="scanType" :val="2" />
+              </div>
+              <div class="scan-mode-row__content">
+                <div class="scan-mode-row__title">自定义规则</div>
+                <div class="scan-mode-row__caption">
+                  详细规则参考
+                  <a href="https://pkg.go.dev/github.com/robfig/cron/v3" target="_blank" class="text-primary"
+                    >robfig/cron 文档</a
+                  >
+                </div>
+              </div>
+              <div class="scan-mode-row__control">
+                <q-input
+                  v-model="scanCronString2"
+                  standout
+                  dense
+                  class="scan-mode-row__field"
+                  :rules="[(val) => !!val || '不能为空', validateCronTime]"
+                  @update:model-value="handleScanCustomChange"
+                  :disable="scanType !== 2"
+                />
+              </div>
+            </div>
 
-          <q-item>
-            <q-item-section avatar top>
-              <q-radio v-model="scanType" :val="3" @update:model-value="handleScanNoScanChange" />
-            </q-item-section>
-            <q-item-section>
-              <q-item-label>不扫描</q-item-label>
-            </q-item-section>
-          </q-item>
+            <div class="scan-mode-row scan-mode-row--compact">
+              <div class="scan-mode-row__radio">
+                <q-radio v-model="scanType" :val="3" @update:model-value="handleScanNoScanChange" />
+              </div>
+              <div class="scan-mode-row__content">
+                <div class="scan-mode-row__title">不扫描</div>
+              </div>
+            </div>
+          </div>
         </q-item-section>
       </q-item>
 
       <q-separator spaced inset />
 
-      <q-item>
-        <q-item-section>
+      <q-item class="basic-settings__performance-item">
+        <q-item-section class="basic-settings__performance-label">
           <q-item-label>运行性能档位</q-item-label>
         </q-item-section>
-        <q-item-section avatar>
-          <div class="row">
+        <q-item-section class="basic-settings__performance-options">
+          <div class="basic-settings__performance-group">
             <q-radio v-model="form.threads" :val="1" label="低占用（1 线程）" />
             <q-radio v-model="form.threads" :val="3" label="标准（3 线程）" />
             <q-radio v-model="form.threads" :val="6" label="高性能（6 线程）" />
@@ -110,31 +112,32 @@
 
       <q-separator spaced inset />
 
-      <q-item>
-        <q-item-section class="items-start" top>
+      <q-item class="basic-settings__path-item">
+        <q-item-section class="items-start basic-settings__path-label" top>
           <q-item-label>电影目录</q-item-label>
         </q-item-section>
-        <q-item-section avatar>
-          <q-btn
-            v-if="!form.movie_paths?.length"
-            icon="add"
-            color="primary"
-            dense
-            rounded
-            size="xs"
-            title="新增"
-            @click="form.movie_paths.push('')"
-          ></q-btn>
-          <template v-else v-for="(item, i) in form.movie_paths" :key="i">
-            <div class="row items-center q-gutter-x-md">
+        <q-item-section class="basic-settings__path-editor-section">
+          <div v-if="!form.movie_paths?.length" class="path-editor path-editor--empty">
+            <q-btn
+              icon="add"
+              color="primary"
+              dense
+              rounded
+              size="xs"
+              title="新增"
+              @click="form.movie_paths.push('')"
+            ></q-btn>
+          </div>
+          <div v-else class="path-editor">
+            <div v-for="(item, i) in form.movie_paths" :key="`movie-${i}`" class="path-editor__row">
               <q-input
                 v-model="form.movie_paths[i]"
+                class="path-editor__input"
                 placeholder="/media/电影"
                 standout
                 dense
                 lazy-rules
                 :rules="[(val) => !!val || '不能为空', validateRemotePath]"
-                style="width: 200px"
               />
               <q-btn
                 v-if="i === 0"
@@ -157,36 +160,37 @@
                 @click="form.movie_paths.splice(i, 1)"
               ></q-btn>
             </div>
-          </template>
+          </div>
         </q-item-section>
       </q-item>
 
       <q-separator spaced inset />
 
-      <q-item>
-        <q-item-section class="items-start" top>
+      <q-item class="basic-settings__path-item">
+        <q-item-section class="items-start basic-settings__path-label" top>
           <q-item-label>剧集目录</q-item-label>
         </q-item-section>
-        <q-item-section avatar>
-          <q-btn
-            v-if="!form.series_paths?.length"
-            icon="add"
-            color="primary"
-            dense
-            rounded
-            size="xs"
-            title="新增"
-            @click="form.series_paths.push('')"
-          ></q-btn>
-          <template v-else v-for="(item, i) in form.series_paths" :key="i">
-            <div class="row items-center q-gutter-md">
+        <q-item-section class="basic-settings__path-editor-section">
+          <div v-if="!form.series_paths?.length" class="path-editor path-editor--empty">
+            <q-btn
+              icon="add"
+              color="primary"
+              dense
+              rounded
+              size="xs"
+              title="新增"
+              @click="form.series_paths.push('')"
+            ></q-btn>
+          </div>
+          <div v-else class="path-editor">
+            <div v-for="(item, i) in form.series_paths" :key="`series-${i}`" class="path-editor__row">
               <q-input
                 v-model="form.series_paths[i]"
+                class="path-editor__input"
                 placeholder="/media/连续剧"
                 standout
                 dense
                 :rules="[(val) => !!val || '不能为空', validateRemotePath]"
-                style="width: 200px"
               />
               <q-btn
                 v-if="i === 0"
@@ -209,7 +213,7 @@
                 @click="form.series_paths.splice(i, 1)"
               ></q-btn>
             </div>
-          </template>
+          </div>
         </q-item-section>
       </q-item>
     </q-list>
@@ -308,3 +312,135 @@ watch(
   }
 );
 </script>
+
+<style scoped lang="scss">
+.basic-settings__performance-item,
+.basic-settings__path-item {
+  gap: 16px;
+}
+
+.basic-settings__performance-label,
+.basic-settings__path-label {
+  flex: 0 0 132px;
+}
+
+.basic-settings__performance-options,
+.basic-settings__path-editor-section {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.basic-settings__performance-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.scan-mode-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.scan-mode-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(160px, 200px);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 23, 42, 0.04);
+  border-radius: 18px;
+  background: rgba(244, 247, 251, 0.86);
+}
+
+.scan-mode-row--compact {
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.scan-mode-row__radio {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.scan-mode-row__content {
+  min-width: 0;
+}
+
+.scan-mode-row__title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #142033;
+}
+
+.scan-mode-row__caption {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #66768f;
+}
+
+.scan-mode-row__field {
+  width: 100%;
+}
+
+.path-editor {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 520px);
+}
+
+.path-editor--empty {
+  justify-items: start;
+}
+
+.path-editor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.path-editor__input {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .scan-mode-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 10px 12px;
+  }
+
+  .scan-mode-row__control {
+    grid-column: 2 / -1;
+  }
+
+  .scan-mode-row__title {
+    font-size: 14px;
+  }
+
+  .basic-settings__performance-item,
+  .basic-settings__path-item {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .basic-settings__performance-label,
+  .basic-settings__path-label,
+  .basic-settings__performance-options,
+  .basic-settings__path-editor-section {
+    flex-basis: 100%;
+  }
+
+  .basic-settings__performance-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .path-editor {
+    width: 100%;
+  }
+}
+</style>

@@ -18,8 +18,8 @@
     <q-separator class="q-mb-md" />
 
     <div v-if="movies.length" class="movie-index__grid">
-      <q-intersection v-for="item in filteredMovies" once :key="item.video_f_path" style="height: 280px">
-        <list-item-movie :data="item" width="180px" cover-height="220px" />
+      <q-intersection v-for="item in filteredMovies" once :key="item.video_f_path" class="movie-index__grid-item">
+        <list-item-movie :data="item" cover-height="240px" />
       </q-intersection>
     </div>
 
@@ -66,7 +66,20 @@ const filteredMovies = computed(() => {
 
 .movie-index__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.movie-index__grid-item {
+  min-width: 0;
+  height: 100%;
+}
+
+@media (max-width: 599px) {
+  .movie-index__grid {
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 10px;
+  }
 }
 </style>

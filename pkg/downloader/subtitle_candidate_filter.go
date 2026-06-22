@@ -65,6 +65,13 @@ func invalidSubtitleReason(fileInfo *subparser.FileInfo, videoDuration float64) 
 	if len(fileInfo.Dialogues) == 0 {
 		return "no parsed dialogues"
 	}
+	for i := 1; i < len(fileInfo.Dialogues); i++ {
+		prevStart := pkg.Time2SecondNumber(fileInfo.Dialogues[i-1].GetStartTime())
+		currStart := pkg.Time2SecondNumber(fileInfo.Dialogues[i].GetStartTime())
+		if currStart < prevStart {
+			return "subtitle timeline is not monotonic"
+		}
+	}
 
 	subEndSeconds := pkg.Time2SecondNumber(fileInfo.GetEndTime())
 	if subEndSeconds > maxAbsoluteSubtitleEndSeconds {

@@ -1,13 +1,13 @@
 <template>
   <q-card flat class="movie-card">
     <div class="movie-card__cover">
-      <div v-if="!posterInfo?.url" :style="{ width, height: coverHeight }" class="movie-card__cover-placeholder"></div>
+      <div v-if="!posterInfo?.url" :style="{ height: coverHeight }" class="movie-card__cover-placeholder"></div>
       <q-img
         v-else
         :src="getUrl(posterInfo.url)"
         class="movie-card__image"
         no-spinner
-        :style="{ width, height: coverHeight }"
+        :style="{ height: coverHeight }"
         fit="cover"
       />
 
@@ -119,10 +119,6 @@ import { formModel } from 'pages/settings/use-settings';
 
 const props = defineProps({
   data: Object,
-  width: {
-    type: String,
-    default: '160px',
-  },
   coverHeight: {
     type: String,
     default: '200px',
@@ -202,6 +198,9 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .movie-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   overflow: hidden;
   border-radius: 24px;
   border: 1px solid rgba(15, 23, 42, 0.06);
@@ -216,11 +215,12 @@ onMounted(() => {
 
 .movie-card__cover {
   position: relative;
-  padding: 10px;
+  padding: 8px;
 }
 
 .movie-card__cover-placeholder,
 .movie-card__image {
+  width: 100%;
   border-radius: 18px;
   background: linear-gradient(180deg, #f0f4fa 0%, #e5edf8 100%);
 }
@@ -233,8 +233,9 @@ onMounted(() => {
 
 .movie-card__body {
   display: grid;
-  gap: 12px;
-  padding: 0 12px 14px;
+  gap: 10px;
+  flex: 1 1 auto;
+  padding: 0 10px 12px;
 }
 
 .movie-card__title {
@@ -253,6 +254,7 @@ onMounted(() => {
 }
 
 .movie-card__meta {
+  flex-wrap: wrap;
   justify-content: space-between;
 }
 
@@ -276,6 +278,7 @@ onMounted(() => {
 
 .movie-card__actions {
   flex-wrap: wrap;
+  margin-top: auto;
 }
 
 .movie-card__subtitle-list {
@@ -288,5 +291,17 @@ onMounted(() => {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+@media (max-width: 599px) {
+  .movie-card__body {
+    gap: 10px;
+    padding: 0 10px 12px;
+  }
+
+  .movie-card__title {
+    min-height: 40px;
+    font-size: 14px;
+  }
 }
 </style>

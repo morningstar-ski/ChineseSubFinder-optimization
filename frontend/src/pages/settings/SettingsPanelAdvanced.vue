@@ -154,30 +154,6 @@
 
       <q-item>
         <q-item-section>
-          <q-item-label class="q-mb-sm"> 字幕源设置</q-item-label>
-          <q-item v-for="item in visibleSuppliers" :key="item.name" clickable>
-            <q-item-section avatar class="text-bold" style="width: 120px">
-              {{ item.name }}
-            </q-item-section>
-            <q-item-section class="text-grey-8">
-              <q-item-label :lines="1">
-                {{ item.root_url }}
-              </q-item-label>
-              <q-item-label v-if="item.name !== 'csf'" style="font-size: 90%">
-                每日下载次数限制：{{ item.daily_download_limit }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <edit-sub-source-btn-dialog :data="item" @update="(data) => handleSubSourceUpdate(item, data)" />
-            </q-item-section>
-          </q-item>
-        </q-item-section>
-      </q-item>
-
-      <q-separator spaced inset />
-
-      <q-item>
-        <q-item-section>
           <q-item-label class="q-mb-sm">队列设置</q-item-label>
           <q-input
             class="col"
@@ -405,7 +381,6 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
 import {
   SUB_NAME_FORMAT_EMBY,
   SUB_NAME_FORMAT_NORMAL,
@@ -417,7 +392,6 @@ import {
 import { formModel } from 'pages/settings/use-settings';
 import { toRefs } from '@vueuse/core';
 import ProxyCheckBtn from 'components/ProxyCheckBtn';
-import EditSubSourceBtnDialog from 'pages/settings/BtnDialogEditSubSource';
 import BtnCheckTmdbApi from 'pages/settings/BtnCheckTmdbApi';
 
 const subNameFormatDescMap = {
@@ -439,13 +413,4 @@ const timelineMinOffsetRules = [
 ];
 
 const { advanced_settings: form } = toRefs(formModel);
-const hiddenSupplierNames = new Set(['a4k', 'zimuku']);
-const visibleSuppliers = computed(() =>
-  Object.values(form.value?.suppliers_settings ?? {}).filter((item) => item && !hiddenSupplierNames.has(item.name))
-);
-
-const handleSubSourceUpdate = (item, data) => {
-  formModel.advanced_settings.suppliers_settings[item.name].root_url = data.url;
-  formModel.advanced_settings.suppliers_settings[item.name].daily_download_limit = data.dailyLimit;
-};
 </script>

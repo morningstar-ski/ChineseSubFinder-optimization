@@ -42,7 +42,7 @@ func TestSkipChineseMovie(t *testing.T) {
 	//}
 }
 
-func TestOneMovieDlSubInAllSiteStopsAfterFirstSupplierWithResults(t *testing.T) {
+func TestOneMovieDlSubInAllSiteCollectsLaterSuppliersAfterInitialResults(t *testing.T) {
 	first := &movieHelperStubSupplier{
 		name: "first",
 		movieSubInfos: []supplier.SubInfo{
@@ -57,14 +57,14 @@ func TestOneMovieDlSubInAllSiteStopsAfterFirstSupplierWithResults(t *testing.T) 
 	}
 
 	got := OneMovieDlSubInAllSite(log_helper.GetLogger4Tester(), []ifaces.ISupplier{first, second}, "C:\\Media\\movie.mkv", 1)
-	if len(got) != 1 {
-		t.Fatalf("expected 1 subtitle from first supplier, got %d", len(got))
+	if len(got) != 2 {
+		t.Fatalf("expected subtitles from both suppliers, got %d", len(got))
 	}
 	if first.movieCalls != 1 {
 		t.Fatalf("expected first supplier to be called once, got %d", first.movieCalls)
 	}
-	if second.movieCalls != 0 {
-		t.Fatalf("expected second supplier to be skipped, got %d calls", second.movieCalls)
+	if second.movieCalls != 1 {
+		t.Fatalf("expected second supplier to be called once, got %d calls", second.movieCalls)
 	}
 }
 

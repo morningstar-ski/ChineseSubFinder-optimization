@@ -244,6 +244,42 @@ func TestShouldSkipAssrtCandidateForTargetKeepsSeasonPackAndUnknownEpisode(t *te
 	}
 }
 
+func TestShouldSkipAssrtCandidateForTargetSkipsWrongSeriesTitleEvenWithMatchingEpisode(t *testing.T) {
+	videoPath := createAssrtEpisodeFixture(t, "George.Lopez.S01E02.1080p.WEB-DL-GROUP.mkv", 1, 2)
+	mediaInfo := &models.MediaInfo{
+		TitleCn:       "洛佩兹一家",
+		TitleEn:       "George Lopez",
+		OriginalTitle: "George Lopez",
+	}
+	sub := SearchSubItem{
+		Id:         106,
+		Videoname:  "Survival.of.the.Thickest.S01E02.720p.WEB.h264-EDITH",
+		NativeName: "Survival.of.the.Thickest.S01E02.720p.WEB.h264-EDITH",
+	}
+
+	if shouldSkipAssrtCandidateForTarget(sub, mediaInfo, videoPath, false) == false {
+		t.Fatalf("expected wrong series title candidate to be skipped")
+	}
+}
+
+func TestShouldSkipAssrtCandidateForTargetKeepsMatchingSeriesTitleWithEpisode(t *testing.T) {
+	videoPath := createAssrtEpisodeFixture(t, "George.Lopez.S01E02.1080p.WEB-DL-GROUP.mkv", 1, 2)
+	mediaInfo := &models.MediaInfo{
+		TitleCn:       "洛佩兹一家",
+		TitleEn:       "George Lopez",
+		OriginalTitle: "George Lopez",
+	}
+	sub := SearchSubItem{
+		Id:         107,
+		Videoname:  "George.Lopez.S01E02.720p.WEB.h264-GROUP",
+		NativeName: "George.Lopez.S01E02.720p.WEB.h264-GROUP",
+	}
+
+	if shouldSkipAssrtCandidateForTarget(sub, mediaInfo, videoPath, false) {
+		t.Fatalf("expected matching series title candidate to be kept")
+	}
+}
+
 func TestShouldSkipAssrtCandidateForTargetSkipsWrongMovie(t *testing.T) {
 	sub := SearchSubItem{
 		Id:         104,

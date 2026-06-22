@@ -317,3 +317,42 @@ func TestFilterLowConfidenceCandidatesDropsSeriesCandidateWithoutEpisodeMatch(t 
 		t.Fatalf("len(filtered) = %d, want 0", len(filtered))
 	}
 }
+
+func TestFilterLowConfidenceCandidatesDropsWrongMovieWithMismatchedYear(t *testing.T) {
+	rootDir := t.TempDir()
+	videoPath := filepath.Join(rootDir, "movie.2013.1080p.mkv")
+	if err := os.WriteFile(videoPath, []byte("video"), 0o644); err != nil {
+		t.Fatalf("write video: %v", err)
+	}
+	nfoPath := filepath.Join(rootDir, "movie.2013.1080p.nfo")
+	content := `<?xml version="1.0" encoding="utf-8"?>
+<movie>
+  <title>莫比乌斯</title>
+  <originaltitle>Moebius</originaltitle>
+  <year>2013</year>
+</movie>`
+	if err := os.WriteFile(nfoPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write nfo: %v", err)
+	}
+
+	candidates := []subtitleCandidate{
+		{
+			name:        "Mobius.1996.1080p.WEBRip.English",
+			detailURL:   "https://www.subtitlecat.com/subs/1/Mobius.1996.1080p.WEBRip.English.html",
+			downloadURL: "https://www.subtitlecat.com/subs/1/Mobius.1996.1080p.WEBRip-orig.srt",
+		},
+		{
+			name:        "Moebius.2013.1080p.BluRay.English",
+			detailURL:   "https://www.subtitlecat.com/subs/2/Moebius.2013.1080p.BluRay.English.html",
+			downloadURL: "https://www.subtitlecat.com/subs/2/Moebius.2013.1080p.BluRay-orig.srt",
+		},
+	}
+
+	filtered := filterLowConfidenceCandidates(candidates, nil, videoPath, true, 0, 0)
+	if len(filtered) != 1 {
+		t.Fatalf("len(filtered) = %d, want 1", len(filtered))
+	}
+	if filtered[0].name != "Moebius.2013.1080p.BluRay.English" {
+		t.Fatalf("filtered[0].name = %q", filtered[0].name)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/json"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -640,9 +641,17 @@ func CloseChrome(l *logrus.Logger) {
 		command = exec.Command("/bin/sh", "-c", cmdString)
 	}
 	if sysType == "windows" {
-		// windows系统
-		cmdString = "taskkill /F /im chrome.exe"
-		command = exec.Command("cmd.exe", "/c", cmdString)
+		killedCount, err := closeOwnedChromeWindows(l)
+		if err != nil {
+			l.Warningln("CloseChrome", err)
+			return
+		}
+		if killedCount == 0 {
+			l.Debugln("CloseChrome no owned browser process")
+			return
+		}
+		l.Infoln("CloseChrome killed owned browser count:", killedCount)
+		return
 	}
 	if sysType == "darwin" {
 		// macOS
@@ -662,6 +671,141 @@ func CloseChrome(l *logrus.Logger) {
 		}
 		l.Warningln("CloseChrome", err)
 	}
+}
+
+type windowsChromeProcessInfo struct {
+	ProcessId       int    `json:"ProcessId"`
+	ParentProcessId int    `json:"ParentProcessId"`
+	CommandLine     string `json:"CommandLine"`
+}
+
+func closeOwnedChromeWindows(l *logrus.Logger) (int, error) {
+	rodRoot := filepath.Clean(DefRodTmpRootFolder())
+	if rodRoot == "" {
+		return 0, fmt.Errorf("empty rod root folder")
+	}
+
+	script := `$ErrorActionPreference = 'Stop'
+$procs = @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Select-Object ProcessId,ParentProcessId,CommandLine)
+$procs | ConvertTo-Json -Depth 3 -Compress`
+	output, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		return 0, err
+	}
+
+	processes, err := parseWindowsChromeProcessList(output)
+	if err != nil {
+		return 0, err
+	}
+
+	targetPids := make([]int, 0)
+	for _, proc := range processes {
+		if shouldCloseOwnedChromeProcessWindows(proc.CommandLine, rodRoot) {
+			targetPids = append(targetPids, proc.ProcessId)
+		}
+	}
+	if len(targetPids) == 0 {
+		return 0, nil
+	}
+
+	killed := 0
+	for _, pid := range targetPids {
+		cmd := exec.Command("taskkill.exe", "/F", "/T", "/PID", strconv.Itoa(pid))
+		if err := cmd.Run(); err != nil {
+			if isTaskKillNoProcessErr(err) {
+				continue
+			}
+			return killed, err
+		}
+		killed++
+		if l != nil {
+			l.Debugln("CloseChrome killed owned browser pid:", pid)
+		}
+	}
+
+	return killed, nil
+}
+
+func parseWindowsChromeProcessList(raw []byte) ([]windowsChromeProcessInfo, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil, nil
+	}
+
+	var many []windowsChromeProcessInfo
+	if err := json.Unmarshal([]byte(trimmed), &many); err == nil {
+		return many, nil
+	}
+
+	var one windowsChromeProcessInfo
+	if err := json.Unmarshal([]byte(trimmed), &one); err != nil {
+		return nil, err
+	}
+	return []windowsChromeProcessInfo{one}, nil
+}
+
+func shouldCloseOwnedChromeProcessWindows(commandLine string, rodRoot string) bool {
+	cmd := strings.TrimSpace(strings.ToLower(commandLine))
+	if cmd == "" {
+		return false
+	}
+
+	userDataDir := extractChromeUserDataDir(commandLine)
+	if userDataDir == "" {
+		return false
+	}
+
+	normalizedUserDataDir := strings.ToLower(filepath.Clean(userDataDir))
+	normalizedRodRoot := strings.ToLower(filepath.Clean(rodRoot))
+	if normalizedUserDataDir == normalizedRodRoot {
+		return true
+	}
+
+	prefix := normalizedRodRoot
+	if strings.HasSuffix(prefix, string(filepath.Separator)) == false {
+		prefix += string(filepath.Separator)
+	}
+	return strings.HasPrefix(normalizedUserDataDir, prefix)
+}
+
+func extractChromeUserDataDir(commandLine string) string {
+	const flagName = "--user-data-dir="
+	lower := strings.ToLower(commandLine)
+	start := strings.Index(lower, flagName)
+	if start < 0 {
+		return ""
+	}
+
+	value := commandLine[start+len(flagName):]
+	if value == "" {
+		return ""
+	}
+
+	if value[0] == '"' {
+		value = value[1:]
+		end := strings.Index(value, `"`)
+		if end < 0 {
+			return strings.TrimSpace(value)
+		}
+		return strings.TrimSpace(value[:end])
+	}
+
+	end := strings.IndexAny(value, " \t")
+	if end < 0 {
+		return strings.TrimSpace(value)
+	}
+	return strings.TrimSpace(value[:end])
+}
+
+func isTaskKillNoProcessErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if ok && exitErr.ExitCode() == 128 {
+		return true
+	}
+	return strings.TrimSpace(err.Error()) == "exit status 128"
 }
 
 func isCloseChromeNoProcessErr(sysType string, err error) bool {

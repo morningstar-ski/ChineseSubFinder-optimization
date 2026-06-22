@@ -603,13 +603,18 @@ func parseAssrtTargetEpisode(matcher ranking.TargetMatcher) int {
 }
 
 func shouldSkipAssrtCandidateForTarget(sub SearchSubItem, mediaInfo *models.MediaInfo, videoFPath string, isMovie bool) bool {
+	candidateTitle := assrtCandidateTitle(sub)
+	targetTitles := assrtTargetTitles(mediaInfo, videoFPath)
+
 	if isMovie {
-		candidateTitle := assrtCandidateTitle(sub)
-		targetTitles := assrtTargetTitles(mediaInfo, videoFPath)
 		if candidateTitle != "" && len(targetTitles) > 0 && assrtTitleMatchesAny(candidateTitle, targetTitles) == false {
 			return true
 		}
 		return false
+	}
+
+	if mediaInfo != nil && candidateTitle != "" && len(targetTitles) > 0 && assrtTitleMatchesAny(candidateTitle, targetTitles) == false {
+		return true
 	}
 
 	matcher := ranking.NewTargetMatcher(videoFPath, false)

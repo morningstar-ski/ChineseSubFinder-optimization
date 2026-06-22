@@ -1,13 +1,13 @@
 <template>
   <q-page class="page-shell settings-page">
     <div class="section-stack">
-      <q-banner inline-actions class="settings-lock-banner app-surface-soft" v-if="isJobRunning">
+      <q-banner v-if="isJobRunning" inline-actions class="settings-lock-banner app-surface-soft">
         <template #avatar>
           <q-icon name="warning" color="warning" />
         </template>
-        任务运行中，配置页当前为只读状态
+        任务运行中，当前配置页为只读状态。
         <template #action>
-          <q-btn color="primary" label="去总览停止任务" flat @click="$router.push('/overview')" />
+          <q-btn color="primary" label="前往总览停止任务" flat @click="$router.push('/overview')" />
         </template>
       </q-banner>
 
@@ -18,16 +18,14 @@
             dense
             active-color="primary"
             indicator-color="transparent"
-            align="justify"
+            align="left"
             narrow-indicator
             class="settings-tabs"
           >
-            <q-tab name="basic" label="基础配置" class="settings-tabs__item" />
-            <q-tab name="advanced" label="进阶配置" class="settings-tabs__item" />
-            <q-tab name="subSource" label="字幕源设置" class="settings-tabs__item" />
-            <q-tab name="emby" label="Emby 配置" class="settings-tabs__item" />
-            <q-tab name="development" label="开发设置" class="settings-tabs__item" />
-            <q-tab name="experiment" label="实验室" class="settings-tabs__item" />
+            <q-tab name="library" label="影视库" class="settings-tabs__item" />
+            <q-tab name="providers" label="字幕策略" class="settings-tabs__item" />
+            <q-tab name="runtime" label="下载规则" class="settings-tabs__item" />
+            <q-tab name="system" label="扩展与维护" class="settings-tabs__item" />
           </q-tabs>
 
           <q-form @submit="submitAll" class="settings-shell__form">
@@ -38,28 +36,80 @@
               :class="{ disabled: isJobRunning }"
               :style="{ pointerEvents: isJobRunning ? 'none' : 'default' }"
             >
-              <q-tab-panel name="basic">
-                <basic-settings />
+              <q-tab-panel name="library">
+                <div class="settings-section-stack">
+                  <section class="settings-section">
+                    <div class="settings-section__header">
+                      <h2 class="settings-section__title">影视库路径</h2>
+                      <p class="settings-section__subtitle">管理电影、剧集目录，以及扫描周期和基础并发设置。</p>
+                    </div>
+                    <div class="settings-section__body">
+                      <basic-settings />
+                    </div>
+                  </section>
+
+                  <section class="settings-section">
+                    <div class="settings-section__header">
+                      <h2 class="settings-section__title">Emby 同步</h2>
+                      <p class="settings-section__subtitle">集中管理 Emby 连接、同步方式和媒体服务器联动行为。</p>
+                    </div>
+                    <div class="settings-section__body">
+                      <emby-settings />
+                    </div>
+                  </section>
+                </div>
               </q-tab-panel>
 
-              <q-tab-panel name="advanced">
-                <advanced-settings />
+              <q-tab-panel name="providers">
+                <div class="settings-section-stack">
+                  <section class="settings-section">
+                    <div class="settings-section__header">
+                      <h2 class="settings-section__title">字幕源与回退</h2>
+                      <p class="settings-section__subtitle">统一管理字幕供应商、下载顺序和显式回退开关。</p>
+                    </div>
+                    <div class="settings-section__body">
+                      <sub-source-settings />
+                    </div>
+                  </section>
+                </div>
               </q-tab-panel>
 
-              <q-tab-panel name="subSource">
-                <sub-source-settings />
+              <q-tab-panel name="runtime">
+                <div class="settings-section-stack">
+                  <section class="settings-section">
+                    <div class="settings-section__header">
+                      <h2 class="settings-section__title">下载规则与网络</h2>
+                      <p class="settings-section__subtitle">统一管理代理、任务队列、字幕命名、时间轴和 TMDB 配置。</p>
+                    </div>
+                    <div class="settings-section__body">
+                      <advanced-settings />
+                    </div>
+                  </section>
+                </div>
               </q-tab-panel>
 
-              <q-tab-panel name="emby">
-                <emby-settings />
-              </q-tab-panel>
+              <q-tab-panel name="system">
+                <div class="settings-section-stack">
+                  <section class="settings-section">
+                    <div class="settings-section__header">
+                      <h2 class="settings-section__title">扩展能力</h2>
+                      <p class="settings-section__subtitle">集中放置浏览器、LLM 回退、编码转换和开放接口等扩展项。</p>
+                    </div>
+                    <div class="settings-section__body">
+                      <experiment-settings />
+                    </div>
+                  </section>
 
-              <q-tab-panel name="development">
-                <development-settings />
-              </q-tab-panel>
-
-              <q-tab-panel name="experiment">
-                <experiment-settings />
+                  <section class="settings-section">
+                    <div class="settings-section__header">
+                      <h2 class="settings-section__title">通知与维护</h2>
+                      <p class="settings-section__subtitle">保留异常通知和维护相关选项，避免和核心配置混在一起。</p>
+                    </div>
+                    <div class="settings-section__body">
+                      <development-settings />
+                    </div>
+                  </section>
+                </div>
               </q-tab-panel>
             </q-tab-panels>
 
@@ -85,7 +135,7 @@ import ExperimentSettings from 'pages/settings/SettingsPanelExperiment';
 import FormSubmitArea from 'pages/settings/FormSubmitArea';
 import SubSourceSettings from 'pages/settings/SettingsPanelSubSource';
 
-const tab = ref('subSource');
+const tab = ref('library');
 
 const isSettingsLoaded = computed(() => Object.keys(formModel).length);
 
@@ -94,6 +144,7 @@ useSettings();
 
 <style scoped lang="scss">
 .settings-lock-banner {
+  box-sizing: border-box;
   width: min(100%, 1120px);
   padding: 16px 18px;
   background: rgba(255, 255, 255, 0.92);
@@ -110,11 +161,14 @@ useSettings();
 
 .settings-shell {
   align-items: start;
+  min-width: 0;
 }
 
 .settings-shell__card {
-  width: min(100%, 1120px);
-  padding: 16px;
+  box-sizing: border-box;
+  width: min(100%, 1100px);
+  min-width: 0;
+  padding: 18px 20px 20px;
 }
 
 .settings-shell__card--locked {
@@ -122,13 +176,17 @@ useSettings();
 }
 
 .settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
   padding: 6px;
   border-radius: 22px;
   background: #f4f7fb;
 }
 
 .settings-tabs :deep(.q-tab) {
+  min-width: 0;
   border-radius: 16px;
   color: #5d6e86;
 }
@@ -142,14 +200,16 @@ useSettings();
 .settings-shell__form {
   display: grid;
   gap: 12px;
-  width: min(100%, 1040px);
+  width: min(100%, 840px);
+  min-width: 0;
   margin-top: 16px;
 }
 
 .settings-panels {
   position: relative;
+  min-width: 0;
   border-radius: 22px;
-  background: rgba(248, 250, 253, 0.86);
+  background: transparent;
 }
 
 .settings-panels.disabled {
@@ -176,7 +236,46 @@ useSettings();
 }
 
 .settings-panels :deep(.q-tab-panel) {
-  padding: 18px;
+  padding: 0;
+}
+
+.settings-section-stack {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.settings-section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.05);
+  border-radius: 22px;
+  background: rgba(248, 250, 253, 0.86);
+}
+
+.settings-section__header {
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.settings-section__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #142033;
+}
+
+.settings-section__subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #66768f;
+}
+
+.settings-section__body {
+  padding: 16px;
 }
 
 .settings-panels :deep(.settings-panel-list) {
@@ -207,7 +306,7 @@ useSettings();
 .settings-panels :deep(.settings-panel-list > .q-item > .q-item__section--avatar .q-select),
 .settings-panels :deep(.settings-panel-list > .q-item > .q-item__section--side .q-field),
 .settings-panels :deep(.settings-panel-list > .q-item > .q-item__section--side .q-select) {
-  width: min(100%, 340px);
+  width: min(100%, 280px);
 }
 
 .settings-panels :deep(.settings-panel-list > .q-item > .q-item__section--avatar .row),
@@ -241,11 +340,32 @@ useSettings();
   }
 
   .settings-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
 
-  .settings-panels :deep(.q-tab-panel) {
-    padding: 14px;
+  .settings-tabs :deep(.q-tabs__content) {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .settings-tabs :deep(.q-tab) {
+    width: 100%;
+    min-height: 40px;
+    padding: 0 10px;
+  }
+
+  .settings-tabs :deep(.q-tab__label) {
+    font-size: 13px;
+  }
+
+  .settings-section__header {
+    padding: 14px 16px 10px;
+  }
+
+  .settings-section__body {
+    padding: 12px;
   }
 
   .settings-panels :deep(.settings-panel-list > .q-item) {
@@ -255,7 +375,7 @@ useSettings();
 
 @media (min-width: 1200px) {
   .settings-shell__form {
-    width: min(76%, 1040px);
+    width: min(74%, 840px);
   }
 }
 </style>

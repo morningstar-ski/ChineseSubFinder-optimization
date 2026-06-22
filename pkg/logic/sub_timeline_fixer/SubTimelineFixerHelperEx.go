@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"os"
+	"strings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 
@@ -20,8 +21,6 @@ import (
 	"github.com/emirpasic/gods/utils"
 	"github.com/sirupsen/logrus"
 )
-
-const maxAudioFallbackTimelineFixDurationSeconds = 3600
 
 type SubTimelineFixerHelperEx struct {
 	log                 *logrus.Logger
@@ -95,18 +94,6 @@ func (s *SubTimelineFixerHelperEx) Process(videoFileFullPath, srcSubFPath string
 	}
 	// 内置的字幕，这里只列举一种格式出来，其实会有一个字幕的 srt 和 ass 两种格式都导出存在
 	if ffmpegInfo.SubtitleInfoList == nil || len(ffmpegInfo.SubtitleInfoList) <= 0 || oneSubAndIsError == true {
-		if shouldSkipAudioFallbackTimelineFix(ffmpegInfo.Duration) {
-			s.log.Infoln(
-				"Skip TimeLine Fix -- audio fallback duration too long:",
-				ffmpegInfo.Duration,
-				"video:",
-				videoFileFullPath,
-				"subtitle:",
-				srcSubFPath,
-			)
-			return nil
-		}
-
 		if ffmpegInfo.AudioInfoList == nil || len(ffmpegInfo.AudioInfoList) == 0 {
 			return errors.New("SubTimelineFixerHelperEx.Process.ExportFFMPEGInfo Can`t Find SubTitle And Audio To Export -- " + videoFileFullPath)
 		}
@@ -159,6 +146,21 @@ func (s *SubTimelineFixerHelperEx) Process(videoFileFullPath, srcSubFPath string
 	if err != nil {
 		return err
 	}
+	bFind, fixedInfo, parseErr := s.subParserHub.DetermineFileTypeFromFile(srcSubFPath)
+	if parseErr != nil {
+		return parseErr
+	}
+	if bFind == false || fixedInfo == nil {
+		return errors.New("timeline fixed subtitle could not be parsed")
+	}
+	if reason := invalidTimelineFixedSubtitleReason(fixedInfo, ffmpegInfo.Duration); reason != "" {
+		_ = os.Remove(srcSubFPath)
+		restoreErr := os.Rename(srcSubFPath+sub_timeline_fixer.BackUpExt, srcSubFPath)
+		if restoreErr != nil {
+			return restoreErr
+		}
+		return errors.New("timeline fix produced invalid subtitle: " + reason)
+	}
 	s.log.Infoln("TimeLine Fix -- Score:", pipeResultMax.Score, srcSubFPath)
 	s.log.Infoln("Fix Offset:", pipeResultMax.GetOffsetTime(), srcSubFPath)
 	s.log.Infoln("BackUp Org SubFile:", srcSubFPath+sub_timeline_fixer.BackUpExt)
@@ -166,8 +168,46 @@ func (s *SubTimelineFixerHelperEx) Process(videoFileFullPath, srcSubFPath string
 	return nil
 }
 
-func shouldSkipAudioFallbackTimelineFix(videoDurationSeconds float64) bool {
-	return videoDurationSeconds > maxAudioFallbackTimelineFixDurationSeconds
+func invalidTimelineFixedSubtitleReason(fileInfo *subparser.FileInfo, videoDuration float64) string {
+	if fileInfo == nil {
+		return "nil subtitle info"
+	}
+	if len(fileInfo.Dialogues) == 0 {
+		return "no parsed dialogues"
+	}
+	for i := 1; i < len(fileInfo.Dialogues); i++ {
+		prevStart := pkg.Time2SecondNumber(fileInfo.Dialogues[i-1].GetStartTime())
+		currStart := pkg.Time2SecondNumber(fileInfo.Dialogues[i].GetStartTime())
+		if currStart < prevStart {
+			return "subtitle timeline is not monotonic"
+		}
+	}
+	subEndSeconds := pkg.Time2SecondNumber(fileInfo.GetEndTime())
+	if subEndSeconds > 6*60*60 {
+		return "subtitle end time exceeds absolute threshold"
+	}
+	if videoDuration > 0 {
+		maxAllowedEnd := math.Max(videoDuration*1.5, videoDuration+15*60)
+		if subEndSeconds > maxAllowedEnd {
+			return "subtitle end time exceeds video duration tolerance"
+		}
+	}
+	vectorGarbageLines := 0
+	for _, dialogue := range fileInfo.Dialogues {
+		for _, line := range dialogue.Lines {
+			trimmed := strings.TrimSpace(line)
+			if len(trimmed) > 2 {
+				first := strings.ToLower(trimmed[:1])
+				if strings.Contains("mnlbspc", first) && strings.ContainsAny(trimmed[1:], "-0123456789") {
+					vectorGarbageLines++
+					if vectorGarbageLines >= 3 {
+						return "subtitle contains vector drawing garbage"
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func (s *SubTimelineFixerHelperEx) ProcessBySubFileInfo(infoBase *subparser.FileInfo, infoSrc *subparser.FileInfo) (bool, *subparser.FileInfo, sub_timeline_fixer.PipeResult, error) {
