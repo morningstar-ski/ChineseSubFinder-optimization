@@ -84,6 +84,10 @@ func TestExtractChromeUserDataDir(t *testing.T) {
 }
 
 func TestShouldCloseOwnedChromeProcessWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-specific path semantics")
+	}
+
 	rodRoot := filepath.Clean(`C:\csf\cache\rod`)
 	testCases := []struct {
 		name string
