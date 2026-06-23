@@ -41,7 +41,6 @@ export const DEFAULT_SUB_SOURCE_URL_MAP = {
   tvsubtitles: 'https://www.tvsubtitles.net',
   moviesubtitles: 'https://www.moviesubtitles.org',
   subdl: 'https://api.subdl.com/api/v1',
-  subtitle_best: 'https://api.subtitle.best/share-sub/v1',
   subhd: 'https://subhd.tv',
   assrt: 'https://api.assrt.net/v1',
 };

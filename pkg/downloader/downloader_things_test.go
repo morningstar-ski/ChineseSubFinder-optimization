@@ -185,7 +185,7 @@ func TestOneVideoSelectBestSubUsesCurrentDefaultSourcePriority(t *testing.T) {
 		{site: common2.SubSiteMovieSubtitles, content: makeASSContent("moviesubtitles")},
 		{site: common2.SubSiteTVSubtitles, content: makeASSContent("tvsubtitles")},
 		{site: common2.SubSiteOpenSubtitles, content: makeASSContent("opensubtitles")},
-		{site: common2.SubSiteSubtitleBest, content: makeASSContent("subtitle_best")},
+		{site: common2.SubSiteOpenSubtitles, content: makeASSContent("opensubtitles-2")},
 	}
 
 	subFiles := make([]string, 0, len(candidates))
@@ -280,7 +280,7 @@ func TestOneVideoSelectBestSubSkipsAbsurdTimelineSubtitle(t *testing.T) {
 	}
 
 	downloadDir := t.TempDir()
-	invalidPath := filepath.Join(downloadDir, "["+common2.SubSiteSubtitleBest+"]_0_bad.srt")
+	invalidPath := filepath.Join(downloadDir, "["+common2.SubSiteOpenSubtitles+"]_0_bad.srt")
 	validPath := filepath.Join(downloadDir, "["+common2.SubSiteSubDL+"]_0_good.srt")
 
 	invalidContent := strings.Join([]string{
@@ -379,7 +379,7 @@ func TestOneVideoSelectBestSubReturnsNoSubtitleWhenAllCandidatesInvalid(t *testi
 	}
 
 	downloadDir := t.TempDir()
-	invalidPath := filepath.Join(downloadDir, "["+common2.SubSiteSubtitleBest+"]_0_bad.srt")
+	invalidPath := filepath.Join(downloadDir, "["+common2.SubSiteOpenSubtitles+"]_0_bad.srt")
 	invalidContent := strings.Join([]string{
 		"1",
 		"00:00:05,000 --> 00:00:07,000",
@@ -870,7 +870,6 @@ func TestTryWriteLLMSubtitleFallbackSkipsWhenAPIKeyMissing(t *testing.T) {
 		t.Fatalf("unexpected files after skipped llm fallback: %#v", entries)
 	}
 }
-
 
 func TestTryWriteLLMSubtitleFallbackOpenAICompatibleEndToEnd(t *testing.T) {
 	settings.SetConfigRootPath(t.TempDir())

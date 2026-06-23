@@ -3,28 +3,19 @@ package something_static
 import (
 	b64 "encoding/base64"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
-
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
-
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
-
 	"github.com/sirupsen/logrus"
 )
 
 func WriteFile(CloneProjectDesSaveDir, enString, nowTime, nowTimeFileNamePrix string) (bool, error) {
-
 	saveFileFPath := filepath.Join(CloneProjectDesSaveDir, nowTimeFileNamePrix+common.StaticFileName00)
 	saveFileFPathWait := filepath.Join(CloneProjectDesSaveDir, nowTimeFileNamePrix+common.StaticFileName00+waitExt)
 
 	if pkg.IsFile(saveFileFPath) == true {
-		// 目标文件存在，则需要判断准备写入覆盖的文件是否与当前存在的文件 SHA1 的值是一样的，一样就跳过后续的操作
-		// 写入等待替换的文件
 		err := writeFile(saveFileFPathWait, enString, nowTime)
 		if err != nil {
 			return false, err
@@ -37,16 +28,13 @@ func WriteFile(CloneProjectDesSaveDir, enString, nowTime, nowTimeFileNamePrix st
 		if err != nil {
 			return false, err
 		}
-		// 如果一样的，那么外面就需要判断无需继续往下执行
 		if orgFileSHA1 == waitFileSHA1 {
-			// 删除 wait 文件
 			err = os.Remove(saveFileFPathWait)
 			if err != nil {
 				return false, err
 			}
 			return false, nil
 		}
-		// 如果不一样，那么就需要删除原来的文件，然后把 wait 文件 rename 过去
 		err = os.Remove(saveFileFPath)
 		if err != nil {
 			return false, err
@@ -56,7 +44,6 @@ func WriteFile(CloneProjectDesSaveDir, enString, nowTime, nowTimeFileNamePrix st
 			return false, err
 		}
 	} else {
-		// 如果不存在，那么就直接写入就行了
 		err := writeFile(saveFileFPath, enString, nowTime)
 		if err != nil {
 			return false, err
@@ -67,7 +54,6 @@ func WriteFile(CloneProjectDesSaveDir, enString, nowTime, nowTimeFileNamePrix st
 }
 
 func writeFile(saveFileFPath, enString, nowTime string) error {
-
 	file, err := os.Create(saveFileFPath)
 	if err != nil {
 		return err
@@ -83,19 +69,7 @@ func writeFile(saveFileFPath, enString, nowTime string) error {
 	return nil
 }
 
-func GetCodeFromWeb(l *logrus.Logger, nowTimeFileNamePrix string, fileDownloader *file_downloader.FileDownloader) (string, string, error) {
-
-	getCode, err := fileDownloader.MediaInfoDealers.SubtitleBestApi.GetCode()
-	if err != nil {
-		l.Errorln("SubtitleBestApi.GetCode", err)
-		return "", "", fmt.Errorf("get code from web failed: %w", err)
-	}
-	nowTT := time.Now().Format("2006-01-02")
-	return nowTT, getCode, nil
-}
-
 func getCodeFromWeb(l *logrus.Logger, desUrl string) (string, string, error) {
-
 	fileBytes, _, err := pkg.DownFile(l, desUrl)
 	if err != nil {
 		return "", "", err

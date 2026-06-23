@@ -103,7 +103,7 @@ func TestSettingsReadResetsNewSupplierSearchURLs(t *testing.T) {
       "moviesubtitles": {"name":"moviesubtitles","root_url":"https://www.moviesubtitles.org","search_url":"/stale-movie","daily_download_limit":-1}
     }
   },
-  "timeline_fixer_settings": {"max_offset_time": 999, "min_offset": 3},
+  "timeline_fixer_settings": {"max_offset_time": 999, "min_offset": 3, "engine": "unknown"},
   "emby_settings": {"address_url":"http://127.0.0.1:8096/"}
 }`
 	if err := os.WriteFile(configPath, []byte(raw), 0o644); err != nil {
@@ -133,6 +133,9 @@ func TestSettingsReadResetsNewSupplierSearchURLs(t *testing.T) {
 	if cfg.TimelineFixerSettings.MinOffset != 0.2 {
 		t.Fatalf("timeline min_offset = %v", cfg.TimelineFixerSettings.MinOffset)
 	}
+	if cfg.TimelineFixerSettings.Engine != TimelineFixerEngineFFSubSync {
+		t.Fatalf("timeline engine = %q", cfg.TimelineFixerSettings.Engine)
+	}
 }
 
 func TestNewSuppliersSettingsDoesNotIncludeRemovedA4KProvider(t *testing.T) {
@@ -143,7 +146,6 @@ func TestNewSuppliersSettingsDoesNotIncludeRemovedA4KProvider(t *testing.T) {
 		suppliers.Shooter.Name:        suppliers.Shooter,
 		suppliers.Assrt.Name:          suppliers.Assrt,
 		suppliers.SubDL.Name:          suppliers.SubDL,
-		suppliers.SubtitleBest.Name:   suppliers.SubtitleBest,
 		suppliers.OpenSubtitles.Name:  suppliers.OpenSubtitles,
 		suppliers.TVSubtitles.Name:    suppliers.TVSubtitles,
 		suppliers.MovieSubtitles.Name: suppliers.MovieSubtitles,
@@ -162,6 +164,7 @@ func TestSettingsSaveNormalizesTimelineFixerSettings(t *testing.T) {
 	cfg.EmbySettings.AddressUrl = "http://127.0.0.1:8096/"
 	cfg.TimelineFixerSettings.MaxOffsetTime = 999
 	cfg.TimelineFixerSettings.MinOffset = -1
+	cfg.TimelineFixerSettings.Engine = "unknown"
 
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
@@ -177,6 +180,9 @@ func TestSettingsSaveNormalizesTimelineFixerSettings(t *testing.T) {
 	}
 	if reloaded.TimelineFixerSettings.MinOffset != 0.2 {
 		t.Fatalf("timeline min_offset = %v", reloaded.TimelineFixerSettings.MinOffset)
+	}
+	if reloaded.TimelineFixerSettings.Engine != TimelineFixerEngineFFSubSync {
+		t.Fatalf("timeline engine = %q", reloaded.TimelineFixerSettings.Engine)
 	}
 }
 

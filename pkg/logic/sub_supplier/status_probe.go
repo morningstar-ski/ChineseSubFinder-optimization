@@ -12,7 +12,6 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/shooter"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitle_best"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitlecat"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/tvsubtitles"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/xunlei"
@@ -53,16 +52,6 @@ func ProbeSupplierStatuses(fileDownloader *file_downloader.FileDownloader, suppl
 		settings.Get().SubtitleSources.SubDLSettings.Enabled,
 		settings.Get().SubtitleSources.SubDLSettings.Key != "",
 		func() ifaces.ISupplier { return subdl.NewSupplier(fileDownloader) },
-	)
-
-	appendOptionalSupplierStatus(
-		&reply,
-		wanted,
-		common2.SubSiteSubtitleBest,
-		RuntimeModeLite,
-		settings.Get().SubtitleSources.SubtitleBestSettings.Enabled,
-		settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "",
-		func() ifaces.ISupplier { return subtitle_best.NewSupplier(fileDownloader) },
 	)
 
 	appendOptionalSupplierStatus(

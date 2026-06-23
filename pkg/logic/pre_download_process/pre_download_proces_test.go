@@ -334,38 +334,8 @@ func TestCollectSupplierPlansKeepsCurrentRuntimeRouteRoles(t *testing.T) {
 	}
 }
 
-func TestCollectSupplierPlansExcludesSubtitleBestSupplierWithoutKeyButKeepsSubHD(t *testing.T) {
-	settings.SetConfigRootPath(t.TempDir())
-	oldLiteMode := pkg.LiteMode()
-	pkg.SetLiteMode(false)
-	defer pkg.SetLiteMode(oldLiteMode)
-
-	cfg := settings.Get()
-	cfg.SubtitleSources.SubtitleBestSettings.Enabled = true
-	cfg.SubtitleSources.SubtitleBestSettings.ApiKey = ""
-	cfg.SubtitleSources.SubHDSettings.Enabled = true
-
-	plans := collectSupplierPlans(nil)
-
-	if _, ok := plans[common.SubSiteSubtitleBest]; ok {
-		t.Fatal("expected subtitle_best supplier role to stay out of supplier plans without api key")
-	}
-
-	subhdPlan, ok := plans[common.SubSiteSubHd]
-	if ok == false {
-		t.Fatal("expected subhd plan to remain present even when subtitle_best api key is missing")
-	}
-	if subhdPlan.skipPrimary {
-		t.Fatal("expected subhd to stay in the primary chinese chain")
-	}
-}
-
 func TestOrderPrimarySupplierPlansUsesDedicatedPrimarySequence(t *testing.T) {
 	plans := map[string]supplierPlan{
-		common.SubSiteSubtitleBest: {
-			siteName:        common.SubSiteSubtitleBest,
-			supplierFactory: newFakeSupplierFactory(common.SubSiteSubtitleBest),
-		},
 		common.SubSiteOpenSubtitles: {
 			siteName:        common.SubSiteOpenSubtitles,
 			supplierFactory: newFakeSupplierFactory(common.SubSiteOpenSubtitles),
@@ -390,7 +360,6 @@ func TestOrderPrimarySupplierPlansUsesDedicatedPrimarySequence(t *testing.T) {
 		common.SubSiteAssrt,
 		common.SubSiteSubHd,
 		common.SubSiteOpenSubtitles,
-		common.SubSiteSubtitleBest,
 	}
 
 	if len(got) != len(want) {

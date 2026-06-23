@@ -1,7 +1,7 @@
 <template>
   <div v-if="isInQueue" class="row items-center q-gutter-xs">
     <q-spinner-hourglass color="primary" size="22px" />
-    <div v-if="!dense" style="font-size: 90%">字幕上传中</div>
+    <div v-if="!dense" style="font-size: 90%">字幕处理中</div>
   </div>
   <q-btn
     v-else
@@ -51,7 +51,7 @@ const upload = async () => {
   formData.append('file', uploadFile.value[0]);
   isInQueue.value = true;
   await LibraryApi.uploadSubtitle(formData);
-  SystemMessage.success('字幕上传成功。如果设置开启了“自动校正时间轴”，处理需要一些时间，请耐心等待', {
+  SystemMessage.success('字幕已加入处理队列，稍后会自动刷新结果', {
     timeout: 3000,
   });
   await getSubtitleUploadList();

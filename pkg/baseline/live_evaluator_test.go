@@ -63,7 +63,7 @@ func TestSupplierEvaluatorBadArchive(t *testing.T) {
 func TestSupplierEvaluatorDeadProvider(t *testing.T) {
 	evaluator := NewSupplierEvaluator(logrus.New(),
 		fakeSupplier{name: "subdl"},
-		fakeSupplier{name: "subtitle_best", err: errors.New("connection refused"), alive: false},
+		fakeSupplier{name: "opensubtitles", err: errors.New("connection refused"), alive: false},
 	)
 
 	evaluation, err := evaluator.Evaluate(context.Background(), Sample{

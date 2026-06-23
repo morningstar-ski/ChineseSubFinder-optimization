@@ -8,56 +8,17 @@
           <div class="text-h6 text-grey-8">字幕搜索</div>
           <q-btn icon="close" flat round dense @click="visible = false" />
         </div>
-        <div class="text-warning">* 下载字幕包是在浏览器端进行处理的，下载过程中请不要关闭页面</div>
+        <div class="text-warning">* 下载字幕包会在浏览器中处理，下载期间不要关闭当前页面</div>
       </q-card-section>
       <q-separator />
 
       <template v-if="!searchPackage">
-        <q-tabs
-          v-model="tab"
-          dense
-          active-color="primary"
-          indicator-color="primary"
-          align="justify"
-          narrow-indicator
-          style="display: inline-block"
-        >
-          <q-tab name="csf" label="Subtitle.Best API" />
-          <q-tab name="manual" label="手动搜索" />
-        </q-tabs>
-
-        <q-tab-panels v-model="tab" animated keep-alive>
-          <q-tab-panel name="csf">
-            <search-panel-csf-api :path="path" :is-movie="isMovie" :season="season" :episode="episode" />
-          </q-tab-panel>
-
-          <q-tab-panel name="manual">
-            <search-panel-manual :is-movie="isMovie" :path="path" />
-          </q-tab-panel>
-        </q-tab-panels>
+        <search-panel-manual :is-movie="isMovie" :path="path" />
       </template>
       <template v-else>
-        <q-tabs
-          v-model="tab"
-          dense
-          active-color="primary"
-          indicator-color="primary"
-          align="justify"
-          narrow-indicator
-          style="display: inline-block"
+        <q-card-section class="text-grey-7"
+          >整季远端字幕包入口已移除，请按单集手动搜索或直接上传本地字幕。</q-card-section
         >
-          <q-tab name="csf" label="Subtitle.Best API" />
-        </q-tabs>
-
-        <q-tab-panels v-model="tab" animated keep-alive>
-          <q-tab-panel name="csf">
-            <search-panel-csf-api-tv-package :episodes="packageEpisodes" />
-          </q-tab-panel>
-
-          <q-tab-panel name="csf-share">
-            <search-panel-csf-api-tv-package :episodes="packageEpisodes" use-user-share-api />
-          </q-tab-panel>
-        </q-tab-panels>
       </template>
     </q-card>
   </q-dialog>
@@ -66,8 +27,6 @@
 <script setup>
 import { ref } from 'vue';
 import SearchPanelManual from 'pages/library/SearchPanelManual.vue';
-import SearchPanelCsfApi from 'pages/library/SearchPanelCsfApi.vue';
-import SearchPanelCsfApiTvPackage from 'pages/library/SearchPanelCsfApiTvPackage.vue';
 
 defineProps({
   path: String,
@@ -91,5 +50,4 @@ defineProps({
 });
 
 const visible = ref(false);
-const tab = ref('csf');
 </script>

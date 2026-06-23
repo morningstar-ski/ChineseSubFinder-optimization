@@ -4,7 +4,6 @@ type SubtitleSources struct {
 	AssrtSettings          AssrtSettings         `json:"assrt_settings"`
 	SubDLSettings          ApiKeySettings        `json:"subdl_settings"`
 	SubHDSettings          SubHDSettings         `json:"subhd_settings"`
-	SubtitleBestSettings   SubtitleBestSettings  `json:"subtitle_best_settings"`
 	OpenSubtitlesSettings  OpenSubtitlesSettings `json:"opensubtitles_settings"`
 	TVsubtitlesSettings    EnabledSettings       `json:"tvsubtitles_settings"`
 	MoviesubtitlesSettings EnabledSettings       `json:"moviesubtitles_settings"`

@@ -9,7 +9,6 @@ type SuppliersSettings struct {
 	Shooter        *OneSupplierSettings `json:"shooter"`
 	Assrt          *OneSupplierSettings `json:"assrt"`
 	SubDL          *OneSupplierSettings `json:"subdl"`
-	SubtitleBest   *OneSupplierSettings `json:"subtitle_best"`
 	OpenSubtitles  *OneSupplierSettings `json:"opensubtitles"`
 	TVSubtitles    *OneSupplierSettings `json:"tvsubtitles"`
 	MovieSubtitles *OneSupplierSettings `json:"moviesubtitles"`
@@ -24,7 +23,6 @@ func NewSuppliersSettings() *SuppliersSettings {
 		Shooter:        NewOneSupplierSettings(common.SubSiteShooter, common.SubShooterRootUrlDef, "", -1),
 		Assrt:          NewOneSupplierSettings(common.SubSiteAssrt, common.SubAssrtRootUrlDef, "", -1),
 		SubDL:          NewOneSupplierSettings(common.SubSiteSubDL, common.SubSubDLRootUrlDef, common.SubSubDLSearchUrl, -1),
-		SubtitleBest:   NewOneSupplierSettings(common.SubSiteSubtitleBest, common.SubSubtitleBestRootUrlDef, common.SubSubtitleBestSearchMovieUrl, -1),
 		OpenSubtitles:  NewOneSupplierSettings(common.SubSiteOpenSubtitles, common.SubOpenSubtitlesRootUrlDef, common.SubOpenSubtitlesSearchUrl, -1),
 		TVSubtitles:    NewOneSupplierSettings(common.SubSiteTVSubtitles, common.SubTVSubtitlesRootUrlDef, common.SubTVSubtitlesSearchUrl, -1),
 		MovieSubtitles: NewOneSupplierSettings(common.SubSiteMovieSubtitles, common.SubMovieSubtitlesRootUrlDef, common.SubMovieSubtitlesSearchUrl, -1),
@@ -38,7 +36,6 @@ func NewSuppliersSettings() *SuppliersSettings {
 func (s *SuppliersSettings) ReSetSearchUrl() {
 	s.ensureDefaults()
 	s.SubDL.SearchUrl = common.SubSubDLSearchUrl
-	s.SubtitleBest.SearchUrl = common.SubSubtitleBestSearchMovieUrl
 	s.OpenSubtitles.SearchUrl = common.SubOpenSubtitlesSearchUrl
 	s.TVSubtitles.SearchUrl = common.SubTVSubtitlesSearchUrl
 	s.MovieSubtitles.SearchUrl = common.SubMovieSubtitlesSearchUrl
@@ -76,9 +73,6 @@ func (s *SuppliersSettings) ensureDefaults() {
 	}
 	if s.SubDL == nil {
 		s.SubDL = defaults.SubDL
-	}
-	if s.SubtitleBest == nil {
-		s.SubtitleBest = defaults.SubtitleBest
 	}
 	if s.OpenSubtitles == nil {
 		s.OpenSubtitles = defaults.OpenSubtitles

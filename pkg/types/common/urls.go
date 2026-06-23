@@ -16,13 +16,6 @@ const (
 	SubSubDLSearchUrl    = "/subtitles"
 	SubSubDLDownloadRoot = "https://dl.subdl.com"
 
-	SubSubtitleBestRootUrlDef                   = "https://api.subtitle.best/share-sub/v1"
-	SubSubtitleBestSearchMovieUrl               = "/search-movie"
-	SubSubtitleBestSearchTVEpsUrl               = "/search-tv-eps"
-	SubSubtitleBestSearchTVSeasonPackageUrl     = "/search-tv-season-package"
-	SubSubtitleBestSearchTVSeasonPackageByIDUrl = "/search-tv-season-package-id"
-	SubSubtitleBestGetDlURLUrl                  = "/get-dl-url"
-
 	SubOpenSubtitlesRootUrlDef  = "https://api.opensubtitles.com/api/v1"
 	SubOpenSubtitlesSearchUrl   = "/subtitles"
 	SubOpenSubtitlesLoginUrl    = "/login"

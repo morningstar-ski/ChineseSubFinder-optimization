@@ -113,7 +113,7 @@ func TestCompareResultsTracksSubHDFallbackPressure(t *testing.T) {
 			},
 			PrimaryFailure: FailureCaptchaOCR,
 			Attempts: []ProviderAttempt{
-				{Provider: "subtitle_best", Hit: false, Downloaded: false, FailureCategory: FailureNoProviderHit},
+				{Provider: "opensubtitles", Hit: false, Downloaded: false, FailureCategory: FailureNoProviderHit},
 				{Provider: "subhd", Hit: false, Downloaded: false, FailureCategory: FailureCaptchaOCR},
 			},
 		},
@@ -126,7 +126,7 @@ func TestCompareResultsTracksSubHDFallbackPressure(t *testing.T) {
 				Kind:      SampleMovie,
 			},
 			Attempts: []ProviderAttempt{
-				{Provider: "subtitle_best", Hit: true, Downloaded: true},
+				{Provider: "opensubtitles", Hit: true, Downloaded: true},
 			},
 		},
 	}

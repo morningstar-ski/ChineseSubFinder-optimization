@@ -129,6 +129,7 @@ func InitRouter(
 
 		GroupV1.POST("/subtitles/refresh_media_server_sub_list", cbV1.RefreshMediaServerSubList)
 		GroupV1.POST("/subtitles/manual_upload_2_local", cbV1.ManualUploadSubtitle2Local)
+		GroupV1.POST("/subtitles/fix_timeline", cbV1.FixSubtitleTimeline)
 		GroupV1.POST("/subtitles/manual_upload_result", cbV1.ManualUploadSubtitleResult)
 		GroupV1.GET("/subtitles/list_manual_upload_2_local_job", cbV1.ListManualUploadSubtitle2LocalJob)
 		GroupV1.POST("/subtitles/is_manual_upload_2_local_in_queue", cbV1.IsManualUploadSubtitle2LocalJobInQueue)

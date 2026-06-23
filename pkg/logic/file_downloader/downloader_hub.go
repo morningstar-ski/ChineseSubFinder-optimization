@@ -14,7 +14,6 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/random_auth_key"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/sub_parser_hub"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/subtitle_best_api"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/language"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/supplier"
 	"github.com/go-rod/rod"
@@ -29,12 +28,13 @@ type FileDownloader struct {
 }
 
 func NewFileDownloader(cacheCenter *cache_center.CacheCenter, authKey random_auth_key.AuthKey) *FileDownloader {
+	_ = authKey
 
 	f := FileDownloader{
 		Log:              cacheCenter.Log,
 		CacheCenter:      cacheCenter,
 		SubParserHub:     sub_parser_hub.NewSubParserHub(cacheCenter.Log, ass.NewParser(cacheCenter.Log), srt.NewParser(cacheCenter.Log)),
-		MediaInfoDealers: media_info_dealers.NewDealers(cacheCenter.Log, subtitle_best_api.NewSubtitleBestApi(cacheCenter.Log, authKey)),
+		MediaInfoDealers: media_info_dealers.NewDealers(cacheCenter.Log),
 	}
 	return &f
 }
@@ -149,42 +149,6 @@ func (f *FileDownloader) GetEx(supplierName string, browser *rod.Browser, subDow
 		}
 
 		return subInfo, nil
-	}
-
-	return subInfo, nil
-}
-
-// GetSubtitleBest supplierName 这个参数一定得是字幕源的名称，通过 s.GetSupplierName() 获取，否则后续的字幕源今日下载量将不能正确统计和判断
-func (f *FileDownloader) GetSubtitleBest(supplierName string, topN int64, season, eps int,
-	title, ext, subSha256, fileDownloadUrl string) (*supplier.SubInfo, error) {
-
-	found, subInfo, err := f.CacheCenter.DownloadFileGet(subSha256, f.ValidateCachedSubInfo)
-	if err != nil {
-		return nil, err
-	}
-	if found == false {
-
-		fileData, _, err := pkg.DownSubtitleFile(f.Log, f.inspectSubtitlePayload, fileDownloadUrl)
-		if err != nil {
-			return nil, err
-		}
-		_, err = f.CacheCenter.DailyDownloadCountAdd(supplierName,
-			pkg.GetPublicIP(f.Log, settings.Get().AdvancedSettings.TaskQueue))
-		if err != nil {
-			f.Log.Warningln(supplierName, "FileDownloader.Get.DailyDownloadCountAdd", err)
-		}
-		inSubInfo := supplier.NewSubInfo(supplierName, topN, title, language.ChineseSimple, fileDownloadUrl, 0, 0, ext, fileData)
-		inSubInfo.Season = season
-		inSubInfo.Episode = eps
-		inSubInfo.SetFileUrlSha256(subSha256)
-		inSubInfo.GetUID()
-
-		err = f.CacheCenter.DownloadFileAdd(inSubInfo)
-		if err != nil {
-			return nil, err
-		}
-
-		return inSubInfo, nil
 	}
 
 	return subInfo, nil

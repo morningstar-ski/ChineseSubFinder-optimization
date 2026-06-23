@@ -100,7 +100,7 @@ RUN apt-get update \
         libxrandr2 \
         xdg-utils; fi \
     && python3 -m venv /opt/csf-ocr \
-    && /opt/csf-ocr/bin/pip install --no-cache-dir ddddocr -r /opt/subflow/requirements-translate.txt \
+    && /opt/csf-ocr/bin/pip install --no-cache-dir ddddocr ffsubsync==0.5.0 -r /opt/subflow/requirements-translate.txt \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*

@@ -48,8 +48,6 @@ func TestNeedRestartHTTPServer(t *testing.T) {
 			mutate: func(newSettings *settings.Settings) {
 				newSettings.SubtitleSources.SubDLSettings.Enabled = true
 				newSettings.SubtitleSources.SubDLSettings.Key = "subdl-key"
-				newSettings.SubtitleSources.SubtitleBestSettings.Enabled = true
-				newSettings.SubtitleSources.SubtitleBestSettings.ApiKey = "subtitle-best-key"
 				newSettings.SubtitleSources.OpenSubtitlesSettings.Enabled = true
 				newSettings.SubtitleSources.OpenSubtitlesSettings.ApiKey = "opensubtitles-key"
 				newSettings.SubtitleSources.OpenSubtitlesSettings.Username = "user"
@@ -105,8 +103,6 @@ func newSettingsForNeedRestartTest(t *testing.T) *settings.Settings {
 	cfg.AdvancedSettings.DebugMode = false
 	cfg.SubtitleSources.SubDLSettings.Enabled = false
 	cfg.SubtitleSources.SubDLSettings.Key = ""
-	cfg.SubtitleSources.SubtitleBestSettings.Enabled = false
-	cfg.SubtitleSources.SubtitleBestSettings.ApiKey = ""
 	cfg.SubtitleSources.OpenSubtitlesSettings.Enabled = false
 	cfg.SubtitleSources.OpenSubtitlesSettings.ApiKey = ""
 	cfg.SubtitleSources.OpenSubtitlesSettings.Username = ""

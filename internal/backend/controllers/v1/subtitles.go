@@ -14,6 +14,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type FixSubtitleTimelineReq struct {
+	VideoFPath string `json:"video_f_path"`
+	SubFPath   string `json:"sub_f_path"`
+}
+
 // RefreshMediaServerSubList 刷新媒体服务器的字幕列表
 func (cb *ControllerBase) RefreshMediaServerSubList(c *gin.Context) {
 	var err error
@@ -73,6 +78,39 @@ func (cb *ControllerBase) ManualUploadSubtitle2Local(c *gin.Context) {
 	return
 }
 
+func (cb *ControllerBase) FixSubtitleTimeline(c *gin.Context) {
+	var err error
+	defer func() {
+		cb.ErrorProcess(c, "FixSubtitleTimeline", err)
+	}()
+
+	req := FixSubtitleTimelineReq{}
+	err = c.ShouldBindJSON(&req)
+	if err != nil {
+		return
+	}
+	if req.VideoFPath == "" || req.SubFPath == "" {
+		err = fmt.Errorf("video_f_path or sub_f_path is empty")
+		return
+	}
+	if pkg.IsFile(req.VideoFPath) == false {
+		err = fmt.Errorf("video file not exist: %s", req.VideoFPath)
+		return
+	}
+	if pkg.IsFile(req.SubFPath) == false {
+		err = fmt.Errorf("subtitle file not exist: %s", req.SubFPath)
+		return
+	}
+
+	cb.cronHelper.Downloader.ManualUploadSub2Local.Add(&manual_upload_sub_2_local.Job{
+		VideoFPath: req.VideoFPath,
+		SubFPath:   req.SubFPath,
+		Mode:       "fix_timeline_only",
+	})
+
+	c.JSON(http.StatusOK, backend2.ReplyCommon{Message: "ok"})
+}
+
 // ListManualUploadSubtitle2LocalJob 列举人工上传字幕到本地的任务列表
 func (cb *ControllerBase) ListManualUploadSubtitle2LocalJob(c *gin.Context) {
 	var err error
@@ -104,6 +142,8 @@ func (cb *ControllerBase) IsManualUploadSubtitle2LocalJobInQueue(c *gin.Context)
 
 	found := cb.cronHelper.Downloader.ManualUploadSub2Local.IsJobInQueue(&manual_upload_sub_2_local.Job{
 		VideoFPath: job.VideoFPath,
+		SubFPath:   job.SubFPath,
+		Mode:       job.Mode,
 	})
 
 	c.JSON(http.StatusOK, backend2.ReplyCommon{Message: strconv.FormatBool(found)})
@@ -126,6 +166,8 @@ func (cb *ControllerBase) ManualUploadSubtitleResult(c *gin.Context) {
 
 	result := cb.cronHelper.Downloader.ManualUploadSub2Local.JobResult(&manual_upload_sub_2_local.Job{
 		VideoFPath: job.VideoFPath,
+		SubFPath:   job.SubFPath,
+		Mode:       job.Mode,
 	})
 
 	c.JSON(http.StatusOK, backend2.ReplyCommon{Message: result})

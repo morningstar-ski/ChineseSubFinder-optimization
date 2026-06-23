@@ -18,7 +18,7 @@ func TestReadSeriesInfoFromDir(t *testing.T) {
 
 	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
 	series := unit_test_helper.SkipIfTestDataResourceAbsent(t, []string{"series", "Loki"}, 4, false)
-	dealers := media_info_dealers.NewDealers(log_helper.GetLogger4Tester(), nil)
+	dealers := media_info_dealers.NewDealers(log_helper.GetLogger4Tester())
 	seriesInfo, err := ReadSeriesInfoFromDir(dealers, series, 90, false, true)
 	if err != nil {
 		t.Fatal(err)

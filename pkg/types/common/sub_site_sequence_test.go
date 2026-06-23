@@ -82,7 +82,7 @@ func TestDefaultTranslatedFallbackSubSiteSequence(t *testing.T) {
 
 func TestOrderSubSiteNames(t *testing.T) {
 	got := OrderSubSiteNames(
-		[]string{SubSiteShooter, "custom_site", SubSiteAssrt, SubSiteOpenSubtitles, SubSiteSubDL, SubSiteSubHd, SubSiteSubtitleBest, SubSiteShooter},
+		[]string{SubSiteShooter, "custom_site", SubSiteAssrt, SubSiteOpenSubtitles, SubSiteSubDL, SubSiteSubHd, SubSiteShooter},
 		DefaultSubSiteSequence(),
 	)
 	want := []string{
@@ -92,7 +92,6 @@ func TestOrderSubSiteNames(t *testing.T) {
 		SubSiteOpenSubtitles,
 		SubSiteSubDL,
 		"custom_site",
-		SubSiteSubtitleBest,
 	}
 
 	if len(got) != len(want) {

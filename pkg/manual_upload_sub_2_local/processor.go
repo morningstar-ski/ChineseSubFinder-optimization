@@ -77,7 +77,7 @@ func (m *ManualUploadSub2Local) IsJobInQueue(job *Job) bool {
 	if job == nil || job.VideoFPath == "" {
 		return false
 	}
-	if m.jobSet.Contains(job.VideoFPath) == true {
+	if m.jobSet.Contains(job.Identity()) == true {
 		// 已经在队列中了
 		return true
 	} else {
@@ -86,7 +86,7 @@ func (m *ManualUploadSub2Local) IsJobInQueue(job *Job) bool {
 			return false
 		}
 		// 还有一种可能，任务从队列拿出来了，正在处理，那么在外部开来也还是在队列中的
-		if m.workingJob.VideoFPath == job.VideoFPath {
+		if m.workingJob.Identity() == job.Identity() {
 			return true
 		}
 	}
@@ -101,12 +101,12 @@ func (m *ManualUploadSub2Local) Add(job *Job) {
 		m.addLocker.Unlock()
 	}()
 
-	if m.jobSet.Contains(job.VideoFPath) == true {
+	if m.jobSet.Contains(job.Identity()) == true {
 		// 已经在队列中了
 		return
 	}
 	m.processQueue.Enqueue(job)
-	m.jobSet.Add(job.VideoFPath)
+	m.jobSet.Add(job.Identity())
 	// 通知有新任务了
 	m.addOneSignal <- struct{}{}
 
@@ -116,7 +116,7 @@ func (m *ManualUploadSub2Local) Add(job *Job) {
 // JobResult 任务结果，如果成功 ok，如果没有就是空，其他就是错误信息
 func (m *ManualUploadSub2Local) JobResult(job *Job) string {
 
-	value, found := m.jobResultMap.LoadAndDelete(job.VideoFPath)
+	value, found := m.jobResultMap.LoadAndDelete(job.Identity())
 	if found == false {
 		return ""
 	}
@@ -156,7 +156,7 @@ func (m *ManualUploadSub2Local) dealers() {
 		return
 	}
 	// 移除这个任务
-	m.jobSet.Remove(job.(*Job).VideoFPath)
+	m.jobSet.Remove(job.(*Job).Identity())
 	// 标记这个正在处理
 	m.workingJob = job.(*Job)
 	m.addLocker.Unlock()
@@ -177,11 +177,20 @@ func (m *ManualUploadSub2Local) processSub(job *Job) error {
 		m.addLocker.Unlock()
 
 		if err != nil {
-			m.jobResultMap.Store(job.VideoFPath, err.Error())
+			m.jobResultMap.Store(job.Identity(), err.Error())
 		} else {
-			m.jobResultMap.Store(job.VideoFPath, "ok")
+			m.jobResultMap.Store(job.Identity(), "ok")
 		}
 	}()
+
+	if job.Mode == "fix_timeline_only" {
+		err = m.saveSubHelper.FixSubFileTimeline(job.VideoFPath, job.SubFPath)
+		if err != nil {
+			err = errors.New("FixSubFileTimeline," + job.VideoFPath + "," + job.SubFPath + "," + err.Error())
+			return err
+		}
+		return nil
+	}
 
 	// 不管是不是保存多个字幕，都要先扫描本地的字幕，进行 .Default .Forced 去除
 	// 这个视频的所有字幕，去除 .default .Forced 标记
@@ -228,6 +237,17 @@ func (m *ManualUploadSub2Local) processSub(job *Job) error {
 type Job struct {
 	VideoFPath string `json:"video_f_path"`
 	SubFPath   string `json:"sub_f_path"`
+	Mode       string `json:"mode"`
+}
+
+func (j *Job) Identity() string {
+	if j == nil {
+		return ""
+	}
+	if j.Mode == "" {
+		return "upload|" + j.VideoFPath
+	}
+	return j.Mode + "|" + j.VideoFPath + "|" + j.SubFPath
 }
 
 type Reply struct {

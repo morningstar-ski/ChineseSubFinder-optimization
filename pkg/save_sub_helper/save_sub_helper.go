@@ -1,6 +1,7 @@
 package save_sub_helper
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -98,4 +99,12 @@ func (s *SaveSubHelper) tryFixTimeline(videoFileFullPath, desSubFullPath string)
 	if err := s.subTimelineFixerHelperEx.Process(videoFileFullPath, desSubFullPath); err != nil {
 		s.log.Warnln("Skip TimeLine Fix --", desSubFullPath, err)
 	}
+}
+
+func (s *SaveSubHelper) FixSubFileTimeline(videoFileFullPath, subFileFullPath string) error {
+	if s.subTimelineFixerHelperEx == nil {
+		return fmt.Errorf("timeline fixer helper is nil: %s", subFileFullPath)
+	}
+
+	return s.subTimelineFixerHelperEx.Process(videoFileFullPath, subFileFullPath)
 }

@@ -29,9 +29,10 @@
               <q-item v-for="(item, index) in detialInfo.sub_url_list" :key="item">
                 <q-item-section side>{{ index + 1 }}.</q-item-section>
 
-                <q-item-section class="overflow-hidden ellipsis" :title="item.split`(/\/|\\/)`.pop()">
+                <q-item-section class="overflow-hidden ellipsis" :title="item.split(/\/|\\/).pop()">
                   <a class="text-primary" :href="getUrl(item)" target="_blank">{{ item.split(/\/|\\/).pop() }}</a>
                 </q-item-section>
+
                 <q-item-section side>
                   <q-btn
                     color="primary"
@@ -39,12 +40,14 @@
                     flat
                     dense
                     icon="construction"
-                    :title="`字幕时间轴校准${
-                      !formModel.advanced_settings.fix_time_line ? '（需先在进阶设置中启用自动校准）' : ''
-                    }`"
-                    @click="doFixSubtitleTimeline(item)"
-                    :disable="!formModel.advanced_settings.fix_time_line"
-                  ></q-btn>
+                    title="校准这条字幕的时间轴"
+                    @click="
+                      doFixSubtitleTimeline({
+                        videoPath: data.video_f_path,
+                        subPath: detialInfo.sub_f_path_list[index],
+                      })
+                    "
+                  />
                 </q-item-section>
               </q-item>
             </q-list>
@@ -93,10 +96,10 @@
           flat
           dense
           icon="download_for_offline"
-          title="添加到下载队列"
+          title="加入下载队列"
           @click="downloadSubtitle"
           size="sm"
-        ></q-btn>
+        />
 
         <btn-ignore-video :path="props.data.video_f_path" :video-type="VIDEO_TYPE_MOVIE" size="sm" />
       </div>
@@ -115,7 +118,6 @@ import BtnIgnoreVideo from 'pages/library/BtnIgnoreVideo';
 import BtnUploadSubtitle from 'pages/library/BtnUploadSubtitle';
 import BtnDialogPreviewVideo from 'pages/library/BtnDialogPreviewVideo';
 import BtnDialogSearchSubtitle from 'pages/library/BtnDialogSearchSubtitle';
-import { formModel } from 'pages/settings/use-settings';
 
 const props = defineProps({
   data: Object,
@@ -148,12 +150,12 @@ const getDetailInfo = async () => {
   detialInfo.value = res;
 };
 
-const hasSubtitle = computed(() => detialInfo.value?.sub_url_list.length > 0);
+const hasSubtitle = computed(() => (detialInfo.value?.sub_url_list?.length ?? 0) > 0);
 
 const downloadSubtitle = async () => {
   $q.dialog({
-    title: '添加到下载队列',
-    message: '选择下载任务类型：',
+    title: '加入下载队列',
+    message: '选择下载任务类型',
     options: {
       model: 3,
       type: 'radio',
@@ -180,11 +182,12 @@ const downloadSubtitle = async () => {
 };
 
 watch(subtitleUploadList, (val, oldVal) => {
+  const prev = oldVal ?? [];
   if (
     (val.find((e) => e.video_f_path === props.data.video_f_path) &&
-      !oldVal.find((e) => e.video_f_path === props.data.video_f_path)) ||
+      !prev.find((e) => e.video_f_path === props.data.video_f_path)) ||
     (!val.find((e) => e.video_f_path === props.data.video_f_path) &&
-      oldVal.find((e) => e.video_f_path === props.data.video_f_path))
+      prev.find((e) => e.video_f_path === props.data.video_f_path))
   ) {
     getDetailInfo();
   }

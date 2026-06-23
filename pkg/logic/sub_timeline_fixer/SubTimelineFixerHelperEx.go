@@ -1,9 +1,13 @@
 package sub_timeline_fixer
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"math"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -53,8 +57,15 @@ func (s *SubTimelineFixerHelperEx) Check() bool {
 		s.log.Errorln("Need Install ffmpeg and ffprobe !")
 		return false
 	}
+	ffsubsyncVersion, err := getFFSubSyncVersion()
+	if err != nil {
+		s.needDownloadFFMPeg = false
+		s.log.Errorln("Need Install ffsubsync !")
+		return false
+	}
 	s.needDownloadFFMPeg = true
 	s.log.Infoln(version)
+	s.log.Infoln(ffsubsyncVersion)
 	return true
 }
 
@@ -65,109 +76,8 @@ func (s *SubTimelineFixerHelperEx) Process(videoFileFullPath, srcSubFPath string
 		return nil
 	}
 
-	var infoSrc *subparser.FileInfo
-	var pipeResultMax sub_timeline_fixer.PipeResult
-	bProcess := false
-	bok := false
-	var ffmpegInfo *ffmpeg_helper.FFMPEGInfo
-	var err error
-	// 先尝试获取内置字幕的信息
-	bok, ffmpegInfo, err = s.ffmpegHelper.ExportFFMPEGInfo(videoFileFullPath, ffmpeg_helper.Subtitle)
-	if err != nil {
-		return err
-	}
-	if bok == false {
-		return errors.New("SubTimelineFixerHelperEx.Process.ExportFFMPEGInfo = false Subtitle -- " + videoFileFullPath)
-	}
-
-	// 这个需要提前考虑，如果只有一个内置的字幕，且这个字幕的大小小于 2kb，那么认为这个字幕是有问题的，就直接切换到 audio 校正
-	oneSubAndIsError := false
-	if len(ffmpegInfo.SubtitleInfoList) == 1 {
-		fi, err := os.Stat(ffmpegInfo.SubtitleInfoList[0].FullPath)
-		if err != nil {
-			oneSubAndIsError = true
-		} else {
-			if fi.Size() <= 2048 {
-				oneSubAndIsError = true
-			}
-		}
-	}
-	// 内置的字幕，这里只列举一种格式出来，其实会有一个字幕的 srt 和 ass 两种格式都导出存在
-	if ffmpegInfo.SubtitleInfoList == nil || len(ffmpegInfo.SubtitleInfoList) <= 0 || oneSubAndIsError == true {
-		if ffmpegInfo.AudioInfoList == nil || len(ffmpegInfo.AudioInfoList) == 0 {
-			return errors.New("SubTimelineFixerHelperEx.Process.ExportFFMPEGInfo Can`t Find SubTitle And Audio To Export -- " + videoFileFullPath)
-		}
-
-		// 如果内置字幕没有，那么就需要尝试获取音频信息
-		bok, ffmpegInfo, err = s.ffmpegHelper.ExportFFMPEGInfo(videoFileFullPath, ffmpeg_helper.Audio)
-		if err != nil {
-			return err
-		}
-		if bok == false {
-			return errors.New("SubTimelineFixerHelperEx.Process.ExportFFMPEGInfo = false Audio -- " + videoFileFullPath)
-		}
-
-		// 使用音频进行时间轴的校正
-		if len(ffmpegInfo.AudioInfoList) <= 0 {
-			s.log.Warnln("Can`t find audio info, skip time fix --", videoFileFullPath)
-			return nil
-		}
-		bProcess, infoSrc, pipeResultMax, err = s.ProcessByAudioFile(ffmpegInfo.AudioInfoList[0].FullPath, srcSubFPath)
-		if err != nil {
-			return err
-		}
-	} else {
-		// 使用内置的字幕进行时间轴的校正，这里需要考虑一个问题，内置的字幕可能是有问题的（先考虑一种，就是字幕的长度不对，是一小段的）
-		// 那么就可以比较多个内置字幕的大小选择大的去使用
-		// 如果有多个内置的字幕，还是要判断下的，选体积最大的那个吧
-		fileSizes := treemap.NewWith(utils.Int64Comparator)
-		for index, info := range ffmpegInfo.SubtitleInfoList {
-			fi, err := os.Stat(info.FullPath)
-			if err != nil {
-				fileSizes.Put(0, index)
-			} else {
-				fileSizes.Put(fi.Size(), index)
-			}
-		}
-		_, index := fileSizes.Max()
-		baseSubFPath := ffmpegInfo.SubtitleInfoList[index.(int)].FullPath
-		bProcess, infoSrc, pipeResultMax, err = s.ProcessBySubFile(baseSubFPath, srcSubFPath)
-		if err != nil {
-			return err
-		}
-	}
-
-	// 开始调整字幕时间轴
-	if bProcess == false || math.Abs(pipeResultMax.GetOffsetTime()) < s.fixerConfig.MinOffset {
-		s.log.Infoln("Skip TimeLine Fix -- OffsetTime:", pipeResultMax.GetOffsetTime(), srcSubFPath)
-		return nil
-	}
-	err = s.changeTimeLineAndSave(infoSrc, pipeResultMax, srcSubFPath)
-	if err != nil {
-		return err
-	}
-	bFind, fixedInfo, parseErr := s.subParserHub.DetermineFileTypeFromFile(srcSubFPath)
-	if parseErr != nil {
-		return parseErr
-	}
-	if bFind == false || fixedInfo == nil {
-		return errors.New("timeline fixed subtitle could not be parsed")
-	}
-	if reason := invalidTimelineFixedSubtitleReason(fixedInfo, ffmpegInfo.Duration); reason != "" {
-		_ = os.Remove(srcSubFPath)
-		restoreErr := os.Rename(srcSubFPath+sub_timeline_fixer.BackUpExt, srcSubFPath)
-		if restoreErr != nil {
-			return restoreErr
-		}
-		return errors.New("timeline fix produced invalid subtitle: " + reason)
-	}
-	s.log.Infoln("TimeLine Fix -- Score:", pipeResultMax.Score, srcSubFPath)
-	s.log.Infoln("Fix Offset:", pipeResultMax.GetOffsetTime(), srcSubFPath)
-	s.log.Infoln("BackUp Org SubFile:", srcSubFPath+sub_timeline_fixer.BackUpExt)
-
-	return nil
+	return s.processWithFFSubSync(videoFileFullPath, srcSubFPath)
 }
-
 func invalidTimelineFixedSubtitleReason(fileInfo *subparser.FileInfo, videoDuration float64) string {
 	if fileInfo == nil {
 		return "nil subtitle info"
@@ -428,6 +338,169 @@ func (s *SubTimelineFixerHelperEx) changeTimeLineAndSave(infoSrc *subparser.File
 	}
 
 	return nil
+}
+
+func (s *SubTimelineFixerHelperEx) processWithFFSubSync(videoFileFullPath, srcSubFPath string) error {
+	if s.fixerConfig.Engine != settings.TimelineFixerEngineFFSubSync {
+		return fmt.Errorf("unsupported timeline fixer engine: %s", s.fixerConfig.Engine)
+	}
+
+	videoDuration := s.ffmpegHelper.GetVideoDuration(videoFileFullPath)
+	logDir, err := os.MkdirTemp("", "csf-ffsubsync-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(logDir)
+
+	tmpOutputPath := timelineFixTempOutputPath(srcSubFPath)
+	if pkg.IsFile(tmpOutputPath) == true {
+		if err := os.Remove(tmpOutputPath); err != nil {
+			return err
+		}
+	}
+
+	args := []string{
+		videoFileFullPath,
+		"-i", srcSubFPath,
+		"-o", tmpOutputPath,
+		"--max-offset-seconds", fmt.Sprintf("%d", s.fixerConfig.MaxOffsetTime),
+		"--log-dir-path", logDir,
+	}
+	if s.fixerConfig.MinOffset > 0 {
+		args = append(args, "--suppress-output-if-offset-less-than", fmt.Sprintf("%.3f", s.fixerConfig.MinOffset))
+	}
+
+	ffsubsyncBin, err := findFFSubSyncBin()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(ffsubsyncBin, args...)
+	output := bytes.NewBuffer(nil)
+	cmd.Stdout = output
+	cmd.Stderr = output
+	if err := cmd.Run(); err != nil && pkg.IsFile(tmpOutputPath) == false {
+		return fmt.Errorf("ffsubsync failed: %w; output=%s", err, strings.TrimSpace(output.String()))
+	}
+	if pkg.IsFile(tmpOutputPath) == false {
+		s.log.Infoln("Skip TimeLine Fix -- ffsubsync produced no output", srcSubFPath)
+		return nil
+	}
+
+	bFind, fixedInfo, parseErr := s.subParserHub.DetermineFileTypeFromFile(tmpOutputPath)
+	if parseErr != nil {
+		_ = os.Remove(tmpOutputPath)
+		return parseErr
+	}
+	if bFind == false || fixedInfo == nil {
+		_ = os.Remove(tmpOutputPath)
+		return errors.New("timeline fixed subtitle could not be parsed")
+	}
+	if reason := invalidTimelineFixedSubtitleReason(fixedInfo, videoDuration); reason != "" {
+		_ = os.Remove(tmpOutputPath)
+		return errors.New("timeline fix produced invalid subtitle: " + reason)
+	}
+
+	offsetSeconds, err := s.estimateOffsetSeconds(srcSubFPath, tmpOutputPath)
+	if err != nil {
+		_ = os.Remove(tmpOutputPath)
+		return err
+	}
+	if math.Abs(offsetSeconds) < s.fixerConfig.MinOffset {
+		_ = os.Remove(tmpOutputPath)
+		s.log.Infoln("Skip TimeLine Fix -- OffsetTime:", offsetSeconds, srcSubFPath)
+		return nil
+	}
+
+	if pkg.IsFile(srcSubFPath+sub_timeline_fixer.BackUpExt) == true {
+		if err := os.Remove(srcSubFPath + sub_timeline_fixer.BackUpExt); err != nil {
+			_ = os.Remove(tmpOutputPath)
+			return err
+		}
+	}
+	if err := os.Rename(srcSubFPath, srcSubFPath+sub_timeline_fixer.BackUpExt); err != nil {
+		_ = os.Remove(tmpOutputPath)
+		return err
+	}
+	if err := os.Rename(tmpOutputPath, srcSubFPath); err != nil {
+		_ = os.Rename(srcSubFPath+sub_timeline_fixer.BackUpExt, srcSubFPath)
+		_ = os.Remove(tmpOutputPath)
+		return err
+	}
+
+	s.log.Infoln("TimeLine Fix -- Engine:", s.fixerConfig.Engine, srcSubFPath)
+	s.log.Infoln("Fix Offset:", offsetSeconds, srcSubFPath)
+	s.log.Infoln("BackUp Org SubFile:", srcSubFPath+sub_timeline_fixer.BackUpExt)
+	if trimmed := strings.TrimSpace(output.String()); trimmed != "" {
+		s.log.Debugln("ffsubsync:", trimmed)
+	}
+	return nil
+}
+
+func (s *SubTimelineFixerHelperEx) estimateOffsetSeconds(srcSubFPath, fixedSubFPath string) (float64, error) {
+	bFindSrc, srcInfo, err := s.subParserHub.DetermineFileTypeFromFile(srcSubFPath)
+	if err != nil {
+		return 0, err
+	}
+	bFindFixed, fixedInfo, err := s.subParserHub.DetermineFileTypeFromFile(fixedSubFPath)
+	if err != nil {
+		return 0, err
+	}
+	if bFindSrc == false || bFindFixed == false || srcInfo == nil || fixedInfo == nil {
+		return 0, errors.New("unable to parse subtitles for offset estimation")
+	}
+	if len(srcInfo.Dialogues) == 0 || len(fixedInfo.Dialogues) == 0 {
+		return 0, errors.New("subtitle has no dialogues for offset estimation")
+	}
+	srcStart := pkg.Time2SecondNumber(srcInfo.Dialogues[0].GetStartTime())
+	fixedStart := pkg.Time2SecondNumber(fixedInfo.Dialogues[0].GetStartTime())
+	return fixedStart - srcStart, nil
+}
+
+func getFFSubSyncVersion() (string, error) {
+	ffsubsyncBin, err := findFFSubSyncBin()
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.Command(ffsubsyncBin, "--version")
+	buf := bytes.NewBuffer(nil)
+	cmd.Stdout = buf
+	cmd.Stderr = buf
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(buf.String()), nil
+}
+
+func findFFSubSyncBin() (string, error) {
+	candidates := []string{
+		os.Getenv("CSF_FFSUBSYNC_BIN"),
+		"ffsubsync",
+		"/opt/csf-ocr/bin/ffsubsync",
+		"/usr/local/bin/ffsubsync",
+	}
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		if filepath.IsAbs(candidate) {
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
+			continue
+		}
+		if resolved, err := exec.LookPath(candidate); err == nil {
+			return resolved, nil
+		}
+	}
+	return "", errors.New("ffsubsync binary not found")
+}
+
+func timelineFixTempOutputPath(srcSubFPath string) string {
+	ext := filepath.Ext(srcSubFPath)
+	if ext == "" {
+		return srcSubFPath + sub_timeline_fixer.TmpExt
+	}
+	return strings.TrimSuffix(srcSubFPath, ext) + sub_timeline_fixer.TmpExt + ext
 }
 
 type CompareConfig struct {

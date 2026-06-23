@@ -159,7 +159,7 @@
               <div class="supplier-card__title-row">
                 <h4 class="supplier-card__title">SubtitleCat</h4>
               </div>
-              <p class="supplier-card__caption">英文字幕下载回退默认保留；这里只控制中文字幕远端翻译回退。</p>
+              <p class="supplier-card__caption">英文字幕下载回退默认保留；这里仅控制中文字幕远端翻译回退。</p>
             </div>
           </div>
 
@@ -170,28 +170,6 @@
             </div>
             <q-toggle v-model="form.subtitlecat_settings.enable_translated_chinese_fallback" color="primary" />
           </div>
-        </article>
-
-        <article v-if="form.subtitle_best_settings" class="supplier-card">
-          <div class="supplier-card__top">
-            <div class="supplier-card__heading">
-              <div class="supplier-card__title-row">
-                <h4 class="supplier-card__title">SubtitleBest</h4>
-                <span class="supplier-card__link">https://t.me/SubtitleBestBot</span>
-              </div>
-              <p class="supplier-card__caption">通过 Telegram Bot 注册后填写 ApiKey。</p>
-            </div>
-            <q-toggle v-model="form.subtitle_best_settings.enabled" color="primary" />
-          </div>
-
-          <q-input
-            v-model="form.subtitle_best_settings.api_key"
-            :disable="!form.subtitle_best_settings.enabled"
-            standout
-            dense
-            label="SubtitleBest ApiKey"
-            placeholder="填写你的 ApiKey"
-          />
         </article>
       </div>
     </section>

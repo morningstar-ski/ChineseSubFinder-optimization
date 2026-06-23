@@ -21,7 +21,6 @@ const (
 	SubSiteXunLei           = "xunlei"
 	SubSiteAssrt            = "assrt"
 	SubSiteSubDL            = "subdl"
-	SubSiteSubtitleBest     = "subtitle_best"
 	SubSiteOpenSubtitles    = "opensubtitles"
 	SubSiteTVSubtitles      = "tvsubtitles"
 	SubSiteMovieSubtitles   = "moviesubtitles"

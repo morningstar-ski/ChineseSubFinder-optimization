@@ -1,8 +1,6 @@
 package cron_helper
 
 import (
-	"github.com/ChineseSubFinder/ChineseSubFinder/internal/dao"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/file_downloader"
 	//"github.com/ChineseSubFinder/ChineseSubFinder/internal/logic/pre_job"
 	"sync"
@@ -307,23 +305,14 @@ func (ch *CronHelper) Stop() {
 }
 
 func (ch *CronHelper) feedBack() {
-	ch.Logger.Infoln("Update Info...")
-	nowInfo := dao.UpdateInfo(pkg.AppVersion(), settings.Get())
-	_, err := ch.FileDownloader.MediaInfoDealers.SubtitleBestApi.FeedBack(
-		nowInfo.Id,
-		nowInfo.Version, nowInfo.MediaServer,
-		nowInfo.EnableShare, nowInfo.EnableApiKey)
-	if err != nil {
-		ch.Logger.Errorln("FeedBack Error:", err)
-		return
-	}
+	return
 }
 
 //func (ch *CronHelper) scanPlayedVideoSub() {
 //
 //	ch.Logger.Infoln("Update Info...")
 //	nowInfo := dao.UpdateInfo(pkg.AppVersion(), settings.Get())
-//	_, err := ch.FileDownloader.MediaInfoDealers.SubtitleBestApi.FeedBack(
+//	_, err := ch.FileDownloader.MediaInfoDealers.FeedBack(
 //		nowInfo.Id,
 //		nowInfo.Version, nowInfo.MediaServer,
 //		nowInfo.EnableShare, nowInfo.EnableApiKey)

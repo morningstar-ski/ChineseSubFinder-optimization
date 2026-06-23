@@ -2,7 +2,6 @@ package pre_download_process
 
 import (
 	"errors"
-	"time"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/ifaces"
@@ -15,13 +14,11 @@ import (
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/shooter"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subdl"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subhd"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitle_best"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/subtitlecat"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/tvsubtitles"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/logic/sub_supplier/xunlei"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/notify_center"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
-	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/subtitle_best_api"
 	common2 "github.com/ChineseSubFinder/ChineseSubFinder/pkg/types/common"
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/url_connectedness_helper"
 	"github.com/sirupsen/logrus"
@@ -69,37 +66,6 @@ func (p *PreDownloadProcess) Init() *PreDownloadProcess {
 	notify_center.Notify.Clear()
 
 	common2.SubhdCode = ""
-	if pkg.LiteMode() == false && settings.Get().SubtitleSources.SubHDSettings.Enabled {
-		codeProvider := subhd.NewSubtitleBestCodeProvider(p.fileDownloader)
-		updateTimeString, code, err := codeProvider.GetCode()
-		if err != nil {
-			if errors.Is(err, subtitle_best_api.ErrAuthKeyNotSet) {
-				// The shared subtitle.best code helper is optional. Missing auth
-				// should not read like an operational warning when the runtime is
-				// intentionally configured without it.
-				p.log.Infoln("SubtitleBestCodeProvider.GetCode auth key is not set continue without shared code")
-			} else {
-				notify_center.Notify.Add("GetSubhdCode", "GetCodeFromWeb,"+err.Error())
-				p.log.Errorln("SubtitleBestCodeProvider.GetCode", err)
-				p.log.Errorln("Skip Subhd download")
-			}
-			common2.SubhdCode = ""
-		} else {
-			codeTime, err := time.Parse("2006-01-02", updateTimeString)
-			if err != nil {
-				p.log.Errorln("SubtitleBestCodeProvider.GetCode.time.Parse", err)
-			} else if codeTime.YearDay() != time.Now().YearDay() {
-				p.log.Warningln("SubtitleBestCodeProvider.GetCode, GetCodeTime:", updateTimeString, "NowTime:", time.Now().String(), "Skip")
-			} else {
-				if code == "" {
-					p.log.Warningln("SubtitleBestCodeProvider.GetCode returned empty code continue without shared code")
-				} else {
-					p.log.Infoln("GetCode", updateTimeString, code)
-				}
-				common2.SubhdCode = code
-			}
-		}
-	}
 
 	if settings.Get().SpeedDevMode {
 		p.SubSupplierHub = subSupplier.NewSubSupplierHub(
@@ -156,16 +122,6 @@ func collectSupplierPlans(fileDownloader *file_downloader.FileDownloader) map[st
 			addEnglishFallbacks: func(hub *subSupplier.SubSupplierHub) {
 				hub.AddEnglishFallbackSupplier(subdl.NewEnglishSupplier(fileDownloader), true, true)
 			},
-		}
-	}
-
-	if settings.Get().SubtitleSources.SubtitleBestSettings.Enabled &&
-		settings.Get().SubtitleSources.SubtitleBestSettings.ApiKey != "" {
-		plans[common2.SubSiteSubtitleBest] = supplierPlan{
-			siteName:        common2.SubSiteSubtitleBest,
-			supplierFactory: func() ifaces.ISupplier { return subtitle_best.NewSupplier(fileDownloader) },
-			supportMovie:    true,
-			supportSeries:   true,
 		}
 	}
 
