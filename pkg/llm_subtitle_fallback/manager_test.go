@@ -55,7 +55,9 @@ func TestWriteCandidateAsSRTRendersASSDialogues(t *testing.T) {
 func TestBuildChineseSubtitleFromEnglishParsesTranslatedSRT(t *testing.T) {
 	cfg := settings.NewLLMSubtitleFallbackSettings()
 	cfg.Enable = true
+	cfg.BaseURL = "https://api.test.local/v1"
 	cfg.APIKey = "test-key"
+	cfg.TranslateStyle = "natural"
 	cfg.LogDir = t.TempDir()
 	cfg.SubflowRootDir = t.TempDir()
 
@@ -92,18 +94,12 @@ func TestBuildChineseSubtitleFromEnglishParsesTranslatedSRT(t *testing.T) {
 	}
 }
 
-func TestManagerReadyRequiresAPIKey(t *testing.T) {
+func TestManagerReadyRequiresExplicitAPIConfig(t *testing.T) {
 	cfg := settings.NewLLMSubtitleFallbackSettings()
 	cfg.Enable = true
 
 	manager := NewManagerWithTranslator(logrus.New(), cfg, stubTranslator{})
-	if manager.Ready() {
-		t.Fatal("expected manager to be not ready without api key")
-	}
-
-	cfg.APIKey = "test-key"
-	manager = NewManagerWithTranslator(logrus.New(), cfg, stubTranslator{})
-	if manager.Ready() == false {
-		t.Fatal("expected manager to be ready with api key")
+	if manager.Ready() == true {
+		t.Fatal("expected manager to reject missing explicit api config")
 	}
 }

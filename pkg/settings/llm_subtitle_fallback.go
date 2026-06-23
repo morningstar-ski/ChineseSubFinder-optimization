@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -84,6 +85,33 @@ func (s *LLMSubtitleFallbackSettings) ensureDefaults() {
 		s.SourceLanguage == defaults.SourceLanguage && s.TargetLanguage == defaults.TargetLanguage {
 		s.OnlyWhenNoChineseCandidate = defaults.OnlyWhenNoChineseCandidate
 	}
+}
+
+func (s *LLMSubtitleFallbackSettings) Validate() error {
+	if s == nil || s.Enable == false {
+		return nil
+	}
+
+	requiredFields := []struct {
+		label string
+		value string
+	}{
+		{label: "provider", value: s.Provider},
+		{label: "base_url", value: s.BaseURL},
+		{label: "api_key", value: s.APIKey},
+		{label: "model", value: s.Model},
+		{label: "source_language", value: s.SourceLanguage},
+		{label: "target_language", value: s.TargetLanguage},
+		{label: "translate_style", value: s.TranslateStyle},
+	}
+
+	for _, field := range requiredFields {
+		if strings.TrimSpace(field.value) == "" {
+			return fmt.Errorf("llm subtitle fallback %s is required", field.label)
+		}
+	}
+
+	return nil
 }
 
 func defaultLLMSubtitleFallbackPythonExecutable() string {

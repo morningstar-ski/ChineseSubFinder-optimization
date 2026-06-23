@@ -312,3 +312,20 @@ func TestLLMSubtitleFallbackEnsureDefaultsMigratesLegacyWindowsSubflowRoot(t *te
 		t.Fatalf("python_executable = %q", cfg.PythonExecutable)
 	}
 }
+
+func TestLLMSubtitleFallbackValidateRequiresExplicitConfigWhenEnabled(t *testing.T) {
+	cfg := NewLLMSubtitleFallbackSettings()
+	cfg.Enable = true
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error when explicit llm config is incomplete")
+	}
+
+	cfg.BaseURL = "https://api.test.local/v1"
+	cfg.APIKey = "test-key"
+	cfg.TranslateStyle = "natural"
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}

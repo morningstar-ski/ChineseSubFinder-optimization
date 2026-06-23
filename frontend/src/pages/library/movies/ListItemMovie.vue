@@ -32,23 +32,6 @@
                 <q-item-section class="overflow-hidden ellipsis" :title="item.split(/\/|\\/).pop()">
                   <a class="text-primary" :href="getUrl(item)" target="_blank">{{ item.split(/\/|\\/).pop() }}</a>
                 </q-item-section>
-
-                <q-item-section side>
-                  <q-btn
-                    color="primary"
-                    round
-                    flat
-                    dense
-                    icon="construction"
-                    title="校准这条字幕的时间轴"
-                    @click="
-                      doFixSubtitleTimeline({
-                        videoPath: data.video_f_path,
-                        subPath: detialInfo.sub_f_path_list[index],
-                      })
-                    "
-                  />
-                </q-item-section>
               </q-item>
             </q-list>
           </q-popup-proxy>
@@ -77,12 +60,37 @@
           <span>{{ hasSubtitle ? '已匹配字幕' : '待补字幕' }}</span>
         </div>
 
-        <btn-dialog-preview-video
-          v-if="hasSubtitle"
-          size="sm"
-          :subtitle-url-list="detialInfo?.sub_url_list"
-          :path="data.video_f_path"
-        />
+        <div v-if="hasSubtitle" class="movie-card__meta-actions">
+          <btn-dialog-preview-video size="sm" :subtitle-url-list="detialInfo?.sub_url_list" :path="data.video_f_path" />
+
+          <q-btn color="primary" icon="av_timer" flat dense round title="校时间轴" @click.stop>
+            <q-popup-proxy anchor="top right">
+              <q-list dense class="movie-card__subtitle-list">
+                <q-item
+                  v-for="(item, index) in detialInfo.sub_url_list"
+                  :key="`${item}-fix`"
+                  clickable
+                  v-ripple
+                  v-close-popup
+                  @click="
+                    doFixSubtitleTimeline({
+                      videoPath: data.video_f_path,
+                      subPath: detialInfo.sub_f_path_list[index],
+                    })
+                  "
+                >
+                  <q-item-section side>{{ index + 1 }}.</q-item-section>
+                  <q-item-section class="overflow-hidden ellipsis" :title="item.split(/\/|\\/).pop()">
+                    {{ item.split(/\/|\\/).pop() }}
+                  </q-item-section>
+                  <q-item-section side>
+                    <q-icon name="av_timer" color="primary" size="18px" />
+                  </q-item-section>
+                </q-item>
+              </q-list>
+            </q-popup-proxy>
+          </q-btn>
+        </div>
       </div>
 
       <div class="movie-card__actions">
@@ -261,6 +269,12 @@ onMounted(() => {
   justify-content: space-between;
 }
 
+.movie-card__meta-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .movie-card__status {
   display: inline-flex;
   align-items: center;
@@ -285,7 +299,7 @@ onMounted(() => {
 }
 
 .movie-card__subtitle-list {
-  min-width: 220px;
+  min-width: 300px;
 }
 
 .text-ellipsis-line-2 {

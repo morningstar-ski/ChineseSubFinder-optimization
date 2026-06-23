@@ -66,6 +66,10 @@ func SetFullNewSettings(inSettings *Settings) error {
 	_settingsLocker.Lock()
 	defer _settingsLocker.Unlock()
 
+	if err := inSettings.Validate(); err != nil {
+		return err
+	}
+
 	nowConfigFPath := _settings.configFPath
 	_settings = inSettings
 	_settings.configFPath = nowConfigFPath
@@ -157,6 +161,16 @@ func (s *Settings) Check() {
 
 	s.AdvancedSettings.TaskQueue.Check()
 	s.AdvancedSettings.DownloadFileCache.Check()
+}
+
+func (s *Settings) Validate() error {
+	if s == nil {
+		return nil
+	}
+	if s.ExperimentalFunction == nil {
+		return nil
+	}
+	return s.ExperimentalFunction.LLMSubtitleFallback.Validate()
 }
 
 func (s *Settings) ensureDefaults() {

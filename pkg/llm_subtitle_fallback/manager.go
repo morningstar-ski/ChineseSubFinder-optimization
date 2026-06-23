@@ -144,14 +144,8 @@ func (m *Manager) validateRuntimeConfig() error {
 	if m == nil || m.Enabled() == false {
 		return fmt.Errorf("llm subtitle fallback disabled")
 	}
-	if strings.TrimSpace(m.settings.Provider) == "" {
-		return fmt.Errorf("llm subtitle fallback provider is empty")
-	}
-	if strings.TrimSpace(m.settings.Model) == "" {
-		return fmt.Errorf("llm subtitle fallback model is empty")
-	}
-	if strings.TrimSpace(m.settings.APIKey) == "" {
-		return fmt.Errorf("llm subtitle fallback api key is empty")
+	if err := m.settings.Validate(); err != nil {
+		return err
 	}
 	return nil
 }

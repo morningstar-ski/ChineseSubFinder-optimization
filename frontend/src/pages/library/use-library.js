@@ -111,7 +111,7 @@ export const doFixSubtitleTimeline = async ({ videoPath, subPath }) => {
     return;
   }
 
-  SystemMessage.success('已加入时间轴校准队列', {
+  SystemMessage.success('已加入时间轴校准队列。字幕列表里的这条字幕会按当前视频重新校准。', {
     timeout: 3000,
   });
   await getSubtitleUploadList();

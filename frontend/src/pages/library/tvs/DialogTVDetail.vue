@@ -84,6 +84,36 @@
                   <btn-dialog-preview-video :subtitle-url-list="item.sub_url_list" :path="item.video_f_path" />
                 </q-item-section>
 
+                <q-item-section v-if="item.sub_f_path_list.length" side>
+                  <q-btn color="primary" round flat dense icon="av_timer" title="校时间轴" @click.stop>
+                    <q-popup-proxy anchor="top right">
+                      <q-list dense class="tv-detail__subtitle-list">
+                        <q-item
+                          v-for="(subUrl, index) in item.sub_url_list"
+                          :key="`${subUrl}-fix`"
+                          clickable
+                          v-ripple
+                          v-close-popup
+                          @click="
+                            doFixSubtitleTimeline({
+                              videoPath: item.video_f_path,
+                              subPath: item.sub_f_path_list[index],
+                            })
+                          "
+                        >
+                          <q-item-section side>{{ index + 1 }}.</q-item-section>
+                          <q-item-section class="overflow-hidden ellipsis" :title="subUrl.split(/\/|\\/).pop()">
+                            {{ subUrl.split(/\/|\\/).pop() }}
+                          </q-item-section>
+                          <q-item-section side>
+                            <q-icon name="av_timer" color="primary" size="18px" />
+                          </q-item-section>
+                        </q-item>
+                      </q-list>
+                    </q-popup-proxy>
+                  </q-btn>
+                </q-item-section>
+
                 <q-item-section side>
                   <btn-upload-subtitle :path="item.video_f_path" />
                 </q-item-section>
@@ -101,7 +131,7 @@
                     dense
                     icon="closed_caption"
                     @click.stop
-                    title="已有字幕"
+                    title="已有字幕（点开后可手动校时间轴）"
                   >
                     <q-popup-proxy anchor="top right">
                       <q-list dense>
@@ -112,23 +142,6 @@
                             <a class="text-primary" :href="getUrl(subUrl)" target="_blank">
                               {{ subUrl.split(/\/|\\/).pop() }}
                             </a>
-                          </q-item-section>
-
-                          <q-item-section side>
-                            <q-btn
-                              color="primary"
-                              round
-                              flat
-                              dense
-                              icon="construction"
-                              title="校准这条字幕的时间轴"
-                              @click="
-                                doFixSubtitleTimeline({
-                                  videoPath: item.video_f_path,
-                                  subPath: item.sub_f_path_list[index],
-                                })
-                              "
-                            />
                           </q-item-section>
                         </q-item>
                       </q-list>
@@ -316,3 +329,9 @@ const downloadSelection = () => {
   downloadSubtitle(selection.value);
 };
 </script>
+
+<style scoped lang="scss">
+.tv-detail__subtitle-list {
+  min-width: 300px;
+}
+</style>

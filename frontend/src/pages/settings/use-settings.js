@@ -60,6 +60,30 @@ export const useSettings = () => {
 
 export const submitting = ref(false);
 
+const validateLLMSubtitleFallback = () => {
+  const llm = formModel.experimental_function?.llm_subtitle_fallback;
+  if (!llm?.enable) {
+    return null;
+  }
+
+  const requiredFields = [
+    ['服务提供方', llm.provider],
+    ['接口地址', llm.base_url],
+    ['API key', llm.api_key],
+    ['模型', llm.model],
+    ['源语言', llm.source_language],
+    ['目标语言', llm.target_language],
+    ['翻译风格', llm.translate_style],
+  ];
+
+  const missingField = requiredFields.find(([, value]) => !String(value ?? '').trim());
+  if (missingField) {
+    return `${missingField[0]}不能为空`;
+  }
+
+  return null;
+};
+
 export const submitAll = async () => {
   if (isRunningInDocker.value) {
     const isMoviePathStarsWithMedia = formModel.common_settings.movie_paths.every((path) => path.startsWith('/media'));
@@ -77,6 +101,11 @@ export const submitAll = async () => {
       });
       return;
     }
+  }
+  const llmValidationError = validateLLMSubtitleFallback();
+  if (llmValidationError) {
+    SystemMessage.error(llmValidationError);
+    return;
   }
   submitting.value = true;
   if (formModel.experimental_function?.local_chrome_settings) {

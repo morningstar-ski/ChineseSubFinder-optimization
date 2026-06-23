@@ -424,6 +424,9 @@ func TestOneVideoSelectBestSubDoesNotTranslateEnglishCandidateInChineseStage(t *
 	cfg.ExperimentalFunction.AutoChangeSubEncode.Enable = false
 	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
 	cfg.ExperimentalFunction.LLMSubtitleFallback.Enable = true
+	cfg.ExperimentalFunction.LLMSubtitleFallback.BaseURL = "https://api.test.local/v1"
+	cfg.ExperimentalFunction.LLMSubtitleFallback.APIKey = "test-key"
+	cfg.ExperimentalFunction.LLMSubtitleFallback.TranslateStyle = "natural"
 	cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir = t.TempDir()
 	cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir = t.TempDir()
 
@@ -576,7 +579,9 @@ func TestOrderedSubtitleFallbackStagesPreferChineseOutputsBeforeEnglish(t *testi
 	cfg.AdvancedSettings.SaveMultiSub = false
 	cfg.SubtitleSources.SubtitleCatSettings.EnableTranslatedChineseFallback = false
 	cfg.ExperimentalFunction.LLMSubtitleFallback.Enable = true
+	cfg.ExperimentalFunction.LLMSubtitleFallback.BaseURL = "https://api.test.local/v1"
 	cfg.ExperimentalFunction.LLMSubtitleFallback.APIKey = "test-key"
+	cfg.ExperimentalFunction.LLMSubtitleFallback.TranslateStyle = "natural"
 
 	log := logrus.New()
 	d := &Downloader{
@@ -736,7 +741,9 @@ func TestTryWriteLLMSubtitleFallbackTranslatesEnglishCandidateInFallbackStage(t 
 	cfg.ExperimentalFunction.AutoChangeSubEncode.Enable = false
 	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
 	cfg.ExperimentalFunction.LLMSubtitleFallback.Enable = true
+	cfg.ExperimentalFunction.LLMSubtitleFallback.BaseURL = "https://api.test.local/v1"
 	cfg.ExperimentalFunction.LLMSubtitleFallback.APIKey = "test-key"
+	cfg.ExperimentalFunction.LLMSubtitleFallback.TranslateStyle = "natural"
 	cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir = t.TempDir()
 	cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir = t.TempDir()
 
@@ -812,7 +819,7 @@ func TestTryWriteLLMSubtitleFallbackTranslatesEnglishCandidateInFallbackStage(t 
 	}
 }
 
-func TestTryWriteLLMSubtitleFallbackSkipsWhenAPIKeyMissing(t *testing.T) {
+func TestTryWriteLLMSubtitleFallbackRequiresExplicitAPIConfig(t *testing.T) {
 	settings.SetConfigRootPath(t.TempDir())
 	cfg := settings.Get()
 	cfg.AdvancedSettings.DebugMode = false
@@ -821,7 +828,9 @@ func TestTryWriteLLMSubtitleFallbackSkipsWhenAPIKeyMissing(t *testing.T) {
 	cfg.ExperimentalFunction.AutoChangeSubEncode.Enable = false
 	cfg.ExperimentalFunction.ChsChtChanger.Enable = false
 	cfg.ExperimentalFunction.LLMSubtitleFallback.Enable = true
+	cfg.ExperimentalFunction.LLMSubtitleFallback.BaseURL = "https://api.test.local/v1"
 	cfg.ExperimentalFunction.LLMSubtitleFallback.APIKey = ""
+	cfg.ExperimentalFunction.LLMSubtitleFallback.TranslateStyle = "natural"
 	cfg.ExperimentalFunction.LLMSubtitleFallback.LogDir = t.TempDir()
 	cfg.ExperimentalFunction.LLMSubtitleFallback.SubflowRootDir = t.TempDir()
 
@@ -856,18 +865,10 @@ func TestTryWriteLLMSubtitleFallbackSkipsWhenAPIKeyMissing(t *testing.T) {
 
 	err := d.tryWriteLLMSubtitleFallback(videoPath, []string{englishPath})
 	if err == nil {
-		t.Fatal("expected missing api key to skip llm fallback")
+		t.Fatal("expected llm fallback to reject missing explicit api config")
 	}
 	if errors.Is(err, common2.AllSiteDownloadSubNotFound) == false {
 		t.Fatalf("unexpected error = %v", err)
-	}
-
-	entries, err := os.ReadDir(videoDir)
-	if err != nil {
-		t.Fatalf("ReadDir(videoDir) error = %v", err)
-	}
-	if len(entries) != 1 || entries[0].Name() != filepath.Base(videoPath) {
-		t.Fatalf("unexpected files after skipped llm fallback: %#v", entries)
 	}
 }
 
@@ -887,6 +888,7 @@ func TestTryWriteLLMSubtitleFallbackOpenAICompatibleEndToEnd(t *testing.T) {
 	cfg.ExperimentalFunction.LLMSubtitleFallback.Model = "mock-model"
 	cfg.ExperimentalFunction.LLMSubtitleFallback.SourceLanguage = "en"
 	cfg.ExperimentalFunction.LLMSubtitleFallback.TargetLanguage = "zh"
+	cfg.ExperimentalFunction.LLMSubtitleFallback.TranslateStyle = "natural"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {

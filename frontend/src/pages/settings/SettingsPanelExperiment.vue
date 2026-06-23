@@ -120,9 +120,7 @@
       <q-item>
         <q-item-section>
           <q-item-label>LLM 英文转中文字幕回退链</q-item-label>
-          <q-item-label caption>
-            独立控制英文字幕翻译回退。只会在原生中文字幕候选失败后触发， 且仅对单字幕保存模式生效。
-          </q-item-label>
+          <q-item-label caption> 只在原生中文字幕失败后触发。启用后以下 7 项必填。 </q-item-label>
         </q-item-section>
         <q-item-section avatar top>
           <q-toggle v-model="form.llm_subtitle_fallback.enable" />
@@ -132,31 +130,37 @@
       <template v-if="form.llm_subtitle_fallback.enable">
         <q-item v-if="isRunningInDocker">
           <q-item-section>
-            <q-item-label caption>
-              Docker 一键部署会自动使用镜像内置的 Python、ddddocr 和 bundled Subflow， 不需要再手动配置运行时路径。
-            </q-item-label>
+            <q-item-label caption> Docker 默认使用内置 Python、ddddocr 和 Subflow，无需填写运行时路径。 </q-item-label>
           </q-item-section>
         </q-item>
 
         <q-item>
           <q-item-section>
             <q-item-label>服务提供方</q-item-label>
+            <q-item-label caption>供应商标识</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
-            <q-input v-model="form.llm_subtitle_fallback.provider" standout dense />
+          <q-item-section class="llm-settings__field">
+            <q-input
+              v-model="form.llm_subtitle_fallback.provider"
+              standout
+              dense
+              :rules="[llmRequiredRule('服务提供方')]"
+            />
           </q-item-section>
         </q-item>
 
         <q-item>
           <q-item-section>
             <q-item-label>接口地址</q-item-label>
+            <q-item-label caption>兼容接口地址</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
+          <q-item-section class="llm-settings__field">
             <q-input
               v-model="form.llm_subtitle_fallback.base_url"
-              placeholder="兼容 OpenAI 的接口地址，可留空走 Gemini 原生"
+              placeholder="https://api.deepseek.com"
               standout
               dense
+              :rules="[llmRequiredRule('接口地址')]"
             />
           </q-item-section>
         </q-item>
@@ -164,14 +168,16 @@
         <q-item>
           <q-item-section>
             <q-item-label>API key</q-item-label>
+            <q-item-label caption>访问密钥</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
+          <q-item-section class="llm-settings__field">
             <q-input
               v-model="form.llm_subtitle_fallback.api_key"
               type="password"
-              placeholder="留空则回退到 subflow 本地配置或环境变量"
+              placeholder="sk-..."
               standout
               dense
+              :rules="[llmRequiredRule('API key')]"
             />
           </q-item-section>
         </q-item>
@@ -179,9 +185,10 @@
         <q-item>
           <q-item-section>
             <q-item-label>模型</q-item-label>
+            <q-item-label caption>模型名</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
-            <q-input v-model="form.llm_subtitle_fallback.model" standout dense />
+          <q-item-section class="llm-settings__field">
+            <q-input v-model="form.llm_subtitle_fallback.model" standout dense :rules="[llmRequiredRule('模型')]" />
           </q-item-section>
         </q-item>
 
@@ -189,11 +196,12 @@
           <q-item>
             <q-item-section>
               <q-item-label>Python 可执行文件</q-item-label>
+              <q-item-label caption>本地源码运行时才需要；Docker 一键部署下不会用到这个输入框。</q-item-label>
             </q-item-section>
-            <q-item-section avatar>
+            <q-item-section class="llm-settings__field">
               <q-input
                 v-model="form.llm_subtitle_fallback.python_executable"
-                placeholder="留空则自动探测运行时 Python"
+                placeholder="留空则自动探测 Python"
                 standout
                 dense
               />
@@ -203,11 +211,14 @@
           <q-item>
             <q-item-section>
               <q-item-label>Subflow 根目录</q-item-label>
+              <q-item-label caption
+                >本地源码运行时才需要；Docker 一键部署默认直接使用镜像内置的 bundled Subflow。</q-item-label
+              >
             </q-item-section>
-            <q-item-section avatar>
+            <q-item-section class="llm-settings__field">
               <q-input
                 v-model="form.llm_subtitle_fallback.subflow_root_dir"
-                placeholder="留空则自动使用 bundled 或默认路径"
+                placeholder="留空则自动探测 bundled subflow"
                 standout
                 dense
               />
@@ -217,11 +228,12 @@
           <q-item>
             <q-item-section>
               <q-item-label>日志目录</q-item-label>
+              <q-item-label caption>LLM 翻译任务的临时日志和输出会写到这里。</q-item-label>
             </q-item-section>
-            <q-item-section avatar>
+            <q-item-section class="llm-settings__field">
               <q-input
                 v-model="form.llm_subtitle_fallback.log_dir"
-                placeholder="留空则自动使用默认日志目录"
+                placeholder="留空则使用默认日志目录"
                 standout
                 dense
               />
@@ -232,27 +244,45 @@
         <q-item>
           <q-item-section>
             <q-item-label>源语言</q-item-label>
+            <q-item-label caption>输入语言</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
-            <q-input v-model="form.llm_subtitle_fallback.source_language" standout dense />
+          <q-item-section class="llm-settings__field">
+            <q-input
+              v-model="form.llm_subtitle_fallback.source_language"
+              standout
+              dense
+              :rules="[llmRequiredRule('源语言')]"
+            />
           </q-item-section>
         </q-item>
 
         <q-item>
           <q-item-section>
             <q-item-label>目标语言</q-item-label>
+            <q-item-label caption>输出语言</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
-            <q-input v-model="form.llm_subtitle_fallback.target_language" standout dense />
+          <q-item-section class="llm-settings__field">
+            <q-input
+              v-model="form.llm_subtitle_fallback.target_language"
+              standout
+              dense
+              :rules="[llmRequiredRule('目标语言')]"
+            />
           </q-item-section>
         </q-item>
 
         <q-item>
           <q-item-section>
             <q-item-label>翻译风格</q-item-label>
+            <q-item-label caption>提示风格</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
-            <q-input v-model="form.llm_subtitle_fallback.translate_style" placeholder="可留空" standout dense />
+          <q-item-section class="llm-settings__field">
+            <q-input
+              v-model="form.llm_subtitle_fallback.translate_style"
+              standout
+              dense
+              :rules="[llmRequiredRule('翻译风格')]"
+            />
           </q-item-section>
         </q-item>
 
@@ -367,4 +397,28 @@ const generateApiKey = () => {
   const uuid = generateUuid();
   formModel.experimental_function.api_key_settings.key = uuid;
 };
+
+const llmRequiredRule = (label) => (value) =>
+  !formModel.experimental_function?.llm_subtitle_fallback?.enable ||
+  String(value ?? '').trim().length > 0 ||
+  `${label}必填`;
 </script>
+
+<style scoped lang="scss">
+.llm-settings__field {
+  flex: 0 0 min(100%, 420px);
+  width: min(100%, 420px);
+  min-width: 0;
+}
+
+.llm-settings__field :deep(.q-field) {
+  width: 100%;
+}
+
+@media (max-width: 599px) {
+  .llm-settings__field {
+    flex-basis: 100%;
+    width: 100%;
+  }
+}
+</style>
