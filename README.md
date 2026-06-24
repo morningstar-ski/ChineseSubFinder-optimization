@@ -1,27 +1,63 @@
-# ChineseSubFinder
+# ChineseSubFinder Optimization
 
-基于开源项目 [ChineseSubFinder](https://github.com/ChineseSubFinder/ChineseSubFinder) 持续修改的分支，用于中文字幕的扫描、下载、整理与基础管理。
+基于上游 [ChineseSubFinder](https://github.com/ChineseSubFinder/ChineseSubFinder) 持续整理和增强的交付版，目标是把实际可用的字幕下载、回退、翻译、时间轴校正和 Docker 部署链路收口成一版更适合直接落地使用的版本。
 
 ## 鸣谢原作者
 
-当前仓库建立在上游 `ChineseSubFinder` 的长期工作基础上。
-感谢原作者和所有贡献者在媒体库扫描、字幕检索、自动整理和 WebUI 等方面的持续投入。
+当前仓库建立在上游 `ChineseSubFinder` 的长期工作基础上。媒体库扫描、字幕匹配、字幕整理、时间轴处理和 WebUI 能力都继承自原项目的长期积累。
 
-- 上游仓库：<https://github.com/ChineseSubFinder/ChineseSubFinder>
-- 当前仓库：<https://github.com/morningstar-ski/ChineseSubFinder-optimization>
+- 上游仓库：[ChineseSubFinder](https://github.com/ChineseSubFinder/ChineseSubFinder)
+- 当前仓库：[ChineseSubFinder Optimization](https://github.com/morningstar-ski/ChineseSubFinder-optimization)
 
-## 相比原仓库的当前增强
+## NEW FEATURES
 
-- 扩展并接入更多字幕源：`OpenSubtitles`、`TVsubtitles`、`Moviesubtitles`、`SubHD`、`SubtitleCat`。
-- 英文字幕回退链默认保留 `SubtitleCat`，在缺少直链字幕时补足英文源。
-- 增加中文字幕翻译回退能力，可按配置使用 `SubtitleCat` 远端翻译或 LLM 翻译链。
-- `SubHD` 下载链补了本地 `ddddocr` 与 SVG 直读能力，并保留外部 OCR 显式开关。
-- WebUI、Docker 文档和问题反馈入口已统一对齐到当前仓库。
+相比较原版，当前最终版重点补的是“可交付”和“全链路回退”这两件事，不是只加几个零散 provider。
 
-## 用途说明
+### 1. 更完整的字幕源与回退链
 
-本仓库仅用于技术交流、学习研究和个人实验。
-请勿将其用于侵犯版权、绕过授权或其他不合规用途。涉及影视、字幕和媒体资源时，请自行确认来源合法性并支持正版内容。
+- 新增并接入更多字幕源：`OpenSubtitles`、`TVsubtitles`、`Moviesubtitles`、`SubHD`、`SubtitleCat`
+- 英文字幕回退链默认保留 `SubtitleCat`，在主源拿不到英文字幕时自动补位
+- 中文字幕下载链支持更清晰的分层回退，避免单一源波动直接把整条链打死
+
+### 2. 中文字幕翻译回退能力
+
+- 支持 `SubtitleCat` 远端翻译能力接入中文链路
+- 支持英文字幕下载后再走 LLM 翻译回退链
+- LLM 翻译链已经适配 Docker 一键部署场景，不再要求用户自己额外挂 Python 路径和 Subflow 路径
+
+### 3. SubHD 下载链强化
+
+- `SubHD` 验证码下载链新增本地 `ddddocr`
+- 支持 `SVG` 直读
+- 外部 OCR 改成显式开关，不再作为默认兜底，避免无感把请求全部打到外部服务
+
+### 4. 时间轴校正链路增强
+
+- 默认时间轴修正引擎切到 `ffsubsync`
+- 自动下载字幕后的时间轴校正链已接入容器运行时
+- 发布镜像已内置 `ffsubsync`，不需要再额外手装
+
+### 5. Docker 交付链收口
+
+- 发布镜像单独维护，避免“源码能跑、发布镜像缺运行时”的情况
+- 容器镜像已内置：
+  - `Subflow`
+  - `ddddocr`
+  - `ffsubsync`
+  - LLM 翻译所需 Python 运行时
+- 适合直接一键部署，不需要用户再补运行依赖
+
+### 6. 前端与配置体验重整
+
+- 配置中心按能力分组重新整理，减少原先杂乱堆叠
+- 回退、翻译、浏览器和实验项的入口重新归类
+- 项目说明、鸣谢、帮助入口、Docker 文档入口统一对齐到当前仓库
+
+### 7. 发布流程与验收流程补强
+
+- 补了本地交付审计入口
+- 发布镜像改为独立 GitHub Actions 工作流构建
+- 发布前会串联前端构建、后端测试和镜像构建校验，降低“发出去才发现缺东西”的概率
 
 ## Docker 部署
 
@@ -81,9 +117,9 @@ APP_VERSION=dev GOPROXY=https://goproxy.cn,direct docker compose -f compose.sour
 
 ## 相关文档
 
-- Docker 说明：[docker/readme.md](docker/readme.md)
-- 当前仓库 Issues：[Issues](https://github.com/morningstar-ski/ChineseSubFinder-optimization/issues)
-- 上游使用文档：[ChineseSubFinder docs](https://github.com/ChineseSubFinder/ChineseSubFinder/tree/docs/DesignFile)
+- [Docker 说明](./docker/readme.md)
+- [当前仓库 Issues](https://github.com/morningstar-ski/ChineseSubFinder-optimization/issues)
+- [上游使用文档](https://github.com/ChineseSubFinder/ChineseSubFinder/tree/docs/DesignFile)
 
 ## 开发验证
 
@@ -98,20 +134,19 @@ Windows 本地运行 `go test ./...` 前，请确保：
 - `CGO_ENABLED=1`
 - `PATH` 中可用 `gcc`（例如 MinGW）
 
-## 说明
-
-当前仓库不是上游官方发布版本，也不应描述为“上游官方更新”。
-如果你需要长期稳定使用，请优先关注上游项目及其官方维护版本。
-
 ## 本地自动化入口
 
-- 交付前唯一官方本地审计入口：
+- 交付前统一本地审计入口：
   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local_delivery_audit.ps1`
-- 该入口会串联 `frontend build`、目标 `go test`、后端/前端探活与残留审计。
+- 该入口会串联 `frontend build`、目标 `go test`、后端 / 前端探活与残留审计
 - 下列脚本仅用于专项回归，不作为默认交付入口：
   - `scripts/local_full_acceptance.ps1`
   - `scripts/local_llm_acceptance.ps1`
   - `scripts/local_expanded_acceptance.ps1`
+
+## 说明
+
+当前仓库不是上游官方发布版，而是基于上游持续增强后的独立交付版本。若你需要回溯原始设计或基础能力，请以原作者仓库为准。
 
 ## License
 
