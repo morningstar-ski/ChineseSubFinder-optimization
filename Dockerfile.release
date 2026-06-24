@@ -64,6 +64,9 @@ ENV TZ=Asia/Shanghai \
     PERMS=true \
     PUID=1026 \
     PGID=100 \
+    CSF_DDDDOCR_PYTHON=/opt/csf-ocr/bin/python3 \
+    CSF_LLM_SUBTITLE_FALLBACK_PYTHON=/opt/csf-ocr/bin/python3 \
+    CSF_LLM_SUBTITLE_FALLBACK_SUBFLOW_ROOT=/opt/subflow \
     UMASK=022 \
     DISPLAY=:99 \
     PS1="\u@\h:\w \$ "
@@ -88,6 +91,7 @@ RUN apt-get update \
        libxtst6 \
        python3 \
        python3-pip \
+       python3-venv \
        tesseract-ocr \
        tesseract-ocr-chi-sim \
        tesseract-ocr-eng \
@@ -124,8 +128,8 @@ RUN apt-get update \
     && rm -f /tmp/s6-overlay-*.tar.xz \
     && rm -rf /var/lib/apt/lists/*
 COPY third_party/subflow/ /opt/subflow/
-RUN python3 -m pip install --no-cache-dir -r /opt/subflow/requirements-translate.txt
-RUN python3 -m pip install --no-cache-dir ffsubsync==0.5.0
+RUN python3 -m venv /opt/csf-ocr \
+    && /opt/csf-ocr/bin/pip install --no-cache-dir ddddocr ffsubsync==0.5.0 -r /opt/subflow/requirements-translate.txt
 COPY --from=backend-builder /out/chinesesubfinder /usr/bin/chinesesubfinder
 COPY docker/full-rootfs/ /
 RUN sed -i 's/\r$//' /etc/cont-init.d/10-fixuser /etc/services.d/chinesesubfinder/run /etc/services.d/xvfb/run \

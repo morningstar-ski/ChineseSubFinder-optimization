@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ChineseSubFinder/ChineseSubFinder/pkg"
@@ -249,7 +250,8 @@ func (d *Downloader) queueDownloaderLocal() {
 	}()
 
 	downloadCounter++
-	err, p, canceled := runDownloaderErrorStep(d.ctx, func() error {
+	jobCtx := context.WithoutCancel(d.ctx)
+	err, p, canceled := runDownloaderErrorStep(jobCtx, func() error {
 		defer func() {
 			// 每下载完毕一次，进行一次缓存和 Chrome 的清理
 			err = pkg.ClearRootTmpFolder()
@@ -265,11 +267,11 @@ func (d *Downloader) queueDownloaderLocal() {
 		if oneJob.VideoType == common2.Movie {
 			// 电影
 			// 具体的下载逻辑 func()
-			return d.movieDlFunc(d.ctx, oneJob, downloadCounter)
+			return d.movieDlFunc(jobCtx, oneJob, downloadCounter)
 		} else if oneJob.VideoType == common2.Series {
 			// 连续剧
 			// 具体的下载逻辑 func()
-			return d.seriesDlFunc(d.ctx, oneJob, downloadCounter)
+			return d.seriesDlFunc(jobCtx, oneJob, downloadCounter)
 		}
 
 		d.log.Errorln("oneJob.VideoType not support, oneJob.VideoType = ", oneJob.VideoType)
