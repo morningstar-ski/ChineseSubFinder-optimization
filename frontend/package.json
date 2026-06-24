@@ -9,7 +9,7 @@
     "prepare": "cd .. && husky install frontend/.husky",
     "lint": "eslint --ext .js,.vue ./",
     "test": "echo \"No test specified\" && exit 0",
-    "dev": "quasar dev",
+    "dev": "node scripts/run-quasar-dev.cjs",
     "build": "quasar build"
   },
   "lint-staged": {

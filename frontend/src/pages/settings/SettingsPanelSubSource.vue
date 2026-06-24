@@ -52,8 +52,8 @@
             :disable="!form.assrt_settings.enabled"
             standout
             dense
+            stack-label
             label="Assrt API Token"
-            placeholder="填写你的 API Token"
           />
         </article>
 
@@ -74,8 +74,8 @@
             :disable="!form.subdl_settings.enabled"
             standout
             dense
+            stack-label
             label="SubDL ApiKey"
-            placeholder="填写你的 ApiKey"
           />
         </article>
 
@@ -96,16 +96,16 @@
               :disable="!form.opensubtitles_settings.enabled"
               standout
               dense
+              stack-label
               label="API key"
-              placeholder="填写 API key"
             />
             <q-input
               v-model="form.opensubtitles_settings.username"
               :disable="!form.opensubtitles_settings.enabled"
               standout
               dense
+              stack-label
               label="用户名"
-              placeholder="填写用户名"
             />
             <q-input
               v-model="form.opensubtitles_settings.password"
@@ -113,8 +113,8 @@
               standout
               dense
               type="password"
+              stack-label
               label="密码"
-              placeholder="填写密码"
             />
           </div>
         </article>

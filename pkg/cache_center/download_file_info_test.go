@@ -176,6 +176,23 @@ func TestCacheCenter_DownloadFileGetRecoversFromLegacyFileCache(t *testing.T) {
 	}
 }
 
+func TestDownloadFileCacheTTLSupportsDayUnitAndLegacySecondUnit(t *testing.T) {
+	settings.SetConfigRootPath(pkg.ConfigRootDirFPath())
+	cfg := settings.Get()
+
+	cfg.AdvancedSettings.DownloadFileCache.Unit = "day"
+	cfg.AdvancedSettings.DownloadFileCache.TTL = 200
+	if got := downloadFileCacheTTL(); got != 200*24*time.Hour {
+		t.Fatalf("day unit ttl = %v, want %v", got, 200*24*time.Hour)
+	}
+
+	cfg.AdvancedSettings.DownloadFileCache.Unit = "second"
+	cfg.AdvancedSettings.DownloadFileCache.TTL = 60
+	if got := downloadFileCacheTTL(); got != 15552000*time.Second {
+		t.Fatalf("legacy second unit ttl = %v, want %v", got, 15552000*time.Second)
+	}
+}
+
 func newTestCacheCenter(t *testing.T) (*CacheCenter, func()) {
 	t.Helper()
 

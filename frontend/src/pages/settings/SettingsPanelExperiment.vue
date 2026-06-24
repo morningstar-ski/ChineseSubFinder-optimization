@@ -5,8 +5,8 @@
         <q-item-section>
           <q-item-label>自动转换字幕文件编码</q-item-label>
           <q-item-label caption> 自动转换到目标编码。如果不是特殊情况，不建议开启，仅对新下载字幕生效。 </q-item-label>
-          <q-item v-if="form.auto_change_sub_encode.enable">
-            <q-item-section avatar top>
+          <div v-if="form.auto_change_sub_encode.enable" class="encode-settings">
+            <div class="encode-settings__row">
               <q-radio
                 v-for="(v, k) in DESC_ENCODE_TYPE_NAME_MAP"
                 :key="k"
@@ -14,35 +14,32 @@
                 v-model="form.auto_change_sub_encode.des_encode_type"
                 :val="~~k"
               />
-            </q-item-section>
-          </q-item>
+            </div>
+
+            <div class="encode-settings__nested">
+              <div class="encode-settings__header">
+                <div>
+                  <div class="text-body2">简繁字幕互转</div>
+                  <div class="text-caption text-grey-7">仅在转码目标为 UTF-8 时生效，作为下载后附加处理。</div>
+                </div>
+                <q-toggle :disable="!isChsChtChangerEnable" v-model="form.chs_cht_changer.enable" />
+              </div>
+
+              <div v-if="form.chs_cht_changer.enable" class="encode-settings__row">
+                <q-radio
+                  :disable="!isChsChtChangerEnable"
+                  v-for="(v, k) in AUTO_CONVERT_LANG_NAME_MAP"
+                  :key="k"
+                  :label="v"
+                  v-model="form.chs_cht_changer.des_chinese_language_type"
+                  :val="~~k"
+                />
+              </div>
+            </div>
+          </div>
         </q-item-section>
         <q-item-section avatar top>
           <q-toggle v-model="form.auto_change_sub_encode.enable" />
-        </q-item-section>
-      </q-item>
-
-      <q-separator spaced inset />
-
-      <q-item tag="label" :disable="!isChsChtChangerEnable" v-ripple>
-        <q-item-section>
-          <q-item-label>简繁字幕互转</q-item-label>
-          <q-item-label caption> 需要先开启自动转换字幕文件编码，并设置为 UTF-8，否则无法启用和生效。 </q-item-label>
-          <q-item v-if="form.chs_cht_changer.enable">
-            <q-item-section avatar top>
-              <q-radio
-                :disable="!isChsChtChangerEnable"
-                v-for="(v, k) in AUTO_CONVERT_LANG_NAME_MAP"
-                :key="k"
-                :label="v"
-                v-model="form.chs_cht_changer.des_chinese_language_type"
-                :val="~~k"
-              />
-            </q-item-section>
-          </q-item>
-        </q-item-section>
-        <q-item-section avatar top>
-          <q-toggle :disable="!isChsChtChangerEnable" v-model="form.chs_cht_changer.enable" />
         </q-item-section>
       </q-item>
 
@@ -65,7 +62,7 @@
           <q-item-section>
             <q-item-label>远程 Chrome DevTools 地址</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
+          <q-item-section class="experiment-settings__field">
             <q-input
               v-model="form.remote_chrome_settings.remote_docker_url"
               placeholder="ws://192.168.xx.xx:9222"
@@ -80,7 +77,7 @@
           <q-item-section>
             <q-item-label>远程用户数据目录</q-item-label>
           </q-item-section>
-          <q-item-section avatar>
+          <q-item-section class="experiment-settings__field">
             <q-input
               v-model="form.remote_chrome_settings.remote_user_data_dir"
               placeholder="/mnt/share/tmp"
@@ -120,7 +117,7 @@
       <q-item>
         <q-item-section>
           <q-item-label>LLM 英文转中文字幕回退链</q-item-label>
-          <q-item-label caption> 只在原生中文字幕失败后触发。启用后以下 7 项必填。 </q-item-label>
+          <q-item-label caption> 只在原生中文字幕失败后触发。启用后以下 6 项必填。 </q-item-label>
         </q-item-section>
         <q-item-section avatar top>
           <q-toggle v-model="form.llm_subtitle_fallback.enable" />
@@ -142,6 +139,7 @@
           <q-item-section class="llm-settings__field">
             <q-input
               v-model="form.llm_subtitle_fallback.provider"
+              placeholder="gemini"
               standout
               dense
               :rules="[llmRequiredRule('服务提供方')]"
@@ -152,12 +150,12 @@
         <q-item>
           <q-item-section>
             <q-item-label>接口地址</q-item-label>
-            <q-item-label caption>兼容接口地址</q-item-label>
+            <q-item-label caption>Gemini 兼容地址</q-item-label>
           </q-item-section>
           <q-item-section class="llm-settings__field">
             <q-input
               v-model="form.llm_subtitle_fallback.base_url"
-              placeholder="https://api.deepseek.com"
+              placeholder="https://generativelanguage.googleapis.com/v1beta/openai"
               standout
               dense
               :rules="[llmRequiredRule('接口地址')]"
@@ -188,7 +186,13 @@
             <q-item-label caption>模型名</q-item-label>
           </q-item-section>
           <q-item-section class="llm-settings__field">
-            <q-input v-model="form.llm_subtitle_fallback.model" standout dense :rules="[llmRequiredRule('模型')]" />
+            <q-input
+              v-model="form.llm_subtitle_fallback.model"
+              placeholder="gemini-2.5-flash"
+              standout
+              dense
+              :rules="[llmRequiredRule('模型')]"
+            />
           </q-item-section>
         </q-item>
 
@@ -274,15 +278,10 @@
         <q-item>
           <q-item-section>
             <q-item-label>翻译风格</q-item-label>
-            <q-item-label caption>提示风格</q-item-label>
+            <q-item-label caption>可选，留空则只使用内置固定提示词</q-item-label>
           </q-item-section>
           <q-item-section class="llm-settings__field">
-            <q-input
-              v-model="form.llm_subtitle_fallback.translate_style"
-              standout
-              dense
-              :rules="[llmRequiredRule('翻译风格')]"
-            />
+            <q-input v-model="form.llm_subtitle_fallback.translate_style" standout dense />
           </q-item-section>
         </q-item>
 
@@ -405,17 +404,72 @@ const llmRequiredRule = (label) => (value) =>
 </script>
 
 <style scoped lang="scss">
+.encode-settings {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.encode-settings__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.encode-settings__nested {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(248, 250, 253, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+
+.encode-settings__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.experiment-settings__field,
 .llm-settings__field {
   flex: 0 0 min(100%, 420px);
   width: min(100%, 420px);
   min-width: 0;
 }
 
+.experiment-settings__field :deep(.q-field),
 .llm-settings__field :deep(.q-field) {
   width: 100%;
 }
 
+.llm-settings__field :deep(.q-field__control) {
+  background: #ffffff !important;
+  color: #142033 !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08), 0 8px 22px rgba(15, 23, 42, 0.05) !important;
+}
+
+.llm-settings__field :deep(.q-field__native),
+.llm-settings__field :deep(.q-field__input),
+.llm-settings__field :deep(.q-field__label),
+.llm-settings__field :deep(.q-icon) {
+  color: #142033 !important;
+}
+
+.llm-settings__field :deep(.q-field__native::placeholder),
+.llm-settings__field :deep(.q-field__input::placeholder) {
+  color: #7f8ea3 !important;
+  opacity: 1;
+}
+
 @media (max-width: 599px) {
+  .encode-settings__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .experiment-settings__field,
   .llm-settings__field {
     flex-basis: 100%;
     width: 100%;

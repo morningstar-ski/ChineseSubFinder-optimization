@@ -102,7 +102,6 @@ func (s *LLMSubtitleFallbackSettings) Validate() error {
 		{label: "model", value: s.Model},
 		{label: "source_language", value: s.SourceLanguage},
 		{label: "target_language", value: s.TargetLanguage},
-		{label: "translate_style", value: s.TranslateStyle},
 	}
 
 	for _, field := range requiredFields {

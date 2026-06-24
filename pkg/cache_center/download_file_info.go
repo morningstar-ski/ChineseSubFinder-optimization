@@ -220,10 +220,17 @@ func downloadFileCacheTTL() time.Duration {
 	}
 	if cache.Unit == "second" {
 		ttl := cache.TTL
-		if ttl < 259200 || ttl > 525600 {
-			ttl = 259200
+		if ttl < 15552000 || ttl > 31536000 {
+			ttl = 15552000
 		}
 		return time.Duration(ttl) * time.Second
+	}
+	if cache.Unit == "day" {
+		ttl := cache.TTL
+		if ttl < 180 || ttl > 365 {
+			ttl = 180
+		}
+		return time.Duration(ttl) * 24 * time.Hour
 	}
 	ttl := cache.TTL
 	if ttl < 4320 || ttl > 8760 {

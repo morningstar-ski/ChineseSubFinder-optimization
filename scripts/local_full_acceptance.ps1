@@ -19,6 +19,10 @@ param(
 $ErrorActionPreference = "Stop"
 . (Join-Path $WorkspaceRoot "scripts\local_acceptance_runner.ps1")
 
+Write-Host "NOTICE: local_full_acceptance.ps1 is a targeted regression wrapper."
+Write-Host "NOTICE: use scripts/local_delivery_audit.ps1 for the canonical pre-delivery local audit."
+Write-Host ""
+
 Invoke-AcceptanceProfile `
     -WorkspaceRoot $WorkspaceRoot `
     -ProfileName "full" `

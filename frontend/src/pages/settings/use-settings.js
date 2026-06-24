@@ -73,7 +73,6 @@ const validateLLMSubtitleFallback = () => {
     ['模型', llm.model],
     ['源语言', llm.source_language],
     ['目标语言', llm.target_language],
-    ['翻译风格', llm.translate_style],
   ];
 
   const missingField = requiredFields.find(([, value]) => !String(value ?? '').trim());

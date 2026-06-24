@@ -11,6 +11,10 @@ const ESLintPlugin = require('eslint-webpack-plugin');
 const { configure } = require('quasar/wrappers');
 const envparser = require('./env.js');
 
+const frontendDevHost = process.env.CSF_FRONTEND_HOST || '127.0.0.1';
+const frontendDevPort = Number.parseInt(process.env.CSF_FRONTEND_DEV_PORT || '10001', 10);
+const backendProxyTarget = process.env.CSF_BACKEND_BASE_URL || `http://127.0.0.1:${process.env.CSF_BACKEND_PORT || '19035'}`;
+
 module.exports = configure((ctx) => ({
   // https://v2.quasar.dev/quasar-cli/supporting-ts
   supportTS: false,
@@ -71,11 +75,12 @@ module.exports = configure((ctx) => ({
   // Full list of options: https://v2.quasar.dev/quasar-cli/quasar-conf-js#Property%3A-devServer
   devServer: {
     https: false,
-    port: 10001,
+    host: frontendDevHost,
+    port: frontendDevPort,
     open: false, // opens browser window automatically
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:19035',
+        target: backendProxyTarget,
         changeOrigin: true,
         ws: true,
         pathRewrite: {

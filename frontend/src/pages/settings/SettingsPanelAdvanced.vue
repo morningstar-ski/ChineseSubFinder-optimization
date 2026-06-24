@@ -232,22 +232,30 @@
 
       <q-item>
         <q-item-section>
-          <q-item-label>下载缓存过期时间设置</q-item-label>
+          <q-item-label>下载缓存时长</q-item-label>
         </q-item-section>
-        <q-item-section avatar>
-          <div class="row no-wrap q-gutter-xs">
-            <q-input class="col" standout dense v-model.number="form.download_file_cache.ttl"> </q-input>
-            <q-select
+        <q-item-section class="cache-ttl-field">
+          <div class="cache-ttl-field__controls">
+            <q-input
+              class="cache-ttl-field__value"
               standout
               dense
-              :options="[
-                { label: '小时', value: 'hour' },
-                { label: '秒', value: 'second' },
-              ]"
+              type="number"
+              min="1"
+              label="时长"
+              v-model.number="form.download_file_cache.ttl"
+              :rules="downloadCacheTtlRules"
+            />
+            <q-select
+              class="cache-ttl-field__unit"
+              standout
+              dense
+              label="单位"
+              :options="downloadCacheUnitOptions"
               emit-value
               map-options
-              v-model.number="form.download_file_cache.unit"
-            ></q-select>
+              v-model="form.download_file_cache.unit"
+            />
           </div>
         </q-item-section>
       </q-item>
@@ -381,6 +389,7 @@
 </template>
 
 <script setup>
+import { watchEffect } from 'vue';
 import {
   SUB_NAME_FORMAT_EMBY,
   SUB_NAME_FORMAT_NORMAL,
@@ -412,5 +421,55 @@ const timelineMinOffsetRules = [
   (val) => val <= 1 || '不能大于 1',
 ];
 
+const downloadCacheUnitOptions = [
+  { label: '天', value: 'day' },
+  { label: '小时', value: 'hour' },
+];
+
+const downloadCacheTtlRules = [(val) => Number.isFinite(val) || '请输入数字', (val) => val > 0 || '必须大于 0'];
+
 const { advanced_settings: form } = toRefs(formModel);
+
+watchEffect(() => {
+  const cache = formModel.advanced_settings?.download_file_cache;
+  if (!cache) {
+    return;
+  }
+  if (cache.unit === 'second') {
+    const legacySeconds = Number(cache.ttl) || 0;
+    const days = Math.round(legacySeconds / 86400);
+    cache.unit = 'day';
+    cache.ttl = days > 0 ? days : 180;
+  }
+});
 </script>
+
+<style scoped lang="scss">
+.cache-ttl-field {
+  flex: 0 0 min(100%, 420px);
+  width: min(100%, 420px);
+  min-width: 0;
+}
+
+.cache-ttl-field__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 8px;
+  width: 100%;
+}
+
+.cache-ttl-field__value,
+.cache-ttl-field__unit {
+  min-width: 0;
+}
+
+@media (max-width: 599px) {
+  .cache-ttl-field {
+    width: 100%;
+  }
+
+  .cache-ttl-field__controls {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

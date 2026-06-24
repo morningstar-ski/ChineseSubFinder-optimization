@@ -57,7 +57,6 @@ func TestBuildChineseSubtitleFromEnglishParsesTranslatedSRT(t *testing.T) {
 	cfg.Enable = true
 	cfg.BaseURL = "https://api.test.local/v1"
 	cfg.APIKey = "test-key"
-	cfg.TranslateStyle = "natural"
 	cfg.LogDir = t.TempDir()
 	cfg.SubflowRootDir = t.TempDir()
 

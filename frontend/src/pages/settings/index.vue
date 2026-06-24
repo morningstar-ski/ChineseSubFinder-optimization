@@ -235,6 +235,25 @@ useSettings();
   color: #7a8799 !important;
 }
 
+.settings-panels :deep(.q-field__control) {
+  background: #ffffff !important;
+  color: #142033 !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08), 0 8px 22px rgba(15, 23, 42, 0.05) !important;
+}
+
+.settings-panels :deep(.q-field__native),
+.settings-panels :deep(.q-field__input),
+.settings-panels :deep(.q-field__label),
+.settings-panels :deep(.q-icon) {
+  color: #142033 !important;
+}
+
+.settings-panels :deep(.q-field__native::placeholder),
+.settings-panels :deep(.q-field__input::placeholder) {
+  color: #7f8ea3 !important;
+  opacity: 1;
+}
+
 .settings-panels :deep(.q-tab-panel) {
   padding: 0;
 }

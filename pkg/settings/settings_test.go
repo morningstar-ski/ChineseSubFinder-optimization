@@ -261,6 +261,9 @@ func TestExperimentalFunctionEnsureDefaultsFillsLLMSubtitleFallback(t *testing.T
 	if cfg.ExperimentalFunction.LLMSubtitleFallback.TargetLanguage != defaultLLMSubtitleFallbackTargetLang {
 		t.Fatalf("target_language = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.TargetLanguage)
 	}
+	if cfg.ExperimentalFunction.LLMSubtitleFallback.TranslateStyle != "" {
+		t.Fatalf("translate_style = %q", cfg.ExperimentalFunction.LLMSubtitleFallback.TranslateStyle)
+	}
 	if cfg.ExperimentalFunction.LocalChromeSettings.Enabled != true {
 		t.Fatal("local chrome should default to enabled")
 	}
@@ -321,9 +324,12 @@ func TestLLMSubtitleFallbackValidateRequiresExplicitConfigWhenEnabled(t *testing
 		t.Fatal("expected validation error when explicit llm config is incomplete")
 	}
 
+	cfg.Provider = defaultLLMSubtitleFallbackProvider
 	cfg.BaseURL = "https://api.test.local/v1"
 	cfg.APIKey = "test-key"
-	cfg.TranslateStyle = "natural"
+	cfg.Model = defaultLLMSubtitleFallbackModel
+	cfg.SourceLanguage = defaultLLMSubtitleFallbackSourceLang
+	cfg.TargetLanguage = defaultLLMSubtitleFallbackTargetLang
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)

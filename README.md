@@ -103,6 +103,16 @@ Windows 本地运行 `go test ./...` 前，请确保：
 当前仓库不是上游官方发布版本，也不应描述为“上游官方更新”。
 如果你需要长期稳定使用，请优先关注上游项目及其官方维护版本。
 
+## 本地自动化入口
+
+- 交付前唯一官方本地审计入口：
+  `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local_delivery_audit.ps1`
+- 该入口会串联 `frontend build`、目标 `go test`、后端/前端探活与残留审计。
+- 下列脚本仅用于专项回归，不作为默认交付入口：
+  - `scripts/local_full_acceptance.ps1`
+  - `scripts/local_llm_acceptance.ps1`
+  - `scripts/local_expanded_acceptance.ps1`
+
 ## License
 
 [Apache License 2.0](LICENSE)
