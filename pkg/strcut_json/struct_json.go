@@ -44,6 +44,7 @@ func ToStruct(desJsonFileFPath string, output interface{}) error {
 	if err != nil {
 		return err
 	}
+	bytes = trimUTF8BOM(bytes)
 
 	err = json.Unmarshal(bytes, output)
 	if err != nil {
@@ -51,4 +52,11 @@ func ToStruct(desJsonFileFPath string, output interface{}) error {
 	}
 
 	return nil
+}
+
+func trimUTF8BOM(src []byte) []byte {
+	if len(src) >= 3 && src[0] == 0xEF && src[1] == 0xBB && src[2] == 0xBF {
+		return src[3:]
+	}
+	return src
 }

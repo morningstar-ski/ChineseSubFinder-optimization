@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/ChineseSubFinder/ChineseSubFinder/pkg/settings"
 )
 
 type subflowTranslator struct{}
@@ -150,7 +152,7 @@ func buildTranslateEnv(subflowRootDir string, req TranslateRequest) []string {
 	}
 
 	env = appendEnvIfPresent(env, "SUBFLOW_TRANSLATE_API_KEY", req.APIKey)
-	env = appendEnvIfPresent(env, "SUBFLOW_TRANSLATE_BASE_URL", req.BaseURL)
+	env = appendEnvIfPresent(env, "SUBFLOW_TRANSLATE_BASE_URL", settings.NormalizeLLMSubtitleFallbackBaseURL(req.Provider, req.BaseURL))
 	return env
 }
 

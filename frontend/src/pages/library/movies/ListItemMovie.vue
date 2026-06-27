@@ -286,6 +286,8 @@ onMounted(() => {
   color: #64748b;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .movie-card__status.has-subtitle {

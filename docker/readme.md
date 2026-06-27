@@ -1,98 +1,114 @@
 # Docker Deployment
 
-## Current release surface
+## Canonical end-user deployment
 
-This repository has one current deployment lane and one current source-build lane:
+End users should use exactly one deployment entry:
 
-- `compose.yaml`: pull and run the published image
-- `compose.source.yaml`: build from the current checkout for local verification
-- `Dockerfile.release`: release image build definition
-- `.github/workflows/release-image.yml`: release workflow that runs frontend lint, frontend build, `go test ./...`, then builds and pushes GHCR images
+- `docker-compose.yaml`
 
-Do not follow older `latest-lite`, upstream `allanpk716/ChineseSubFinder`, or legacy release-Dockerfile guides for this fork.
+`compose.yaml` is kept only as a compatibility alias for tools that auto-discover the default compose filename. Treat `compose.source.yaml`, `compose.browser.yaml`, and `compose.fnos.yaml` as development or validation helpers, not end-user deployment files.
 
 ## Published image
 
-The default published image is:
+Default image:
 
 ```text
 ghcr.io/morningstar-ski/chinesesubfinder-optimization:latest
 ```
 
-`compose.yaml` starts that image directly.
+## Deployment model
 
-## Run the published image
+The verified deployment model is:
+
+1. Copy `.env.example` to `.env`
+2. Set host paths in `.env`
+3. Validate the rendered compose
+4. Pull the published image
+5. Start `docker-compose.yaml`
+6. Verify `/system-status`
+
+The same variable model is intended to work on Windows, Linux, and NAS hosts:
+
+- `CSF_CONTAINER_NAME`
+- `CSF_HOSTNAME`
+- `CSF_CONFIG_DIR` -> `/config`
+- `CSF_MEDIA_DIR` -> `/media`
+- `CSF_BROWSER_DIR` -> `/root/.cache/rod/browser`
+- `CSF_WEB_PORT` -> `19035`
+- `CSF_STATIC_PORT` -> `19037`
+- `PUID`, `PGID`, `PERMS`, `TZ`, `UMASK`
+
+## Quick start
 
 From the repository root:
 
 ```bash
-docker compose pull
-docker compose up -d
+cp .env.example .env
+docker compose -f docker-compose.yaml config
+docker compose -f docker-compose.yaml pull
+docker compose -f docker-compose.yaml up -d
 ```
 
-Exposed ports:
-
-- `19035`: Web UI and backend API
-- `19037`: local static poster/file endpoint used by the UI
-
-Mounted paths:
-
-- `./config:/config`
-- `./media:/media`
-- `./browser:/root/.cache/rod/browser`
-
-Runtime environment variables in `compose.yaml`:
-
-- `PUID`
-- `PGID`
-- `PERMS`
-- `TZ`
-- `UMASK`
-
-## Build from source locally
-
-Use `compose.source.yaml` when validating the current checkout before release:
-
-```bash
-docker compose -f compose.source.yaml up -d --build
-```
-
-Optional build arguments can be passed through the shell:
-
-```bash
-APP_VERSION=dev \
-GOPROXY=https://goproxy.cn,direct \
-HTTP_PROXY=http://127.0.0.1:7890 \
-HTTPS_PROXY=http://127.0.0.1:7890 \
-docker compose -f compose.source.yaml up -d --build
-```
-
-`compose.source.yaml` uses:
-
-- `Dockerfile` for the local source build
-- `CSF_MOVIES_SOURCE` -> `/media/movies`
-- `CSF_SERIES_SOURCE` -> `/media/series`
-- `./browser:/root/.cache/rod/browser`
-
-## Media and config rules
-
-- Keep runtime settings in `./config/ChineseSubFinderSettings.json`.
-- Do not keep a second `ChineseSubFinderSettings.json` in the workspace root.
-- Keep media mounts under `/media` inside the container.
-- `PERMS=true` will recursively change ownership for `/media`; use it only when that matches the host setup.
-
-## Health and verification
-
-After startup, verify:
+Then verify:
 
 ```bash
 curl http://127.0.0.1:19035/system-status
 ```
 
-For local pre-delivery verification inside this repository, use the canonical audit entry:
+Expected healthy response:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local_delivery_audit.ps1
+```json
+{"is_setup":true,"is_running_in_docker":true}
+```
+
+## Path rules
+
+- `CSF_CONFIG_DIR` should point to a persistent host directory that stores `ChineseSubFinderSettings.json`.
+- `CSF_MEDIA_DIR` should point to the media library root that contains the movie and series folders referenced by your runtime settings.
+- `CSF_BROWSER_DIR` should point to a persistent browser cache directory.
+- `CSF_CONTAINER_NAME` should stay unique on the same Docker host.
+- Keep media mounted under `/media` inside the container.
+- `PERMS=true` will recursively change ownership for `/media`; use it only when that matches the host setup.
+
+## Example host values
+
+Windows example:
+
+```dotenv
+CSF_CONFIG_DIR=./config
+CSF_MEDIA_DIR=./media
+CSF_BROWSER_DIR=./browser
+CSF_CONTAINER_NAME=chinesesubfinder
+CSF_HOSTNAME=chinesesubfinder
+```
+
+FnOS / Linux example:
+
+```dotenv
+CSF_CONFIG_DIR=./config
+CSF_MEDIA_DIR=/vol2/1000/video/link
+CSF_BROWSER_DIR=./browser
+CSF_CONTAINER_NAME=chinesesubfinder
+CSF_HOSTNAME=chinesesubfinder
+PUID=999
+PGID=901
+PERMS=false
+```
+
+## Development-only compose files
+
+- `compose.source.yaml`: build the current checkout locally before release
+- `compose.browser.yaml`: local browser-specific validation overlay
+- `compose.fnos.yaml`: local FnOS bridge overlay for developer verification
+
+These files are not the supported end-user entrypoint.
+
+## Source-build verification
+
+When validating the current checkout before release:
+
+```bash
+docker compose -f compose.source.yaml up -d --build
 ```
 
 ## Notes

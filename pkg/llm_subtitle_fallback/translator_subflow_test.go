@@ -37,7 +37,8 @@ func TestBuildTranslateEnvIncludesFallbackCredentials(t *testing.T) {
 	t.Setenv("PYTHONPATH", "C:\\existing")
 
 	env := buildTranslateEnv(root, TranslateRequest{
-		BaseURL: "https://example.com/v1",
+		Provider: "deepseek",
+		BaseURL:  "example.com",
 		APIKey:  "secret-key",
 	})
 	joined := "\n" + strings.Join(env, "\n") + "\n"

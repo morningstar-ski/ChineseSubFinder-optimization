@@ -71,6 +71,14 @@
       class="sticky-column-table jobs-table"
       :pagination="{ rowsPerPage: 20 }"
     >
+      <template v-slot:body-cell-error_info="{ row }">
+        <q-td class="jobs-table__cell jobs-table__cell--error">
+          <span class="jobs-table__ellipsis" :title="row.error_info || ''">
+            {{ row.error_info || '-' }}
+          </span>
+        </q-td>
+      </template>
+
       <template v-slot:body-cell-jobStatus="{ row }">
         <q-td>
           <span
@@ -316,5 +324,30 @@ onMounted(() => {
 
 .jobs-toolbar {
   align-items: flex-start;
+}
+
+.jobs-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.jobs-table :deep(th),
+.jobs-table :deep(td) {
+  max-width: 0;
+}
+
+.jobs-table__cell {
+  overflow: hidden;
+}
+
+.jobs-table__cell--error {
+  max-width: 260px;
+}
+
+.jobs-table__ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

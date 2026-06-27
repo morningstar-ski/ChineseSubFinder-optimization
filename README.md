@@ -61,29 +61,70 @@
 
 ## Docker 部署
 
-### 直接使用当前仓库镜像
+普通用户只需要认一个部署入口：
 
-根目录 `compose.yaml` 默认拉取：
+- `docker-compose.yaml`
+
+`compose.yaml` 仅作为兼容别名保留；`compose.source.yaml`、`compose.browser.yaml`、`compose.fnos.yaml` 都是开发或验证辅助文件，不是普通用户部署入口。
+
+### 标准部署步骤
+
+1. 复制 `.env.example` 为 `.env`
+2. 按宿主机情况填写 `.env` 里的路径和端口
+3. 先渲染检查标准部署文件
+4. 启动标准部署文件
+
+默认镜像：
 
 `ghcr.io/morningstar-ski/chinesesubfinder-optimization:latest`
 
 执行：
 
 ```bash
-docker compose pull
-docker compose up -d
+cp .env.example .env
+docker compose -f docker-compose.yaml config
+docker compose -f docker-compose.yaml pull
+docker compose -f docker-compose.yaml up -d
 ```
 
-默认端口：
+健康检查：
 
-- `19035` WebUI
-- `19037` 视频列表图片读取
+```bash
+curl http://127.0.0.1:19035/system-status
+```
 
-默认挂载：
+### `.env` 关键项
 
-- `./config:/config`
-- `./media:/media`
-- `./browser:/root/.cache/rod/browser`
+- `CSF_CONFIG_DIR`：宿主机配置目录，映射到容器 `/config`
+- `CSF_MEDIA_DIR`：宿主机影视库根目录，映射到容器 `/media`
+- `CSF_BROWSER_DIR`：宿主机浏览器缓存目录
+- `CSF_CONTAINER_NAME` / `CSF_HOSTNAME`：容器名与主机名，默认都是 `chinesesubfinder`
+- `CSF_WEB_PORT`：WebUI 端口，默认 `19035`
+- `CSF_STATIC_PORT`：静态文件端口，默认 `19037`
+- `PUID` / `PGID` / `PERMS` / `TZ` / `UMASK`：容器运行参数
+
+Windows 默认可直接使用：
+
+```dotenv
+CSF_CONFIG_DIR=./config
+CSF_MEDIA_DIR=./media
+CSF_BROWSER_DIR=./browser
+CSF_CONTAINER_NAME=chinesesubfinder
+CSF_HOSTNAME=chinesesubfinder
+```
+
+FnOS / Linux 可改成：
+
+```dotenv
+CSF_CONFIG_DIR=./config
+CSF_MEDIA_DIR=/vol2/1000/video/link
+CSF_BROWSER_DIR=./browser
+CSF_CONTAINER_NAME=chinesesubfinder
+CSF_HOSTNAME=chinesesubfinder
+PUID=999
+PGID=901
+PERMS=false
+```
 
 ### 从当前源码本地构建
 

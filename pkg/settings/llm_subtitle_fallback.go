@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"net/url"
 	"strings"
 )
 
@@ -77,6 +78,7 @@ func (s *LLMSubtitleFallbackSettings) ensureDefaults() {
 	if s.TargetLanguage == "" {
 		s.TargetLanguage = defaults.TargetLanguage
 	}
+	s.BaseURL = NormalizeLLMSubtitleFallbackBaseURL(s.Provider, s.BaseURL)
 	if s.OnlyWhenNoChineseCandidate == false && s.KeepEnglishSourceCopy == false &&
 		s.Provider == defaults.Provider && s.BaseURL == defaults.BaseURL &&
 		s.APIKey == defaults.APIKey && s.Model == defaults.Model &&
@@ -111,6 +113,73 @@ func (s *LLMSubtitleFallbackSettings) Validate() error {
 	}
 
 	return nil
+}
+
+func NormalizeLLMSubtitleFallbackBaseURL(provider, rawBaseURL string) string {
+	rawBaseURL = strings.TrimSpace(rawBaseURL)
+	if rawBaseURL == "" {
+		return ""
+	}
+
+	if strings.Contains(rawBaseURL, "://") == false && strings.Contains(rawBaseURL, " ") == false {
+		rawBaseURL = "https://" + rawBaseURL
+	}
+
+	parsed, err := url.Parse(rawBaseURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return rawBaseURL
+	}
+
+	path := strings.TrimRight(parsed.Path, "/")
+	lowerProvider := strings.ToLower(strings.TrimSpace(provider))
+	switch lowerProvider {
+	case "gemini":
+		switch {
+		case strings.HasSuffix(path, "/v1beta/openai/chat/completions"):
+			path = strings.TrimSuffix(path, "/chat/completions")
+		case strings.HasSuffix(path, "/v1beta/openai"):
+			// keep as-is
+		case strings.HasSuffix(path, "/v1/responses"):
+			path = strings.TrimSuffix(path, "/v1/responses") + "/v1beta/openai"
+		case strings.HasSuffix(path, "/responses"):
+			path = strings.TrimSuffix(path, "/responses") + "/v1beta/openai"
+		case strings.HasSuffix(path, "/v1/openai"):
+			path = strings.TrimSuffix(path, "/v1/openai") + "/v1beta/openai"
+		case strings.HasSuffix(path, "/v1beta"):
+			path += "/openai"
+		case strings.HasSuffix(path, "/v1"):
+			path = strings.TrimSuffix(path, "/v1") + "/v1beta/openai"
+		case path == "" || path == "/":
+			path = "/v1beta/openai"
+		default:
+			path = path + "/v1beta/openai"
+		}
+	default:
+		switch {
+		case strings.HasSuffix(path, "/v1/chat/completions"):
+			// keep as-is
+		case strings.HasSuffix(path, "/chat/completions"):
+			// keep as-is
+		case strings.HasSuffix(path, "/v1/responses"):
+			path = strings.TrimSuffix(path, "/responses")
+		case strings.HasSuffix(path, "/responses"):
+			path = strings.TrimSuffix(path, "/responses")
+		case strings.HasSuffix(path, "/v1"):
+			// keep as-is
+		default:
+			path = strings.TrimSuffix(path, "/")
+			if path == "" {
+				path = "/v1"
+			} else {
+				path += "/v1"
+			}
+		}
+	}
+
+	parsed.Path = path
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func defaultLLMSubtitleFallbackPythonExecutable() string {

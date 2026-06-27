@@ -138,6 +138,31 @@ func TestSettingsReadResetsNewSupplierSearchURLs(t *testing.T) {
 	}
 }
 
+func TestSettingsReadAcceptsUTF8BOMConfig(t *testing.T) {
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, configName)
+	raw := []byte{0xEF, 0xBB, 0xBF}
+	raw = append(raw, []byte(`{
+  "user_info": {"username":"bomuser","password":"123456"},
+  "common_settings": {"movie_paths":["/media/movies"],"series_paths":["/media/series"]},
+  "emby_settings": {"address_url":"http://127.0.0.1:8096/"}
+}`)...)
+	if err := os.WriteFile(configPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := NewSettings(configDir)
+	if err := cfg.read(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UserInfo.Username != "bomuser" {
+		t.Fatalf("username = %q", cfg.UserInfo.Username)
+	}
+	if cfg.EmbySettings.AddressUrl != "http://127.0.0.1:8096" {
+		t.Fatalf("emby address url = %q", cfg.EmbySettings.AddressUrl)
+	}
+}
+
 func TestNewSuppliersSettingsDoesNotIncludeRemovedA4KProvider(t *testing.T) {
 	suppliers := NewSuppliersSettings()
 
@@ -333,5 +358,59 @@ func TestLLMSubtitleFallbackValidateRequiresExplicitConfigWhenEnabled(t *testing
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestLLMSubtitleFallbackEnsureDefaultsNormalizesBaseURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		input    string
+		want     string
+	}{
+		{
+			name:     "deepseek root gets scheme and v1",
+			provider: "deepseek",
+			input:    "api.deepseek.com",
+			want:     "https://api.deepseek.com/v1",
+		},
+		{
+			name:     "deepseek keeps v1",
+			provider: "deepseek",
+			input:    "https://api.deepseek.com/v1/",
+			want:     "https://api.deepseek.com/v1",
+		},
+		{
+			name:     "gemini root expands to openai endpoint",
+			provider: "gemini",
+			input:    "https://generativelanguage.googleapis.com",
+			want:     "https://generativelanguage.googleapis.com/v1beta/openai",
+		},
+		{
+			name:     "gemini v1 is rewritten to v1beta openai",
+			provider: "gemini",
+			input:    "https://generativelanguage.googleapis.com/v1",
+			want:     "https://generativelanguage.googleapis.com/v1beta/openai",
+		},
+		{
+			name:     "generic compatible endpoint keeps chat completions",
+			provider: "openai",
+			input:    "https://example.com/chat/completions",
+			want:     "https://example.com/chat/completions",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewLLMSubtitleFallbackSettings()
+			cfg.Provider = tt.provider
+			cfg.BaseURL = tt.input
+
+			cfg.ensureDefaults()
+
+			if cfg.BaseURL != tt.want {
+				t.Fatalf("BaseURL = %q, want %q", cfg.BaseURL, tt.want)
+			}
+		})
 	}
 }

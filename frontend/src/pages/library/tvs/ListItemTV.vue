@@ -22,8 +22,15 @@
           <q-btn v-else color="grey-5" round flat dense icon="closed_caption" title="没有字幕" />
         </dialog-t-v-detail>
 
-        <div class="tv-card__status" :class="{ 'has-subtitle': hasSubtitleVideoCount > 0 }">
-          <span>{{ coverageText }}</span>
+        <div class="tv-card__status-row">
+          <div class="tv-card__count" :class="{ 'has-subtitle': hasSubtitleVideoCount > 0 }">
+            <q-icon :name="hasSubtitleVideoCount > 0 ? 'subtitles' : 'subtitles_off'" size="16px" />
+            <span class="tv-card__count-text">{{ hasSubtitleVideoCount }}/{{ totalVideoCount }}</span>
+          </div>
+
+          <div class="tv-card__status" :class="{ 'has-subtitle': hasSubtitleVideoCount > 0 }">
+            <span>{{ coverageText }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -64,6 +71,8 @@ const getDetailInfo = async () => {
 const hasSubtitleVideoCount = computed(
   () => detailInfo.value?.one_video_info.filter((e) => e.sub_f_path_list.length > 0).length
 );
+
+const totalVideoCount = computed(() => detailInfo.value?.one_video_info?.length ?? 0);
 
 const coverageText = computed(() => {
   const total = detailInfo.value?.one_video_info?.length ?? 0;
@@ -138,11 +147,39 @@ onMounted(() => {
 }
 
 .tv-card__footer {
+  display: grid;
+  gap: 8px;
+}
+
+.tv-card__status-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.tv-card__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f4f7fb;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.tv-card__count.has-subtitle {
+  background: rgba(43, 182, 115, 0.12);
+  color: #1f8b59;
+}
+
+.tv-card__count-text {
+  white-space: nowrap;
 }
 
 .tv-card__status {
@@ -155,6 +192,7 @@ onMounted(() => {
   color: #64748b;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .tv-card__status.has-subtitle {

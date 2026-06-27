@@ -155,7 +155,7 @@
           <q-item-section class="llm-settings__field">
             <q-input
               v-model="form.llm_subtitle_fallback.base_url"
-              placeholder="https://generativelanguage.googleapis.com/v1beta/openai"
+              placeholder="https://api.deepseek.com"
               standout
               dense
               :rules="[llmRequiredRule('接口地址')]"
