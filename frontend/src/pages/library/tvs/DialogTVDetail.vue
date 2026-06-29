@@ -106,6 +106,30 @@
                             {{ subUrl.split(/\/|\\/).pop() }}
                           </q-item-section>
                           <q-item-section side>
+                            <q-icon
+                              v-if="timelineFixStatus(item.video_f_path, item.sub_f_path_list[index]) === 'pending'"
+                              name="schedule"
+                              color="warning"
+                              size="18px"
+                            />
+                            <q-icon
+                              v-else-if="timelineFixStatus(item.video_f_path, item.sub_f_path_list[index]) === 'done'"
+                              name="check_circle"
+                              color="positive"
+                              size="18px"
+                            />
+                            <q-icon
+                              v-else-if="
+                                ['failed', 'timeout'].includes(
+                                  timelineFixStatus(item.video_f_path, item.sub_f_path_list[index])
+                                )
+                              "
+                              name="error"
+                              color="negative"
+                              size="18px"
+                            />
+                          </q-item-section>
+                          <q-item-section side>
                             <q-icon name="av_timer" color="primary" size="18px" />
                           </q-item-section>
                         </q-item>
@@ -194,7 +218,7 @@ import BtnUploadSubtitle from 'pages/library/BtnUploadSubtitle';
 import BtnDialogPreviewVideo from 'pages/library/BtnDialogPreviewVideo';
 import BtnDialogSearchSubtitle from 'pages/library/BtnDialogSearchSubtitle';
 import BtnUploadMultipleForTv from 'pages/library/tvs/BtnUploadMultipleForTv';
-import { doFixSubtitleTimeline, getUrl } from 'pages/library/use-library';
+import { doFixSubtitleTimeline, getTimelineFixJobStatus, getUrl } from 'pages/library/use-library';
 
 const props = defineProps({
   data: Object,
@@ -328,6 +352,12 @@ const skipAll = async (isSkip) => {
 const downloadSelection = () => {
   downloadSubtitle(selection.value);
 };
+
+const timelineFixStatus = (videoPath, subPath) =>
+  getTimelineFixJobStatus({
+    videoPath,
+    subPath,
+  });
 </script>
 
 <style scoped lang="scss">

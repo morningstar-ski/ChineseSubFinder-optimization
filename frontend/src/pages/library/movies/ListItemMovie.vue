@@ -84,6 +84,26 @@
                     {{ item.split(/\/|\\/).pop() }}
                   </q-item-section>
                   <q-item-section side>
+                    <q-icon
+                      v-if="timelineFixStatus(detialInfo.sub_f_path_list[index]) === 'pending'"
+                      name="schedule"
+                      color="warning"
+                      size="18px"
+                    />
+                    <q-icon
+                      v-else-if="timelineFixStatus(detialInfo.sub_f_path_list[index]) === 'done'"
+                      name="check_circle"
+                      color="positive"
+                      size="18px"
+                    />
+                    <q-icon
+                      v-else-if="['failed', 'timeout'].includes(timelineFixStatus(detialInfo.sub_f_path_list[index]))"
+                      name="error"
+                      color="negative"
+                      size="18px"
+                    />
+                  </q-item-section>
+                  <q-item-section side>
                     <q-icon name="av_timer" color="primary" size="18px" />
                   </q-item-section>
                 </q-item>
@@ -121,7 +141,7 @@ import LibraryApi from 'src/api/LibraryApi';
 import { SystemMessage } from 'src/utils/message';
 import { VIDEO_TYPE_MOVIE } from 'src/constants/SettingConstants';
 import { useQuasar } from 'quasar';
-import { doFixSubtitleTimeline, getUrl, subtitleUploadList } from 'pages/library/use-library';
+import { doFixSubtitleTimeline, getTimelineFixJobStatus, getUrl, subtitleUploadList } from 'pages/library/use-library';
 import BtnIgnoreVideo from 'pages/library/BtnIgnoreVideo';
 import BtnUploadSubtitle from 'pages/library/BtnUploadSubtitle';
 import BtnDialogPreviewVideo from 'pages/library/BtnDialogPreviewVideo';
@@ -159,6 +179,12 @@ const getDetailInfo = async () => {
 };
 
 const hasSubtitle = computed(() => (detialInfo.value?.sub_url_list?.length ?? 0) > 0);
+
+const timelineFixStatus = (subPath) =>
+  getTimelineFixJobStatus({
+    videoPath: props.data.video_f_path,
+    subPath,
+  });
 
 const downloadSubtitle = async () => {
   $q.dialog({

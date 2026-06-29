@@ -35,6 +35,8 @@ class LibraryApi extends BaseApi {
 
   fixSubtitleTimeline = (data) => this.http(`/v1/subtitles/fix_timeline`, data, 'POST');
 
+  getManualSubtitleResult = (data) => this.http(`/v1/subtitles/manual_upload_result`, data, 'POST');
+
   refreshMediaServerSubList = () => this.http(`/v1/subtitles/refresh_media_server_sub_list`, {}, 'POST');
 
   getSubTitleQueueList = () => this.http(`/v1/subtitles/list_manual_upload_2_local_job`);

@@ -27,10 +27,18 @@ const tvs = computed(() =>
 
 export const libraryRefreshStatus = ref(null);
 export const subtitleUploadList = ref([]);
+export const subtitleJobResults = ref({});
 
 export const refreshCacheLoading = computed(() => libraryRefreshStatus.value === 'running');
 
 let getRefreshStatusTimer = null;
+
+const sleep = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+export const getTimelineFixJobKey = ({ videoPath, subPath }) => `fix_timeline_only|${videoPath}|${subPath}`;
 
 export const getLibraryRefreshStatus = async () => {
   const [res] = await LibraryApi.getRefreshStatus();
@@ -74,6 +82,58 @@ export const getSubtitleUploadList = async () => {
   subtitleUploadList.value = res.jobs;
 };
 
+export const getManualSubtitleJobResult = async ({ videoPath, subPath, mode = '' }) => {
+  const [res, err] = await LibraryApi.getManualSubtitleResult({
+    video_f_path: videoPath,
+    sub_f_path: subPath,
+    mode,
+  });
+  if (err !== null) {
+    return [null, err];
+  }
+  return [res?.message ?? '', null];
+};
+
+export const getTimelineFixJobStatus = ({ videoPath, subPath }) => {
+  const isQueued = subtitleUploadList.value.some(
+    (item) => item.video_f_path === videoPath && item.sub_f_path === subPath && item.mode === 'fix_timeline_only'
+  );
+  if (isQueued) {
+    return 'pending';
+  }
+  return subtitleJobResults.value[getTimelineFixJobKey({ videoPath, subPath })] ?? '';
+};
+
+const waitForTimelineFixResult = async ({ videoPath, subPath, deadline }) => {
+  if (Date.now() >= deadline) {
+    return { status: 'timeout', message: '' };
+  }
+
+  await sleep(1500);
+  await getSubtitleUploadList();
+
+  if (getTimelineFixJobStatus({ videoPath, subPath }) === 'pending') {
+    return waitForTimelineFixResult({ videoPath, subPath, deadline });
+  }
+
+  const [result, resultErr] = await getManualSubtitleJobResult({
+    videoPath,
+    subPath,
+    mode: 'fix_timeline_only',
+  });
+  if (resultErr !== null) {
+    return { status: 'failed', message: resultErr.message };
+  }
+  if (result === 'ok') {
+    return { status: 'done', message: '' };
+  }
+  if (result) {
+    return { status: 'failed', message: result };
+  }
+
+  return waitForTimelineFixResult({ videoPath, subPath, deadline });
+};
+
 export const useLibrary = () => {
   useSettings();
 
@@ -111,10 +171,44 @@ export const doFixSubtitleTimeline = async ({ videoPath, subPath }) => {
     return;
   }
 
-  SystemMessage.success('已加入时间轴校准队列。字幕列表里的这条字幕会按当前视频重新校准。', {
+  const jobKey = getTimelineFixJobKey({ videoPath, subPath });
+  subtitleJobResults.value = {
+    ...subtitleJobResults.value,
+    [jobKey]: 'pending',
+  };
+
+  SystemMessage.info('已加入时间轴校准队列，正在等待处理结果。', {
     timeout: 3000,
   });
   await getSubtitleUploadList();
+
+  const { status, message } = await waitForTimelineFixResult({
+    videoPath,
+    subPath,
+    deadline: Date.now() + 120000,
+  });
+
+  subtitleJobResults.value = {
+    ...subtitleJobResults.value,
+    [jobKey]: status,
+  };
+
+  if (status === 'done') {
+    SystemMessage.success('时间轴校准完成。', {
+      timeout: 2500,
+    });
+    await getLibraryList();
+    return;
+  }
+
+  if (status === 'failed') {
+    SystemMessage.error(`时间轴校准失败：${message}`);
+    return;
+  }
+
+  SystemMessage.warn('时间轴校准结果等待超时，请稍后刷新字幕列表确认。', {
+    timeout: 3000,
+  });
 };
 
 export const checkIsVideoLocked = async (videoInfo) => {

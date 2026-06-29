@@ -35,6 +35,14 @@ type SubTimelineFixerHelperEx struct {
 	needDownloadFFMPeg  bool
 }
 
+var ffmpegVersionProbe = func(helper *ffmpeg_helper.FFMPEGHelper) (string, error) {
+	return helper.Version()
+}
+
+var ffsubsyncVersionProbe = func() (string, error) {
+	return getFFSubSyncVersion()
+}
+
 func NewSubTimelineFixerHelperEx(log *logrus.Logger, fixerConfig settings.TimelineFixerSettings) *SubTimelineFixerHelperEx {
 
 	fixerConfig.Check()
@@ -49,31 +57,39 @@ func NewSubTimelineFixerHelperEx(log *logrus.Logger, fixerConfig settings.Timeli
 	}
 }
 
-// Check 是否安装了 ffmpeg 和 ffprobe
-func (s *SubTimelineFixerHelperEx) Check() bool {
-	version, err := s.ffmpegHelper.Version()
+func (s *SubTimelineFixerHelperEx) ensureReady() error {
+	version, err := ffmpegVersionProbe(s.ffmpegHelper)
 	if err != nil {
 		s.needDownloadFFMPeg = false
-		s.log.Errorln("Need Install ffmpeg and ffprobe !")
-		return false
+		return errors.New("ffmpeg/ffprobe not ready: " + err.Error())
 	}
-	ffsubsyncVersion, err := getFFSubSyncVersion()
+	ffsubsyncVersion, err := ffsubsyncVersionProbe()
 	if err != nil {
 		s.needDownloadFFMPeg = false
-		s.log.Errorln("Need Install ffsubsync !")
-		return false
+		return errors.New("ffsubsync not ready: " + err.Error())
 	}
 	s.needDownloadFFMPeg = true
 	s.log.Infoln(version)
 	s.log.Infoln(ffsubsyncVersion)
+	return nil
+}
+
+// Check 是否安装了 ffmpeg 和 ffprobe
+func (s *SubTimelineFixerHelperEx) Check() bool {
+	if err := s.ensureReady(); err != nil {
+		s.log.Errorln(err)
+		return false
+	}
 	return true
 }
 
 func (s *SubTimelineFixerHelperEx) Process(videoFileFullPath, srcSubFPath string) error {
 
 	if s.needDownloadFFMPeg == false {
-		s.log.Errorln("Need Install ffmpeg and ffprobe, Can't Do TimeLine Fix")
-		return nil
+		if err := s.ensureReady(); err != nil {
+			s.log.Errorln("Need Install ffmpeg and ffprobe, Can't Do TimeLine Fix")
+			return err
+		}
 	}
 
 	return s.processWithFFSubSync(videoFileFullPath, srcSubFPath)
@@ -359,16 +375,7 @@ func (s *SubTimelineFixerHelperEx) processWithFFSubSync(videoFileFullPath, srcSu
 		}
 	}
 
-	args := []string{
-		videoFileFullPath,
-		"-i", srcSubFPath,
-		"-o", tmpOutputPath,
-		"--max-offset-seconds", fmt.Sprintf("%d", s.fixerConfig.MaxOffsetTime),
-		"--log-dir-path", logDir,
-	}
-	if s.fixerConfig.MinOffset > 0 {
-		args = append(args, "--suppress-output-if-offset-less-than", fmt.Sprintf("%.3f", s.fixerConfig.MinOffset))
-	}
+	args := buildFFSubSyncArgs(videoFileFullPath, srcSubFPath, tmpOutputPath, logDir, s.fixerConfig.MaxOffsetTime)
 
 	ffsubsyncBin, err := findFFSubSyncBin()
 	if err != nil {
@@ -382,8 +389,7 @@ func (s *SubTimelineFixerHelperEx) processWithFFSubSync(videoFileFullPath, srcSu
 		return fmt.Errorf("ffsubsync failed: %w; output=%s", err, strings.TrimSpace(output.String()))
 	}
 	if pkg.IsFile(tmpOutputPath) == false {
-		s.log.Infoln("Skip TimeLine Fix -- ffsubsync produced no output", srcSubFPath)
-		return nil
+		return fmt.Errorf("ffsubsync produced no output: %s; output=%s", srcSubFPath, strings.TrimSpace(output.String()))
 	}
 
 	bFind, fixedInfo, parseErr := s.subParserHub.DetermineFileTypeFromFile(tmpOutputPath)
@@ -434,6 +440,16 @@ func (s *SubTimelineFixerHelperEx) processWithFFSubSync(videoFileFullPath, srcSu
 		s.log.Debugln("ffsubsync:", trimmed)
 	}
 	return nil
+}
+
+func buildFFSubSyncArgs(videoFileFullPath, srcSubFPath, tmpOutputPath, logDir string, maxOffsetSeconds int) []string {
+	return []string{
+		videoFileFullPath,
+		"-i", srcSubFPath,
+		"-o", tmpOutputPath,
+		"--max-offset-seconds", fmt.Sprintf("%d", maxOffsetSeconds),
+		"--log-dir-path", logDir,
+	}
 }
 
 func (s *SubTimelineFixerHelperEx) estimateOffsetSeconds(srcSubFPath, fixedSubFPath string) (float64, error) {
